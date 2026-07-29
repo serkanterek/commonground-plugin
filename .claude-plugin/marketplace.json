@@ -1,0 +1,16 @@
+{
+  "name": "commonground-plugins",
+  "owner": {
+    "name": "Serkan Terek"
+  },
+  "description": "The CommonGround plugin marketplace — install the CommonGround plugin to bring your curated context wiki (team or personal) into Claude.",
+  "plugins": [
+    {
+      "name": "commonground",
+      "source": "./",
+      "description": "A curated, version-controlled context wiki — for your team or just for you — inside Claude: search its knowledge and (as an admin) seed, ingest, and curate it, all on your own tokens.",
+      "homepage": "https://app.commongroundapp.io",
+      "keywords": ["commonground", "wiki", "knowledge-base", "context", "team", "mcp"]
+    }
+  ]
+}

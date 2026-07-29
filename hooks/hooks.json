@@ -1,0 +1,26 @@
+{
+  "description": "CommonGround plugin hooks (SER-141/143). SessionStart: first-boot detection (nudge to /commonground:initialize when signed in but not connected) and, on an initialized project, a wiki-awareness summary plus a refresh of the team keyword cache. Scoped to \"startup\" (SER-182): SessionStart also fires on resume/clear/compact, and re-injecting the same orientation block at every compaction is how ambient guidance turns into noise — fixing it at the trigger beats de-duplicating downstream. UserPromptSubmit: the deterministic Code auto-trigger — when a prompt mentions a cached team keyword, nudge Claude to consult the wiki first. Both hooks are self-contained, fail-open, and never break a session.",
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/session-start.cjs\""
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/user-prompt-submit.cjs\""
+          }
+        ]
+      }
+    ]
+  }
+}

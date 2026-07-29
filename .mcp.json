@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "commonground": {
+      "type": "http",
+      "url": "${COMMONGROUND_API_URL:-https://api.commongroundapp.io}/mcp"
+    }
+  }
+}

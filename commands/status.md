@@ -13,10 +13,11 @@ Run `commonground status`. Report whether the user is signed in, the team, their
 **Lead with the mode**, because it decides where this project's work lands:
 
 - **Local-clone mode** — name the clone path and say plainly: curation edits files there, anyone may
-  curate, and nothing reaches the team until `/commonground:push`. If the CLI reports unpublished
-  work, say so — that's the user's own thinking, not yet shared.
-- **MCP mode** — say there's no local copy, so every write via `save_page` is immediately live for
-  the whole team.
+  curate, and nothing is published until `/commonground:push` — that's when a shared wiki reaches
+  the team, or a personal one reaches the user's other machines and Chat sessions. If the CLI reports
+  unpublished work, say so — that's the user's own thinking, not yet shared.
+- **MCP mode** — say there's no local copy, so every write via `save_page` is immediately live — for
+  the whole team on a shared wiki, for the user's other Claude sessions on a personal one.
 
 **Where the sign-in is stored.** If the output carries a note about it, relay that note in plain
 language — it means a pre-0.4.1 sign-in is still sitting inside the wiki folder, or a leftover copy
@@ -96,14 +97,14 @@ Tailor to the user's **role** (and whether the wiki is empty). The full command 
 **`/commonground:initialize`** (connect), **`/commonground:seed`** (bootstrap/import + charter),
 **`/commonground:ingest`** (capture anything — notes, docs, transcripts, URLs, decisions),
 **`/commonground:lint`** (health + coverage gaps), **`/commonground:pull`** / **`/commonground:push`**
-(local-clone only — get the team's latest / publish yours), and **`/commonground:status`** (this).
+(local-clone only — get the published latest / publish yours), and **`/commonground:status`** (this).
 In local-clone mode `commonground lint` and `commonground coverage` also run directly against the
 clone, so they include work not yet published.
 
 - **admin / curator:** if the wiki is **empty or thin**, start with **`/commonground:seed`** (the
   guided bootstrap/import arc that also charters the wiki). Otherwise: `/commonground:ingest` to add
   or update anything, `/commonground:lint` to check health and fill gaps, `/commonground:seed` to
-  resume seeding, and — in local-clone mode — `/commonground:pull` to get the team's latest or
+  resume seeding, and — in local-clone mode — `/commonground:pull` to get the published latest or
   `/commonground:push` to publish yours. Reading works too — just ask a question and Claude
   consults the wiki and cites pageIds.
 - **member:** ask any question the wiki covers — Claude consults it and cites pageIds (including

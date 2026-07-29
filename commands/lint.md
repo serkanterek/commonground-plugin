@@ -60,8 +60,8 @@ that anyone may make (publishing is the gated step); in MCP mode writing takes a
   `prompt` describing what belongs there. The charter page is excluded from counts, and
   hollow stubs don't count — a section ticks only on pages with a real body. If `chartered` is
   `false`, note that `/commonground:seed` can charter the wiki (a two-minute retrofit). The local
-  form also reports `assumed: true` when it had no cached team profile and fell back to the default
-  shape — say so rather than presenting that checklist as the team's own.
+  form also reports `assumed: true` when it had no cached profile and fell back to the default
+  shape — say so rather than presenting that checklist as this wiki's own.
 
 **(Optional) Add judgement checks** in-session, on the user's tokens, over the pages you've read:
 - **Contradiction** — two pages asserting conflicting facts.
@@ -90,7 +90,7 @@ Who may act depends on the mode, not on the finding:
 - **Local-clone mode — anyone.** Fixes are edits to the user's own working copy, so a member fixes a
   stale page exactly like an admin. What a member can't do is **publish**; say so when the work is
   done and offer `suggest_change` so a curator can fold it in.
-- **MCP mode — admins/curators.** Every write is straight to the shared wiki. If the user is a
+- **MCP mode — admins/curators.** Every write is straight to the hosted wiki. If the user is a
   member, stop after the report: they can read any page (`get_page`), ask questions, and **file a
   suggestion** (`suggest_change`) for anything they can see is wrong. `list_suggestions` shows them
   their own filings and how each was resolved.

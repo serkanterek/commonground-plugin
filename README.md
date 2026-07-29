@@ -38,18 +38,18 @@ charters the wiki and puts the first pages in.
 | `/commonground:ingest` | Capture anything into the wiki: notes, a transcript, a doc or URL, a decision |
 | `/commonground:lint` | Health check — stale/orphan/broken-citation pages, coverage gaps, open suggestions |
 | `/commonground:status` | Where you stand: connection, team, role, and what to do next |
-| `/commonground:pull` | *(local-clone mode)* Get the team's latest |
-| `/commonground:push` | *(local-clone mode)* Publish your changes to the team |
+| `/commonground:pull` | *(local-clone mode)* Get the latest into your local copy |
+| `/commonground:push` | *(local-clone mode)* Publish your changes |
 
 ## Two ways to connect
 
 **MCP mode** (the default) — the wiki lives on the server and Claude reaches it live through the
-CommonGround connector. No local files. Best for most coding projects. Writes here are shared with
-your team the moment they land, so Claude asks before each one.
+CommonGround connector. No local files. Best for most coding projects. Writes here go live the moment
+they land — on a shared wiki that means everyone, so Claude asks before each one.
 
-**Local-clone mode** — a full copy of the wiki on disk at `~/CommonGround/<team>/`, plain markdown
+**Local-clone mode** — a full copy of the wiki on disk at `~/CommonGround/<teamId>/`, plain markdown
 that opens directly in Obsidian. The clone is your **working copy**: everything you ingest, edit or
-fix lands there first, and nothing reaches the team until you run `/commonground:push`, which
+fix lands there first, and nothing is published until you run `/commonground:push`, which
 previews the change and asks. Editing your own copy needs no particular role; publishing is
 admins/curators only.
 

@@ -33,11 +33,36 @@
  */
 const lib = require('./lib.cjs');
 
+/**
+ * The wiki's voice, as rendered SERVER-SIDE into the state DTO (SER-185).
+ *
+ * These hooks are dependency-free CommonJS and cannot import `WIKI_VOICE`, so this file used to
+ * hardcode team wording — which meant one session could carry a personal CLAUDE.md router block and
+ * a hook line saying "your team's CommonGround wiki" at the same time. Now the frame comes from the
+ * same lexicon everything else uses; the fallback is audience-NEUTRAL rather than team-flavoured,
+ * because a hook that cannot reach the server does not know who the wiki is for and must not guess.
+ */
+const NEUTRAL_VOICE = {
+  wiki: 'your CommonGround wiki',
+  reaches: 'the published wiki',
+  possessive: 'your curated',
+  noun: 'context wiki',
+  when: 'Before answering questions this wiki covers, consult it:',
+  removalImpact: 'it goes for everyone who reads this wiki',
+  others: null,
+};
+
+function voiceOf(state) {
+  const v = state && state.voice;
+  return v && typeof v === 'object' ? { ...NEUTRAL_VOICE, ...v } : NEUTRAL_VOICE;
+}
+
 /** Build the awareness context line from `/wiki/awareness`, or a static pointer if it's unavailable. */
-function awarenessContext(awareness) {
-  const base =
-    "This project is connected to your team's CommonGround wiki. Before answering questions about the " +
-    'team, product, or decisions, consult it (get_index / search / get_page) and cite pageIds.';
+function awarenessContext(awareness, voice) {
+  const v = voice || NEUTRAL_VOICE;
+  // `when` is authored to END on "consult it:", so the tool list completes that sentence rather
+  // than restating it.
+  const base = `This project is connected to ${v.wiki}. ${v.when} get_index / search / get_page, and cite pageIds.`;
   if (!awareness || typeof awareness !== 'object') return base;
   const bits = [];
   if (typeof awareness.openSuggestions === 'number')
@@ -95,7 +120,11 @@ const CONNECTOR_HEALTH_CLAUSE =
  * `<!-- commonground:mode:… -->`), and this hook already parses it to pick the pull-vs-push nudge.
  * Saying it out loud costs nothing and is the only signal that arrives BEFORE Claude picks a tool.
  */
-function modeRule(mode, teamId) {
+function modeRule(mode, teamId, voice) {
+  const v = voice || NEUTRAL_VOICE;
+  // The RULE is frame-independent — where writes land does not depend on who reads the wiki — but
+  // the CONSEQUENCE is: "nothing reaches the team" is false on a wiki with no team in it.
+  const published = v.others ? 'the published wiki' : 'the published copy';
   if (mode === 'local') {
     // No resolvable team (signed out here, or several signed in) → still state the RULE, just
     // without a concrete path. The rule is what prevents the wrong write; the path is a convenience.
@@ -107,9 +136,9 @@ function modeRule(mode, teamId) {
       'ALL curation — ingest, edits, lint fixes, seeding, the charter — writes FILES in that ' +
       'clone. Do NOT ' +
       'use the CommonGround MCP write tools (`save_page`, `stage_sources`, `save_charter`) in this ' +
-      "project: they commit straight to the team's hosted wiki, bypassing both the user's review " +
-      'and the publish step. Read from the clone too — it reflects unpushed work that the hosted ' +
-      'wiki does not. Nothing reaches the team until `/commonground:push`, which previews and asks ' +
+      `project: they commit straight to ${published}, bypassing both the user's review ` +
+      `and the publish step. Read from the clone too — it reflects unpublished work that ${published} ` +
+      `does not. Nothing reaches ${v.reaches} until \`/commonground:push\`, which previews and asks ` +
       'first. Editing locally needs no particular role (it is the user\'s own copy); only ' +
       'publishing is admin/curator. The suggestions queue (`list_suggestions` / `suggest_change` / ' +
       '`resolve_suggestion`) is the one thing that legitimately stays server-side — it cannot live ' +
@@ -118,10 +147,11 @@ function modeRule(mode, teamId) {
   }
   return (
     'This project is in CommonGround MCP mode: there is no local copy, so every write is ' +
-    'immediately shared. `save_page`, `stage_sources` and `save_charter` commit straight to the ' +
-    "team's hosted wiki — the moment one lands it is what everyone else's Claude reads. Show what " +
-    'you intend to write and get an explicit yes before each write; there is no staging step to ' +
-    'undo it in.'
+    'immediately live. `save_page`, `stage_sources` and `save_charter` commit straight to ' +
+    `${published} — the moment one lands it is what ` +
+    (v.others ? `${v.others}' Claude reads` : 'every Claude you use reads') +
+    '. Show what you intend to write and get an explicit yes before each write; there is no ' +
+    'staging step to undo it in.'
   );
 }
 
@@ -190,7 +220,7 @@ function resolvedContext(state) {
   const silent = state && state.loudness === 'silent';
   const prose = silent ? '' : stepProse(step, state);
   const empty = step.id === 'await-seed' || step.id === 'seed-first-pages' || step.id === 'charter-wiki';
-  const facts = empty ? '' : awarenessContext(awarenessFromState(state));
+  const facts = empty ? '' : awarenessContext(awarenessFromState(state), voiceOf(state));
   return [facts, prose, CONNECTOR_HEALTH_CLAUSE].filter(Boolean).join(' ');
 }
 
@@ -234,23 +264,24 @@ function awarenessFromState(state) {
  * pageCount (fetch failed, older API) falls through to the normal awareness line, so we never nudge
  * onboarding on uncertainty. A curator can seed too, so they get the nudge, not the read-only note.
  */
-function startupContext(awareness, role) {
+function startupContext(awareness, role, voice) {
+  const v = voice || NEUTRAL_VOICE;
   const empty = awareness && typeof awareness === 'object' && awareness.pageCount === 0;
   if (empty) {
     if (canSeed(role)) {
       return (
-        "This project is connected to your team's CommonGround wiki, but it's empty (0 pages) — " +
+        `This project is connected to ${v.wiki}, but it's empty (0 pages) — ` +
         "onboarding hasn't happened yet. Suggest running /commonground:seed: a short, discipline-aware " +
         'interview that bootstraps the wiki, or imports an existing folder/vault. Point the user there ' +
-        "before trying to answer team questions (there's nothing to consult yet)."
+        "before trying to answer from it (there's nothing to consult yet)."
       );
     }
     return (
-      "This project is connected to your team's CommonGround wiki, but it's empty (0 pages) — nothing " +
+      `This project is connected to ${v.wiki}, but it's empty (0 pages) — nothing ` +
       'to consult yet. An admin or curator can seed it with /commonground:seed. You have read-only access.'
     );
   }
-  return awarenessContext(awareness);
+  return awarenessContext(awareness, v);
 }
 
 /** The hosted wiki's newest commit oid from an awareness payload, or null. */
@@ -308,9 +339,11 @@ async function main() {
     // First-boot nudge — only if they've actually signed in somewhere (else the plugin's mere
     // presence is enough; don't badger a brand-new user).
     if (lib.isSignedIn()) {
+      // Tier B — audience-NEUTRAL by construction. This branch runs before any team is resolved,
+      // so it cannot know whether the wiki is personal or shared and must not guess.
       const claudeFacing =
-        "You're signed in to CommonGround, but this project isn't connected to a team wiki yet. " +
-        'If the user wants their team context available here, suggest running /commonground:initialize.';
+        "You're signed in to CommonGround, but this project isn't connected to a wiki yet. " +
+        'If the user wants their curated context available here, suggest running /commonground:initialize.';
       // The FIRST time this user sees the plugin anywhere, say it to THEM rather than only to
       // Claude — otherwise beat zero of the whole product is silence, and the person who just
       // installed it has no idea anything happened. Once ever, per user (see `hasWelcomed`).
@@ -320,7 +353,7 @@ async function main() {
           claudeFacing,
           lib.verbatimBlock(
             'CommonGround is connected to your account, but not to this project yet.\n' +
-              'Run /commonground:initialize here and I\'ll wire this folder to your team wiki — ' +
+              'Run /commonground:initialize here and I\'ll wire this folder to your wiki — ' +
               'after that I can answer from it, and cite what I used.',
           ),
         );
@@ -397,7 +430,12 @@ async function main() {
             'running /commonground:pull.'
         : '';
 
-    emit(resolvedContext(state), modeRule(projectMode, binding.teamId), nudge, delegatedWelcome(state));
+    emit(
+      resolvedContext(state),
+      modeRule(projectMode, binding.teamId, voiceOf(state)),
+      nudge,
+      delegatedWelcome(state),
+    );
     return;
   }
 

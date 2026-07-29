@@ -12,16 +12,19 @@ schema-correct, retrievable pages. All drafting happens **in this session, on th
 
 **Do this before anything else, and never infer it from which tools are available.** The
 CommonGround MCP tools are registered per *user*, so in a local-clone project `save_page` and
-`stage_sources` are present and are the **wrong** path — using them writes the team's hosted wiki and
-leaves the user's own copy behind, which is backwards.
+`stage_sources` are present and are the **wrong** path — using them writes straight to the hosted
+wiki and leaves the user's own copy behind, which is backwards.
 
 - The **SessionStart hook states the mode** at the top of the session — that is authoritative.
 - Otherwise read this project's `./CLAUDE.md` router block (`<!-- commonground:mode:local -->` or
   `<!-- commonground:mode:mcp -->`), or run `commonground status`.
 
-**Local-clone mode** → every step below writes **files in the clone**; nothing reaches the team until
-`/commonground:push`. **MCP mode** → `stage_sources` / `save_page` write the shared wiki and are live
-for everyone the instant they land; say that and get an explicit yes before each write.
+**Local-clone mode** → every step below writes **files in the clone**; nothing is published until
+`/commonground:push` — that's when a shared wiki reaches the team, or a personal one reaches the
+user's other machines and Chat sessions. **MCP mode** → `stage_sources` / `save_page` write the
+hosted wiki directly and are live the instant they land — for the whole team on a shared wiki, for
+the user's other Claude sessions on a personal one; say that and get an explicit yes before each
+write.
 
 **Roles.** In **local-clone mode ingesting needs no particular role** — it's the user's own working
 copy, so a member ingests exactly like an admin. Only **publishing** is admin/curator, and
@@ -107,8 +110,8 @@ auto-write, never assert a fact the source doesn't support.
   - If the user is a **member**, publishing isn't theirs to do: say the work is saved in their clone
     and offer to file it as a `suggest_change` so a curator can fold it in.
 - **MCP mode:** write each page with `save_page` (CAS-guarded — if it reports a conflict, re-read
-  with `get_page`, merge, and retry with the new `baseSha`). Remember this is immediately live for
-  the whole team.
+  with `get_page`, merge, and retry with the new `baseSha`). Remember this is immediately live — for
+  the whole team on a shared wiki, for the user's other Claude sessions on a personal one.
 
 Close with a short change summary: sources stored + pages added/updated (by pageId), where they
-landed (the clone, or the team's wiki), and offer to link a new decision from the pages it affects.
+landed (the clone, or the published wiki), and offer to link a new decision from the pages it affects.

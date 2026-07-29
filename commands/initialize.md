@@ -104,7 +104,8 @@ custom instructions**. It's a different surface, so it's genuinely additive.
 Follow the `maintainer` skill's **bridge-to-Chat** procedure: if a charter exists, read it
 (`get_page` `company/wiki-charter`, or `get_coverage` for just the audience) and print the variant
 matching its audience, filled from the retrieval brief + pinned keywords; if there's no charter yet,
-print the generic **Team** variant and mention `/commonground:seed` will let you tailor it later.
+don't guess — ask whether this wiki is just for them or for a team, print the matching variant, and
+mention `/commonground:seed` will let you charter (and tailor) it properly later.
 Print it in a fenced `text` block and tell them it's their instruction to edit freely. Pure-Chat
 teammates who can't run this command have the whole setup at
 **https://app.commongroundapp.io/connect** — a public page, so it works before they have an account.

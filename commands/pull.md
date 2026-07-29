@@ -1,5 +1,5 @@
 ---
-description: Get the team's latest into your local wiki clone — shows what's coming, and never overwrites your own work without asking
+description: Get the latest into your local wiki clone — shows what's coming, and never overwrites your own work without asking
 ---
 
 Bring this project's local CommonGround clone up to date with the hosted wiki. **Everyone can
@@ -27,11 +27,15 @@ Run `commonground pull` and report the outcome in plain language:
 - **Blocked** — the hosted wiki moved *and* the user has local work that would be overwritten.
   **Nothing was changed.** Show both sides: what's incoming, and that their own work is at stake.
   Then offer the choice — with the `AskUserQuestion` tool (multiple-choice UI) if it's available in
-  this session, as a plain question otherwise:
+  this session, as a plain question otherwise. **Word it in the wiki's frame** — shared or personal,
+  from the same source `/commonground:push` §0 uses (the SessionStart hook, the `CLAUDE.md` router
+  block, or `commonground status`): on a shared wiki the incoming side is a teammate's publish; on a
+  personal one it's the user's own other machine or Chat session.
   1. **Publish mine first** — run `/commonground:push` (admins/curators). Best when their local work
-     is good and should reach the team.
-  2. **Take the team's version** — run `commonground pull --take-remote`. Their local work is
-     snapshotted to a recoverable `draft/…` branch first, so nothing is lost — say that plainly,
+     is good and should go out — to the team on a shared wiki, or to every other Claude the user uses
+     on a personal one.
+  2. **Take the published version instead** — run `commonground pull --take-remote`. Their local work
+     is snapshotted to a recoverable `draft/…` branch first, so nothing is lost — say that plainly,
      it's what makes this safe to choose.
   3. **Decide later** — do nothing; the clone stays exactly as it is.
 

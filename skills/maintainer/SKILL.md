@@ -12,10 +12,11 @@ context. Who it's for is declared in its **charter** (the `company/wiki-charter`
 during `/commonground:seed`): audience (`just-me` / `my-team` / `whole-company`), the wiki's own
 structure checklist, and a retrieval brief. When a charter exists, honor it.
 
-The hosted repo is **what the team shares**. A project with a local clone has a **working copy**,
-and `/commonground:push` is how work in it becomes the team's — the same relationship a checkout has
-to a shared branch. The hosted copy is not "the real one" that a clone lags behind: where there IS a
-clone, the clone is where the user's current thinking lives, and it is the one that is ahead.
+The hosted repo is **what gets shared** — with the team on a shared wiki, or with every other Claude
+session the user has on a personal one. A project with a local clone has a **working copy**, and
+`/commonground:push` is how work in it becomes that shared copy — the same relationship a checkout
+has to a shared branch. The hosted copy is not "the real one" that a clone lags behind: where there
+IS a clone, the clone is where the user's current thinking lives, and it is the one that is ahead.
 
 Everything below runs **in this session, on the user's tokens** — CommonGround runs no LLM for
 curation (Model A). You produce plain markdown; the wiki is persisted either by editing the clone
@@ -34,12 +35,14 @@ local-clone project the write tools are sitting right there and are the wrong pa
 3. Otherwise run `commonground status`, which reports the project's mode.
 
 **Local-clone mode — your copy first.** Every write is a FILE in the clone. Do **not** call
-`save_page`, `stage_sources` or `save_charter`: they commit straight to the team's hosted wiki,
-skipping the user's review and the publish step. Read from the clone too — it reflects unpushed work
-the hosted wiki does not have. Nothing reaches the team until `/commonground:push`.
+`save_page`, `stage_sources` or `save_charter`: they commit straight to the hosted wiki, skipping the
+user's review and the publish step. Read from the clone too — it reflects unpushed work the hosted
+wiki does not have. Nothing is published until `/commonground:push` — that's when a shared wiki
+reaches the team, or a personal one reaches the user's other machines and Chat sessions.
 
-**MCP mode — straight to the team.** There is no local copy: `save_page` / `stage_sources` are live
-for everyone the moment they land. Say so and get an explicit yes before each write.
+**MCP mode — straight to the hosted wiki.** There is no local copy: `save_page` / `stage_sources` go
+live the moment they land — for the whole team on a shared wiki, for every Claude the user has
+connected on a personal one. Say so and get an explicit yes before each write.
 
 **Roles.** In **local-clone mode, curating needs no particular role** — it is the user's own working
 copy, and members edit it as freely as admins. Only **publishing** is admin/curator; `push` reports
@@ -51,7 +54,7 @@ help them read, answer, and file `suggest_change`.
 
 - **Read/answer** — search the wiki and answer with citations. In MCP mode use the CommonGround
   MCP tools (`search`, `get_page`, `get_index`). In local-clone mode start at `index.md` and open
-  only the pages you need. Never assert a team fact a page doesn't back.
+  only the pages you need. Never assert a fact a page doesn't back.
 - **Curate** — run the procedures below. Persist by editing the clone (local) or via the MCP write
   tools (MCP). The server re-validates frontmatter on write — that's the backstop, not a substitute
   for getting it right here.
@@ -293,8 +296,9 @@ from Claude Code's `CLAUDE.md` router). The user pastes it into **Settings → P
 (every chat) or a **Project's custom instructions**.
 
 1. **Read the charter to tailor it.** `get_page` `company/wiki-charter` (or `get_coverage` for just
-   the `audience`); local-clone → read `company/wiki-charter.md`. No charter yet → print the **Team**
-   variant and suggest `/commonground:seed` to tailor later.
+   the `audience`); local-clone → read `company/wiki-charter.md`. No charter yet → don't guess: ask
+   whether this wiki is just for them or for a team, print the matching variant, and suggest
+   `/commonground:seed` to charter (and tailor) it properly later.
 2. **Pick the variant** by audience: `just-me` → Personal, `my-team` → Team, `whole-company` →
    Company.
 3. **Fill and print.** Whitespace-flatten the retrieval brief (trim to ~400 chars) and take ≤12

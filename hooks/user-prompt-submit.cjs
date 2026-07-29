@@ -72,8 +72,12 @@ function keywordNudge(prompt, cwd) {
   const hits = lib.matchKeywords(prompt, cache.keywords, 6);
   if (hits.length === 0) return '';
 
+  // Audience-NEUTRAL wording, deliberately (SER-185). This hook is on the prompt hot path and makes
+  // ZERO network calls by design — its only local cache holds keywords, not the charter — so it
+  // cannot know whether this wiki is personal or shared. "Their CommonGround wiki" is true either
+  // way; "your team's" was a guess that read as wrong to every solo user.
   return (
-    `The user's message mentions ${hits.map((h) => `"${h}"`).join(', ')}, which your team's ` +
+    `The user's message mentions ${hits.map((h) => `"${h}"`).join(', ')}, which their ` +
     'CommonGround wiki likely covers. Before answering, search the wiki (search / get_index / ' +
     'get_page) and ground your answer in it, citing the pageIds you used. If nothing relevant is ' +
     'found, say so rather than guessing.'

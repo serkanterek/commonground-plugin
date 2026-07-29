@@ -19,12 +19,13 @@ the tool isn't available or the answer is open-ended. Either way, ask one thing 
 **Establish the project's mode before any write** — the SessionStart hook states it, else this
 project's `./CLAUDE.md` router block (`<!-- commonground:mode:… -->`) or `commonground status`.
 **Local-clone mode:** every page below is a FILE in the clone, and the charter too — do not use
-`save_page` / `save_charter`; nothing reaches the team until `/commonground:push`. **MCP mode:** the
-write tools go straight to the shared wiki, live for everyone the moment they land.
+`save_page` / `save_charter`; nothing is published until `/commonground:push`. **MCP mode:** the
+write tools go straight to the hosted wiki, live the moment they land — for the whole team on a
+shared wiki, and for every other Claude they use on a personal one.
 
 **Roles.** In **local-clone mode** seeding needs no particular role — it builds the user's own
 working copy — but a member can't publish it, so say that when the arc completes and offer
-`suggest_change`. In **MCP mode** seeding writes the shared wiki directly, so it is **admin/curator
+`suggest_change`. In **MCP mode** seeding writes the hosted wiki directly, so it is **admin/curator
 only**: for a member, don't attempt writes — explain the limit and offer to answer questions from
 whatever wiki exists (`search` / `get_page`) instead.
 
@@ -85,9 +86,23 @@ lost. What resuming guarantees is that you won't be asked the same question twic
 Three quick questions, then one small page. Keep it to ~2 minutes — it's a conversation opener,
 not a ceremony.
 
-1. **Audience.** Ask (AskUserQuestion): *Who is this wiki for?* — **Just me** (a personal context
-   wiki) / **My team** / **The whole company**. This sets the tone rules above, what curation may
-   flag, and (later) the retrieval instructions.
+1. **Audience.** *They have probably already answered this* — it is the first question the web asks
+   when a wiki is created, and the answer is recorded as the team's **shape** (`get_coverage`
+   returns it). **Don't ask it cold.** Read the shape and CONFIRM in one line instead:
+
+   | shape | say |
+   |---|---|
+   | `solo` | *"You set this up as a personal wiki — just you. Still right?"* |
+   | `team` | *"This one's for your team. Still right?"* |
+   | `company` | *"This one's company-wide. Still right?"* |
+
+   Only ask the open question — *Who is this wiki for?* — with **Just me** (a personal context wiki)
+   / **My team** / **The whole company**, when the shape is genuinely unknown, or when they say the
+   recorded answer is wrong. Asking someone the same question twice in two minutes, in the same
+   words, is how a product tells them nothing it collected was remembered.
+
+   The answer sets the tone rules above, what curation may flag, and (later) the retrieval
+   instructions. The **charter page stays canonical** — shape only supplies the starting point.
 2. **Structure.** Take the shape template's sections from `get_coverage` and present them as a
    **proposal, never a schema** — each with a one-line "what goes here" — then ask: **Use this
    structure** / **Edit it with me** / **Start blank** (just `index.md`; structure emerges as

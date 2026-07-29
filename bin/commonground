@@ -7418,8 +7418,9 @@ async function readTeamProfile(teamId, configHome = agentConfigHome()) {
   }
 }
 async function writeTeamProfile(teamId, profile, configHome = agentConfigHome()) {
-  if (!profile.teamName && !profile.shape)
+  if (!profile.teamName && !profile.wikiName && !profile.scopeSlug && !profile.shape && !("audience" in profile)) {
     return;
+  }
   try {
     const path = profilesPath(configHome);
     let store = { teams: {} };
@@ -7804,9 +7805,13 @@ var HttpSyncBackend = class {
       teamId: body.teamId,
       role: body.role,
       // Absent on an older API — carried through as undefined rather than defaulted here, so the
-      // cache never records a guess as if the server had said it.
+      // cache never records a guess as if the server had said it. `audience` is keyed on presence,
+      // not truthiness: an explicit null ("chartered, no audience") must survive the round trip.
       ...body.teamName ? { teamName: body.teamName } : {},
-      ...body.shape ? { shape: body.shape } : {}
+      ...body.wikiName ? { wikiName: body.wikiName } : {},
+      ...body.scopeSlug ? { scopeSlug: body.scopeSlug } : {},
+      ...body.shape ? { shape: body.shape } : {},
+      ..."audience" in body ? { audience: body.audience ?? null } : {}
     };
   }
   /** Append a path to the API base, preserving any base path prefix (mirrors {@link remoteAccess}). */
@@ -11944,24 +11949,47 @@ var CHARTER_PAGE_ID = "company/wiki-charter";
 function wikiVoiceClass(audience) {
   return audience === "just-me" ? "personal" : "shared";
 }
+function shapeToAudience(shape) {
+  return shape === "solo" ? "just-me" : null;
+}
+function resolveVoiceClass(known) {
+  return wikiVoiceClass(known.audience ?? shapeToAudience(known.shape));
+}
 var WIKI_VOICE = {
   personal: {
     instruction: "Consult CommonGround for the user's personal context before answering \u2014 it is their curated personal knowledge base: who they are, how they work and write, their projects, tools, decisions, preferences, and their own writing voice. Prefer it over assumptions whenever a question touches the user, their work, their writing voice, or anything they have documented.",
     possessive: "your personal, curated",
     noun: "personal context wiki",
     when: "Before answering questions about the user \u2014 who they are, how they work, their projects, tools, decisions, and preferences \u2014 consult it:",
-    cite: "- Cite the pageIds you relied on; never assert facts not backed by a page."
+    cite: "- Cite the pageIds you relied on; never assert facts not backed by a page.",
+    wiki: "your wiki",
+    reaches: "your other Claude sessions",
+    publishWhy: "every Claude you use starts from it, on any machine",
+    removalImpact: "it goes everywhere you use this wiki",
+    remoteMoved: "your wiki changed somewhere else \u2014 another machine, or Chat",
+    theirs: "the published",
+    others: null
   },
   shared: {
     instruction: "Consult CommonGround for company, team, and product context before answering \u2014 it is the team's shared, curated knowledge base. Prefer it over assumptions whenever a question touches internal decisions, entities, or product/domain specifics.",
     possessive: "your team's shared, curated",
     noun: "knowledge wiki",
     when: "Before answering questions about the team, product, or decisions, consult it:",
-    cite: "- Cite the pageIds you relied on; never assert team facts not backed by a page."
+    cite: "- Cite the pageIds you relied on; never assert team facts not backed by a page.",
+    wiki: "the team wiki",
+    reaches: "the team",
+    publishWhy: "the rest of the team's Claude starts from it",
+    removalImpact: "the whole team loses access to it",
+    remoteMoved: "the team wiki changed since this clone last pulled",
+    theirs: "the team's",
+    others: "your teammates"
   }
 };
 function wikiVoice(audience) {
   return WIKI_VOICE[wikiVoiceClass(audience)];
+}
+function wikiVoiceFor(known) {
+  return WIKI_VOICE[resolveVoiceClass(known)];
 }
 var MAX_BRIEF_CHARS = 400;
 function sanitizeBrief(brief) {
@@ -12010,8 +12038,8 @@ function parseScope(input) {
 function scopeSlug(text) {
   return (text || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40) || "main";
 }
-function shapeDefaultScope(shape, teamSlugOrName) {
-  const key = scopeSlug(teamSlugOrName);
+function shapeDefaultScope(shape, scopeKey) {
+  const key = scopeSlug(scopeKey);
   switch (shape) {
     case "product":
       return `product:${key}`;
@@ -12620,7 +12648,9 @@ var COVERAGE_TEMPLATES = {
     }
   ]
 };
-function templateFor(shape) {
+function templateFor(shape, audience) {
+  if (audience === "just-me")
+    return COVERAGE_TEMPLATES.solo;
   return COVERAGE_TEMPLATES[shape] ?? COVERAGE_TEMPLATES.company;
 }
 var STUB_SUMMARY_RE = /^(?:tbd|todo|wip|tba|n\/a|na|xxx+|\.{2,}|…|[-—–]+|\?+)$/i;
@@ -12690,10 +12720,10 @@ function excludeMatcher(excludes) {
     return tokens.length > 0 && tokens.some((token) => text.includes(token));
   };
 }
-function computeCoverage(entries, shape, teamName, charter) {
+function computeCoverage(entries, shape, scopeKey, charter) {
   const idx = (Array.isArray(entries) ? entries : []).filter((e) => e.pageId !== CHARTER_PAGE_ID && hasSubstance(e));
-  const defaultScope = shapeDefaultScope(shape || "company", teamName || "team");
-  const template = charter?.sections?.length ? sectionsFromCharter(charter.sections) : templateFor(shape);
+  const defaultScope = shapeDefaultScope(shape || "company", scopeKey || "team");
+  const template = charter?.sections?.length ? sectionsFromCharter(charter.sections) : templateFor(shape, charter?.audience);
   const isExcluded = excludeMatcher(charter?.excludes ?? null);
   return template.map((sec) => {
     const have = idx.filter(sec.match);
@@ -13413,7 +13443,9 @@ async function localCoverage(dir, profile = {}) {
   const charter = charterPage && charterPage.frontmatter.status === "active" ? parseCharter(charterPage.body) : null;
   const shape = profile.shape ?? "company";
   return {
-    rows: computeCoverage(entries, shape, profile.teamName ?? "team", charter),
+    // Prefer the pinned slug; a cache written before SER-186 has only the name, and `scopeSlug` is
+    // idempotent, so that path produces exactly what it produced before.
+    rows: computeCoverage(entries, shape, profile.scopeSlug ?? profile.teamName ?? "team", charter),
     chartered: Boolean(charter?.sections?.length),
     shape,
     assumed: !profile.shape
@@ -14140,7 +14172,15 @@ async function refreshTeamProfile(deps, teamId, token) {
     const identity = await deps.backend.resolveIdentity(token);
     if (!identity || identity.teamId !== teamId)
       return;
-    await writeTeamProfile(teamId, { teamName: identity.teamName, shape: identity.shape }, deps.configHome);
+    await writeTeamProfile(teamId, {
+      teamName: identity.teamName,
+      wikiName: identity.wikiName,
+      scopeSlug: identity.scopeSlug,
+      shape: identity.shape,
+      // Spread on PRESENCE so an older API (which omits the key) leaves any cached audience
+      // alone, while a chartered-but-audienceless wiki can still record an explicit null.
+      ..."audience" in identity ? { audience: identity.audience ?? null } : {}
+    }, deps.configHome);
   } catch {
   }
 }
@@ -14419,18 +14459,18 @@ Usage:
   commonground login --wait    poll for approval for ~90s; safe to run again if not yet approved
   commonground login [token]   authorize this device \u2014 opens a browser (hosted mode); or pass a
                                device token for CI/manual binding
-  commonground init [team]     connect THIS project to the team wiki: write a router block into
+  commonground init [team]     connect THIS project to your wiki: write a router block into
                                ./CLAUDE.md (--mode mcp [default] | local; local also clones).
                                --refresh re-renders the block in the wiki's charter voice
-  commonground pull [team]     get the team's latest into your local clone (everyone). Never
-                               overwrites local work: it stops and reports instead. Add
-                               --take-remote to adopt the hosted version anyway (your work is
+  commonground pull [team]     get the published wiki's latest into your local copy (everyone).
+                               Never overwrites local work: it stops and reports instead. Add
+                               --take-remote to adopt the published version anyway (your work is
                                saved on a draft branch first)
   commonground push [team]     publish your local changes (admins/curators) \u2014 commits for you.
-                               --dry-run previews without publishing. Stops if the hosted wiki
+                               --dry-run previews without publishing. Stops if the published wiki
                                moved (--mine keeps YOUR version of pages both sides changed;
-                               never force-pushes), and stops if the change REMOVES pages from
-                               the team wiki (--allow-deletes confirms those)
+                               never force-pushes), and stops if the change REMOVES pages
+                               (--allow-deletes confirms those)
   commonground status [team]   show sync state ("N commits behind") + local divergence.
                                --clear-stale-credential removes a leftover pre-0.4.1 sign-in file
                                from inside your wiki folder \u2014 refused unless that file is provably
@@ -14446,11 +14486,11 @@ Usage:
                                save-as-draft
   commonground export [team]   write a static tar of the current wiki (HEAD)
   commonground import <dir> [team]
-                               load an existing local wiki folder into the team wiki (admins). The
+                               load an existing local wiki folder into your wiki (admins). The
                                folder is COPIED into your wiki clone and left untouched \u2014 from then
                                on the clone is the copy CommonGround syncs
 
-Your wiki folder lives at ~/CommonGround/<team>/ (override with COMMONGROUND_HOME).
+Your wiki folder lives at ~/CommonGround/<teamId>/ (override with COMMONGROUND_HOME).
 Your sign-in is stored separately at ~/.commonground/credentials.json (override with
 COMMONGROUND_CONFIG_HOME) \u2014 moving or deleting your wiki folder never signs you out.
 Talks to the hosted API at https://api.commongroundapp.io by default (override with
@@ -14598,14 +14638,14 @@ function importConvergence(r) {
   ${r.sourceDir} was left untouched; edits made there won't reach the wiki.
 `;
 }
-function formatImport(r) {
+function formatImport(r, v) {
   if (r.nothingToImport)
     return `${r.sourceDir} added nothing new to ${r.teamId} \u2014 nothing was published.
 ` + importCaveats(r) + importConvergence(r);
-  const tail = r.synced?.action === "pushed" ? " Published to the hosted wiki." : r.synced?.action === "local-only" ? " Committed locally (your role is read-only, so nothing was pushed)." : r.synced?.action === "diverged" ? ' NOTE: the hosted wiki diverged \u2014 run "commonground status" to resolve.' : "";
+  const tail = r.synced?.action === "pushed" ? ` Published to ${v.wiki}.` : r.synced?.action === "local-only" ? " Committed locally (your role is read-only, so nothing was published)." : r.synced?.action === "diverged" ? ` NOTE: ${v.wiki} diverged \u2014 run "commonground status" to resolve.` : "";
   const normalized = r.normalized ? ` Normalized frontmatter on ${r.normalized} page(s).` : "";
   const skipped = r.skipped ? ` ${r.skipped} file(s) couldn't be normalized (imported as-is).` : "";
-  const blocked = r.synced?.action === "blocked-deletes" ? ` Committed locally, NOT published \u2014 the pending changes also REMOVE ${pageCount((r.synced.deletions ?? []).length)} from the team wiki${r.synced.deletions?.length ? ` (${r.synced.deletions.map((p) => p.page).join(", ")})` : ""}.
+  const blocked = r.synced?.action === "blocked-deletes" ? ` Committed locally, NOT published \u2014 the pending changes also REMOVE ${pageCount((r.synced.deletions ?? []).length)} from ${v.wiki}${r.synced.deletions?.length ? ` (${r.synced.deletions.map((p) => p.page).join(", ")})` : ""}.
   Review with "commonground push --dry-run", then publish with:
     commonground push --allow-deletes
 ` : "";
@@ -14662,7 +14702,7 @@ function formatSyncState(s, mode = null) {
 `;
   }
 }
-function formatSync(r) {
+function formatSync(r, v) {
   switch (r.action) {
     case "cloned":
       return `Cloned ${r.teamId} \u2192 ${r.clonePath}
@@ -14673,24 +14713,24 @@ function formatSync(r) {
     case "fast-forwarded": {
       const pages = r.pages ?? [];
       return pages.length ? `Updated ${r.teamId} \u2014 pulled ${pageCount(pages.length)}: ${formatReceipt(pages)}
-` : `Updated ${r.teamId} (+${r.behind} from hosted).
+` : `Updated ${r.teamId} (+${r.behind} from ${v.wiki}).
 `;
     }
     case "pushed": {
       const pages = r.pages ?? [];
-      return pages.length ? `Pushed ${pageCount(pages.length)} for ${r.teamId}: ${formatReceipt(pages)}
-` : `Pushed ${r.ahead} local commit(s) for ${r.teamId} to the hosted repo.
+      return pages.length ? `Published ${pageCount(pages.length)} for ${r.teamId}: ${formatReceipt(pages)}
+` : `Published ${r.ahead} local change(s) for ${r.teamId}.
 `;
     }
     case "local-only":
-      return `${r.teamId}: ${r.ahead} local commit(s) kept as read-only drafts (members can't push).
+      return `${r.teamId}: ${r.ahead} local change(s) kept as read-only drafts (members can't publish).
 `;
     case "diverged":
       return `${r.teamId} has diverged (${r.ahead} ahead, ${r.behind} behind) \u2014 run "commonground status" to resolve. Nothing was changed.
 `;
     case "blocked-deletes":
-      return `${r.teamId}: nothing was published \u2014 the pending changes REMOVE pages from the team wiki.
-` + deleteWarning(r.deletions) + `  Review them with "commonground push --dry-run", then confirm with:
+      return `${r.teamId}: nothing was published \u2014 the pending changes REMOVE pages from ${v.wiki}.
+` + deleteWarning(r.deletions, v) + `  Review them with "commonground push --dry-run", then confirm with:
     commonground push --allow-deletes
 `;
   }
@@ -14698,7 +14738,11 @@ function formatSync(r) {
 function teamArg(rest) {
   return rest.find((a) => !a.startsWith("--"));
 }
-function formatPull(r) {
+async function voiceFor(deps, teamId) {
+  const profile = await readTeamProfile(teamId, deps.configHome).catch(() => ({}));
+  return wikiVoiceFor({ audience: profile.audience, shape: profile.shape });
+}
+function formatPull(r, v) {
   switch (r.action) {
     case "cloned":
       return `Wiki cloned at ${r.clonePath}.
@@ -14710,26 +14754,29 @@ function formatPull(r) {
     case "fast-forwarded": {
       const pages = r.pages ?? [];
       return pages.length ? `Updated ${r.teamId} \u2014 pulled ${pageCount(pages.length)}: ${formatReceipt(pages)}
-` : `Updated ${r.teamId} (+${r.behind} from hosted).
+` : `Updated ${r.teamId} (+${r.behind} from ${v.wiki}).
 `;
     }
     case "blocked":
       return `${r.teamId}: ${r.behind} incoming change(s), but you have local work that would be overwritten (${r.ahead} unpublished${r.dirty ? " + uncommitted edits" : ""}). Nothing was changed.
   Incoming: ${formatReceipt(r.pages ?? []) || "(none)"}
   Publish yours first: commonground push
-  Or take the hosted version (your work is saved first): commonground pull --take-remote
+  Or take the published version (your work is saved first): commonground pull --take-remote
 `;
     case "took-remote":
-      return `${r.teamId}: adopted the hosted version` + (r.draftBranch ? ` \u2014 your local work is saved on ${r.draftBranch}.
+      return `${r.teamId}: adopted the published version` + (r.draftBranch ? ` \u2014 your local work is saved on ${r.draftBranch}.
 ` : ".\n");
   }
 }
-function deleteWarning(deletions) {
+function deleteWarning(deletions, v) {
   if (!deletions?.length)
     return "";
-  return `  \u26A0 REMOVES ${pageCount(deletions.length)} from the team wiki: ${deletions.map((p) => p.page).join(", ")}
-    Everyone loses access to these. Past versions stay in history, but the page goes away.
+  return `  \u26A0 REMOVES ${pageCount(deletions.length)} from ${v.wiki}: ${deletions.map((p) => p.page).join(", ")}
+    ${capitalize2(v.removalImpact)}. Past versions stay in history, but the page goes away.
 `;
+}
+function capitalize2(s) {
+  return s.charAt(0).toUpperCase() + s.slice(1);
 }
 function formatLint(r) {
   const head = `${r.clonePath} \u2014 ${r.pageCount} page(s), lint of your LOCAL copy (unpublished work included).
@@ -14765,22 +14812,22 @@ function formatCoverage(r) {
 ` + (s.prompt ? `      ${s.prompt}
 ` : "")).join("");
 }
-function formatPush(r) {
+function formatPush(r, v) {
   switch (r.action) {
     case "preview": {
       const pages = r.pages ?? [];
       if (!pages.length)
         return `${r.teamId}: nothing to publish.
 `;
-      const conflict = r.behind ? `  Heads up: the hosted wiki moved (${r.behind} change(s)): ${formatReceipt(r.incoming ?? []) || "(none)"}
+      const conflict = r.behind ? `  Heads up: ${v.wiki} moved (${r.behind} change(s)): ${formatReceipt(r.incoming ?? []) || "(none)"}
 ` : "";
       return `${r.teamId}: would publish ${pageCount(pages.length)}: ${formatReceipt(pages)}
-` + conflict + deleteWarning(r.deletions) + `  Nothing published yet \u2014 run "commonground push" to confirm.
+` + conflict + deleteWarning(r.deletions, v) + `  Nothing published yet \u2014 run "commonground push" to confirm.
 `;
     }
     case "needs-delete-confirm":
       return `${r.teamId}: this would publish ${pageCount((r.pages ?? []).length)}: ${formatReceipt(r.pages ?? [])}
-` + deleteWarning(r.deletions) + // On the --mine path the replay has already happened and the branch now sits on top of the
+` + deleteWarning(r.deletions, v) + // On the --mine path the replay has already happened and the branch now sits on top of the
       // hosted tip, so the retry is a plain --allow-deletes; re-passing --mine would be a no-op.
       (r.draftBranch ? `  Your pre-merge state is saved on ${r.draftBranch}.
 ` : "") + `  Nothing was published. To go ahead including the removal(s):
@@ -14791,7 +14838,7 @@ function formatPush(r) {
       return `${r.teamId}: your role is read-only \u2014 publishing is admins/curators only.
 ` + (pages.length ? `  Your work is safe in ${r.clonePath} \u2014 it just isn't shared yet.
   Unpublished here: ${formatReceipt(pages)}
-  To get it to the team, file it as a suggestion for a curator to fold in.
+  To get it to ${v.reaches}, file it as a suggestion for a curator to fold in.
 ` : "");
     }
     case "nothing-to-push":
@@ -14799,23 +14846,23 @@ function formatPush(r) {
 `;
     case "pushed": {
       const pages = r.pages ?? [];
-      const removed = r.deletions?.length ? `  Removed from the team wiki: ${r.deletions.map((p) => p.page).join(", ")}
+      const removed = r.deletions?.length ? `  Removed from ${v.wiki}: ${r.deletions.map((p) => p.page).join(", ")}
 ` : "";
       return pages.length ? `Published ${pageCount(pages.length)} to ${r.teamId}: ${formatReceipt(pages)}
 ${removed}` : `Published ${r.ahead} change(s) to ${r.teamId}.
 ${removed}`;
     }
     case "blocked":
-      return `${r.teamId}: the hosted wiki moved since you last pulled (${r.behind} change(s)) \u2014 nothing was published.
-  Theirs: ${formatReceipt(r.incoming ?? []) || "(none)"}
-  Yours:  ${formatReceipt(r.pages ?? []) || "(none)"}
+      return `${r.teamId}: ${v.remoteMoved} (${r.behind} change(s)) \u2014 nothing was published.
+  ${capitalize2(v.theirs)}: ${formatReceipt(r.incoming ?? []) || "(none)"}
+  Yours: ${formatReceipt(r.pages ?? []) || "(none)"}
   Keep YOUR version of any overlapping pages: commonground push --mine
-  Take the hosted version instead (yours saved first): commonground pull --take-remote
+  Take the published version instead (yours saved first): commonground pull --take-remote
 `;
     case "published-mine": {
       const pages = r.pages ?? [];
       return `Published your version to ${r.teamId}${pages.length ? `: ${formatReceipt(pages)}` : ""}
-` + (r.deletions?.length ? `  Removed from the team wiki: ${r.deletions.map((p) => p.page).join(", ")}
+` + (r.deletions?.length ? `  Removed from ${v.wiki}: ${r.deletions.map((p) => p.page).join(", ")}
 ` : "") + (r.draftBranch ? `  Your pre-merge state is saved on ${r.draftBranch}.
 ` : "");
     }
@@ -14906,15 +14953,17 @@ Then run "commonground login --wait" (the code is valid for about ${Math.round(p
     }
     case "sync": {
       const deps = await buildDeps();
-      const result = await sync(deps, await resolveTeamId(deps, rest[0]));
-      process.stdout.write(formatSync(result));
+      const teamId = await resolveTeamId(deps, rest[0]);
+      const result = await sync(deps, teamId);
+      process.stdout.write(formatSync(result, await voiceFor(deps, teamId)));
       return;
     }
     case "pull": {
       const deps = await buildDeps();
       const takeRemote = rest.includes("--take-remote");
-      const result = await pull(deps, await resolveTeamId(deps, teamArg(rest)), { takeRemote });
-      process.stdout.write(formatPull(result));
+      const teamId = await resolveTeamId(deps, teamArg(rest));
+      const result = await pull(deps, teamId, { takeRemote });
+      process.stdout.write(formatPull(result, await voiceFor(deps, teamId)));
       return;
     }
     case "push": {
@@ -14922,12 +14971,9 @@ Then run "commonground login --wait" (the code is valid for about ${Math.round(p
       const mine = rest.includes("--mine");
       const dryRun = rest.includes("--dry-run");
       const allowDeletes = rest.includes("--allow-deletes");
-      const result = await push(deps, await resolveTeamId(deps, teamArg(rest)), {
-        mine,
-        dryRun,
-        allowDeletes
-      });
-      process.stdout.write(formatPush(result));
+      const teamId = await resolveTeamId(deps, teamArg(rest));
+      const result = await push(deps, teamId, { mine, dryRun, allowDeletes });
+      process.stdout.write(formatPush(result, await voiceFor(deps, teamId)));
       return;
     }
     case "status": {
@@ -14979,11 +15025,9 @@ Then run "commonground login --wait" (the code is valid for about ${Math.round(p
       if (!folder || folder.startsWith("-"))
         throw new AgentError("usage: commonground import <dir> [team]");
       const deps = await buildDeps();
-      const result = await importWiki(deps, {
-        sourceDir: (0, import_node_path7.resolve)(folder),
-        teamId: await resolveTeamId(deps, rest[1])
-      });
-      process.stdout.write(formatImport(result));
+      const teamId = await resolveTeamId(deps, rest[1]);
+      const result = await importWiki(deps, { sourceDir: (0, import_node_path7.resolve)(folder), teamId });
+      process.stdout.write(formatImport(result, await voiceFor(deps, teamId)));
       return;
     }
     default:

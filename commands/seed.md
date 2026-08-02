@@ -42,7 +42,7 @@ Call `get_coverage` (or `GET /wiki/coverage`). It returns, for the team's org sh
 `progress` (`done`/`total`/`pct`), one row per section (`status` done/partial/empty, its `prompt`,
 `scope`, `havePageIds`), and **`callerDiscipline`** — the user's own discipline (pm/dev/design/qa/
 exec/other), the seeding lens. Also glance at `get_awareness` (`pageCount`) to tell **empty** (0)
-from **already-populated**. And check `get_index` for **`company/wiki-charter`** — the wiki's
+from **already-populated**. And check `get_index` for a **charter page** (`wiki-charter`, or `company/wiki-charter` on an older wiki) — the wiki's
 charter page. If it exists, read it (`get_page`): its Audience / Structure / Retrieval brief govern
 everything below, so skip step 2.
 
@@ -83,8 +83,13 @@ lost. What resuming guarantees is that you won't be asked the same question twic
 
 ## 2. Charter the wiki (first run — skip when a charter page exists)
 
-Three quick questions, then one small page. Keep it to ~2 minutes — it's a conversation opener,
+A few quick questions, then one small page. Keep it to ~3 minutes — it's a conversation opener,
 not a ceremony.
+
+**Content first, structure second.** Ask what they actually do, then name the sections from their
+answers. Never the other way round: a section list presented before a single question about their
+work is a template, and "accept, edit, or reject this template" is a far worse prompt than
+describing your own work and hearing it named back. The order below is the point of this step.
 
 1. **Audience.** *They have probably already answered this* — it is the first question the web asks
    when a wiki is created, and the answer is recorded as the team's **shape** (`get_coverage`
@@ -103,14 +108,43 @@ not a ceremony.
 
    The answer sets the tone rules above, what curation may flag, and (later) the retrieval
    instructions. The **charter page stays canonical** — shape only supplies the starting point.
-2. **Structure.** Take the shape template's sections from `get_coverage` and present them as a
-   **proposal, never a schema** — each with a one-line "what goes here" — then ask: **Use this
-   structure** / **Edit it with me** / **Start blank** (just `index.md`; structure emerges as
-   content lands). Editing is conversational free text: add / rename / drop sections; for a
-   just-me wiki explicitly invite replacing sections wholesale (swap "Clients & projects" for
-   whatever their work and life actually hold). The final list is **this wiki's own definition of
-   complete**.
-3. **Retrieval brief.** If `./CLAUDE.md` has the fenced CommonGround router block (written by
+2. **What is this for? Ask TWO OR THREE OPEN QUESTIONS — before naming any section.** Plain
+   questions, one at a time, conversational (not AskUserQuestion — these are open-ended). Pick by
+   audience:
+
+   | audience | ask |
+   |---|---|
+   | `just-me` | *"What do you actually spend your time on — work, projects, the things you keep coming back to?"* · *"What should your Claude always know about you, that you'd otherwise re-explain in every new chat?"* · *"What are you deciding or wrestling with at the moment?"* |
+   | `my-team` | *"What does this team actually make or do — in your words, not the org chart's?"* · *"How does work happen here: who decides what, and how does something get from idea to shipped?"* · *"What's already been decided that someone joining next week would need to know?"* |
+   | `whole-company` | *"What does the company make, and for whom?"* · *"How is it organized — what are the parts, and who owns what?"* · *"What decisions or policies does everyone need to be working from?"* |
+
+   **Skip** anything they can't answer, and stop at two if the first two were rich — this is not an
+   interrogation. If they answer in one word, don't push: fall through to the template fallback in
+   step 3 and let structure emerge from content later.
+
+   **These answers are CONTENT, not just charter input.** Hold on to them verbatim. Record the
+   question ids with `save_seeding_progress` so re-entry doesn't re-ask them, and — critically —
+   **Branch A must not ask the same things again** (step 4): draft its first page(s) straight from
+   these answers, and open there rather than at question one.
+3. **Structure — named from what they just said.** Derive **4–8 sections from their own answers**,
+   using their nouns: "I coach three clients and write a newsletter" gives you *Clients* and
+   *Writing*, not *Mission* and *Personas*. Show each with a one-line "what goes here", and where
+   it's not obvious, say which answer it came from — a section they can trace to their own sentence
+   is one they'll correct rather than shrug at. Then ask: **Use this structure** / **Edit it with
+   me** / **Start blank** (just `index.md`; structure emerges as content lands).
+
+   Editing is conversational free text: add / rename / drop.
+
+   **Fallback, not opener:** only if they said almost nothing, fall back to the shape template's
+   sections from `get_coverage` — and say that's what you're doing, so a generic list is never
+   passed off as a reading of their work. Never present the template first.
+
+   The final list is **this wiki's own definition of complete** — and it is also the wiki's
+   **category vocabulary**: every page written afterwards carries one or more of these sections in
+   its `tags:`, and that is what groups it in the catalog. So keep the list small and keep the names
+   ones a person would actually reach for. It names sections — not folders: folders come into
+   existence when pages are written into them, they group nothing, and nothing here reserves a path.
+4. **Retrieval brief.** If `./CLAUDE.md` has the fenced CommonGround router block (written by
    `/commonground:initialize`), show the user its trigger sentence verbatim; if this project was
    never initialized (e.g. the connector was configured globally), skip the show-and-tell and just
    capture the brief below.
@@ -125,7 +159,7 @@ not a ceremony.
    (for a just-me wiki this is the crucial fix: e.g. "anything about me — how I work, my projects,
    my preferences, my history"). Optionally collect a few **pinned keywords** (names, codenames)
    a derived list would miss.
-4. **What does NOT belong.** Ask it plainly — "is there anything that should stay OUT of this wiki,
+5. **What does NOT belong.** Ask it plainly — "is there anything that should stay OUT of this wiki,
    and where does it live instead?" Capture their answer in their own words (e.g. "client work
    stays in the client vault; interview prep lives in Careerhelp"). This is the contract's other
    half: without it every surface only ever says *consult this wiki*, so material drifts in and the
@@ -135,13 +169,12 @@ not a ceremony.
    router block and the connector's instructions start saying where that material belongs instead.
 
 Draft the charter page, show it, and on confirm **persist it right away** (don't defer to
-step 7 — it's the contract everything below reads):
+step 7 — it's the contract everything below reads). It goes at the reserved pageId `wiki-charter`
+(repo root) — that id is the only thing that makes a page the charter:
 
 ```markdown
 ---
 title: Wiki Charter
-type: charter
-scope: company
 updated: <today>
 ---
 
@@ -149,7 +182,8 @@ updated: <today>
 <one of: just-me | my-team | whole-company> — plus one line on who reads/writes here.
 
 ## Structure
-- <Section> — <what belongs there>   (one bullet per section — this is the coverage checklist)
+- <Section> — <what belongs there>   (one bullet per section — the coverage checklist AND the
+  page-category vocabulary: pages carry these names in `tags:`)
 
 ## Retrieval brief
 <When an AI should consult this wiki, in the user's words.>
@@ -184,22 +218,30 @@ same gap-fill loop (step 6).
 Walk the **charter's Structure list** (fallback: the coverage rows) as the checklist — it is both
 the interview *and* the progress bar.
 
+**Start by banking what step 2 already told you.** They described their work two minutes ago; those
+answers are page material, not just charter input. Draft the first page(s) from them, show them, and
+open the interview at the FIRST STILL-EMPTY section. Re-asking "what does your team do" here, right
+after they answered it, is how an arc tells someone their words went nowhere — and it is the exact
+failure the reordering in step 2 exists to prevent. Anything already recorded in
+`askedQuestionIds` is off the table too.
+
 1. Deepen the durable "starting context" sections with the discipline question bank (all
    audiences): read `seeding.md` in the `maintainer` skill folder and use the section
    for the user's discipline (from `callerDiscipline`). Its questions map each answer to a
-   concrete page (pageId, title, type, scope). For a **just-me** wiki, adapt at ask time — reword
+   concrete page (pageId, title, scope). For a **just-me** wiki, adapt at ask time — reword
    the team-phrased questions to the person ("what should your AI always know about how you
-   work?") **and re-target answers to the charter's own sections** (the bank's `company/*` pageIds
-   and team framing are shared-wiki defaults, not mandates — pick pageIds that fit the charter's
-   structure). Never edit `seeding.md` itself; it's generated.
+   work?") **and re-target answers to the charter's own sections** (the bank's pageIds and team
+   framing are a starting point, not a layout — pick pageIds that fit the charter's structure, and
+   create folders by saving pages into them). Never edit `seeding.md` itself; it's generated.
 2. **Ask one question at a time**, conversationally — these are open-ended, so plain questions,
    not AskUserQuestion. **Skip** anything the user can't answer yet — never block, never invent an
    answer.
-3. For each answer, **draft one schema-correct page** (frontmatter `type`/`scope` from the
+3. For each answer, **draft one schema-correct page** (frontmatter `scope` from the
    `seeding.md` mapping or the checklist section; `updated` = today; the user's answer as the
-   body). Name it so coverage can see it — echo the section's key word in the pageId or title
-   (matching is keyword-based), and give it a real body: a hollow stub ("TBD") never ticks a
-   section. See the `maintainer` skill for the frontmatter contract and golden rules.
+   body). Set **`tags:` to the charter Structure section(s) this page fills** — the checklist row's
+   own `category` — and coverage then matches it exactly, with no pageId wordplay needed. Give it a
+   real body too: a hollow stub ("TBD") never ticks a section however it is tagged. See the
+   `maintainer` skill for the frontmatter contract and golden rules.
 4. **Show the drafted page and persist only on the user's confirm** — never auto-write. Then
    persist (step 7). Each saved page visibly ticks a section of the checklist.
 
@@ -222,19 +264,45 @@ apart from trimming blank lines around it; only backfill valid frontmatter) / **
 duplication — **never** on content being "too personal" (the charter's audience decides what
 belongs; for just-me, everything is in-scope). The user's call is final.
 
+**A vault with its own folders keeps them, verbatim.** Import preserves paths exactly — a page's
+path IS its pageId. Never restructure a tree the user already built. But a folder no longer groups
+anything: **give each page a `tags:` naming the cluster its folder represents**, or the whole import
+lands under `(uncategorised)`. Prefer the charter's own `## Structure` wording where a folder matches
+one — `psychology/` under a charter section "Psychology notes" is `tags: [psychology-notes]`.
+
+**A vault with NO folders: offer sections, don't impose them.** A flat pile imports flat, which is
+honest and perfectly fine for twenty notes — but one unlabelled alphabetical list of two hundred is
+unusable, and that is exactly when help is worth most. You have already clustered these files by
+topic to run the triage above, so the work is done; the only question is whether the user wants it
+applied. Ask once (AskUserQuestion), with flat as a first-class answer:
+
+> *"These 47 notes have no folders. I'd group them as **Psychology · Clients · Book notes ·
+> Recipes** — file them that way, keep everything flat, or would you rather name the groups?"*
+
+**File them** → put the cluster name in each page's **`tags:`**, not in its path — that is what
+groups it, and it means nothing has to move. **Keep flat** → no tags yet, and say the pages will sit
+in the catalog's `(uncategorised)` bucket until they're categorised. **Let me name them** → take
+their names and use those. Prefer the charter's existing `## Structure` sections when a cluster
+clearly matches one — don't invent a second vocabulary for the same thing. This is a proposal about
+*how pages are grouped*, never a reason to change what a page says.
+
 **Before importing:** if the folder's root `index.md` is a real home/MOC note (prose, not a
-generated list), save it as a proper page first (e.g. `company/overview`) — import will **not** take
+generated list), save it as a proper page first (e.g. `overview`) — import will **not** take
 a root `index.md`, because the wiki regenerates its own catalog there. Same for a root `log.md`.
 
 **Execute.**
 - **Local-clone mode** (admins/curators): know the CLI's limits — `commonground import` is
   **frontmatter-only** normalize (backfill/validate; it never merges or restructures bodies). So:
-  stage the kept clusters into a temp folder preserving relative paths (or use the folder
-  directly when everything is kept as-is); for clusters marked **Normalize**, do the
+  stage the kept clusters into a temp folder **preserving relative paths** (or use the folder
+  directly when everything is kept as-is); staging never moves a file — when the user chose to
+  **file them**, the cluster name goes into each staged file's `tags:`, which is what groups it, so
+  a flat vault stays flat on disk. For clusters marked **Normalize**, do the
   restructuring/merging yourself in-session first, editing the staged files; then run
   `commonground import <staged folder>`. It overlays the folder onto the clone, **backfills
   missing/invalid frontmatter** (carrying `tags`/`aliases`/`created` onto the schema and preserving
-  any other frontmatter key verbatim), **regenerates `index.md`** from the whole wiki, and **appends
+  any other frontmatter key verbatim — an imported `tags:` is the vault's own **legacy label**, not
+  a category, so assign the charter category the cluster belongs to as well), **regenerates
+  `index.md`** from the whole wiki, and **appends
   ONE line to the append-only `log.md`** — it never imports the source folder's own `index.md`,
   `log.md` or `CLAUDE.md`, and never overwrites anything already under `sources/`. Then it commits
   and pushes. **Relay the CLI's receipt to the user verbatim** — it names what wasn't imported and
@@ -245,11 +313,15 @@ a root `index.md`, because the wiki regenerates its own catalog there. Same for 
 - **MCP mode (no local clone):** do the normalize in-session, honoring each cluster's triage
   choice (as-is = body untouched + frontmatter backfill; normalize = restructure/merge). Read the
   folder yourself (your Read / Glob tools — a remote MCP can't reach local files). For each doc:
-  derive a `pageId`+`scope`, write **valid frontmatter** (title from the H1/filename, a sensible
-  `type`, `scope`, and `updated` = the doc's own date if it has one, else today — don't restamp real
-  modification dates). **Carry the source's frontmatter across**: `tags`/`aliases`/`created` are
+  derive a `pageId` that mirrors the source folder's own structure — a flat vault stays flat, since
+  the cluster the user agreed to rides in `tags:`, not in the path — and write **valid frontmatter**
+  (title from the H1/filename, and `updated` = the doc's own date if it has one,
+  else today — don't restamp real modification dates). Don't add a `scope`: an imported vault never
+  declared one, and inventing `company` puts an org word on somebody's own notes. **Carry the source's frontmatter across**: `tags`/`aliases`/`created` are
   first-class fields, and any other key rides along untouched; only a near-miss of a contract key
-  (`Tags`) has to go, and say so when it does.
+  (`Tags`) has to go, and say so when it does. An imported `tags:` is the vault's own **legacy
+  label**, not a category — add the charter category for the cluster this page came from alongside
+  it, or the import re-creates a free-form vocabulary on the hero onboarding path.
   Prefer **updating** an existing page over a near-duplicate (`get_index` first). Persist each
   with `save_page` (CAS-guarded: on a conflict, `get_page` for the fresh `baseSha`, merge, retry).
   Stage genuinely-raw material under `sources/` with `stage_sources` where it helps, but land
@@ -279,7 +351,11 @@ the **charter's Structure list** against what exists, take the still-empty/thin 
 most-impactful-first — offer the pick as an AskUserQuestion (the top **3** gaps + "somewhere
 else") — and
 for each, interview + draft + confirm + persist one page at a time, skipping what the user can't
-answer yet. Stop when the user is done or the important sections are covered; they can always run
+answer yet. Every page you draft here gets a `summary:` that **partitions** with its title instead
+of echoing it — the title is the page's name, the summary is what is *inside* it, so `Lightbug` +
+`Fantasy novel, 3 POV chapters drafted, magic system unresolved, paused Nov 2025` beats `Lightbug —
+fantasy novel (on hold)` + `Fantasy novel, on hold`. Seeding is where a wiki's first twenty titles
+get written, and a title that swallows the summary is written once and read forever. Stop when the user is done or the important sections are covered; they can always run
 `/commonground:seed` again later to pick up where they left off.
 
 **When a gap isn't theirs to fill, offer to hand it over** (shared-audience wikis only — never for

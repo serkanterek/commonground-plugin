@@ -2427,9 +2427,9 @@ var require_float = __commonJS({
       test: /^[-+]?(?:\.[0-9]+|[0-9]+\.[0-9]*)$/,
       resolve(str) {
         const node = new Scalar.Scalar(parseFloat(str));
-        const dot2 = str.indexOf(".");
-        if (dot2 !== -1 && str[str.length - 1] === "0")
-          node.minFractionDigits = str.length - dot2 - 1;
+        const dot = str.indexOf(".");
+        if (dot !== -1 && str[str.length - 1] === "0")
+          node.minFractionDigits = str.length - dot - 1;
         return node;
       },
       stringify: stringifyNumber.stringifyNumber
@@ -2867,9 +2867,9 @@ var require_float2 = __commonJS({
       test: /^[-+]?(?:[0-9][0-9_]*)?\.[0-9_]*$/,
       resolve(str) {
         const node = new Scalar.Scalar(parseFloat(str.replace(/_/g, "")));
-        const dot2 = str.indexOf(".");
-        if (dot2 !== -1) {
-          const f = str.substring(dot2 + 1).replace(/_/g, "");
+        const dot = str.indexOf(".");
+        if (dot !== -1) {
+          const f = str.substring(dot + 1).replace(/_/g, "");
           if (f[f.length - 1] === "0")
             node.minFractionDigits = f.length;
         }
@@ -3767,7 +3767,7 @@ ${pointer}
 var require_resolve_props = __commonJS({
   "../../node_modules/.pnpm/yaml@2.9.0/node_modules/yaml/dist/compose/resolve-props.js"(exports2) {
     "use strict";
-    function resolveProps(tokens, { flow, indicator, next, offset, onError, parentIndent, startOnNewline }) {
+    function resolveProps(tokens2, { flow, indicator, next, offset, onError, parentIndent, startOnNewline }) {
       let spaceBefore = false;
       let atNewline = startOnNewline;
       let hasSpace = startOnNewline;
@@ -3782,7 +3782,7 @@ var require_resolve_props = __commonJS({
       let comma = null;
       let found = null;
       let start = null;
-      for (const token of tokens) {
+      for (const token of tokens2) {
         if (reqSpace) {
           if (token.type !== "space" && token.type !== "newline" && token.type !== "comma")
             onError(token.offset, "MISSING_CHAR", "Tags and anchors must be separated from the next token by white space");
@@ -3873,7 +3873,7 @@ var require_resolve_props = __commonJS({
             hasSpace = false;
         }
       }
-      const last = tokens[tokens.length - 1];
+      const last = tokens2[tokens2.length - 1];
       const end = last ? last.offset + last.source.length : offset;
       if (reqSpace && next && next.type !== "space" && next.type !== "newline" && next.type !== "comma" && (next.type !== "scalar" || next.source !== "")) {
         onError(next.offset, "MISSING_CHAR", "Tags and anchors must be separated from the next token by white space");
@@ -5212,8 +5212,8 @@ ${cb}` : comment;
        * @param forceDoc - If the stream contains no document, still emit a final document including any comments and directives that would be applied to a subsequent document.
        * @param endOffset - Should be set if `forceDoc` is also set, to set the document range end and to indicate errors correctly.
        */
-      *compose(tokens, forceDoc = false, endOffset = -1) {
-        for (const token of tokens)
+      *compose(tokens2, forceDoc = false, endOffset = -1) {
+        for (const token of tokens2)
           yield* this.next(token);
         yield* this.end(forceDoc, endOffset);
       }
@@ -7716,9 +7716,30 @@ async function refreshRemote(dir, remote) {
 async function currentBranch(dir) {
   return (await runGit(dir, ["rev-parse", "--abbrev-ref", "HEAD"])).trim();
 }
+async function showBlob(dir, ref, path) {
+  try {
+    return await runGit(dir, ["show", `${ref}:${path}`]);
+  } catch (e) {
+    if (!(e instanceof GitError) || e.exitCode !== 128)
+      throw e;
+    let listed;
+    try {
+      listed = await runGit(dir, ["ls-tree", "--name-only", ref, "--", path]);
+    } catch {
+      throw e;
+    }
+    if (listed.trim() !== "")
+      throw e;
+    return "";
+  }
+}
 async function isWorkingTreeClean(dir) {
   const out = await runGit(dir, ["status", "--porcelain", "--untracked-files=no"]);
   return out.trim().length === 0;
+}
+async function hasWorkToCommit(dir) {
+  const out = await runGit(dir, ["status", "--porcelain"]);
+  return out.trim().length > 0;
 }
 async function aheadBehind(dir, local, remote) {
   const out = (await runGit(dir, ["rev-list", "--left-right", "--count", `${local}...${remote}`])).trim();
@@ -11928,6 +11949,30 @@ var EnvSchema = external_exports.object({
   WEB_ORIGIN: external_exports.string().url().optional()
 });
 
+// ../shared/dist/text.js
+var UNSEGMENTED = [
+  "Han",
+  "Hiragana",
+  "Katakana",
+  "Thai",
+  "Lao",
+  "Khmer",
+  "Myanmar",
+  "Javanese",
+  "Balinese"
+];
+var ANCHOR_CLASS = UNSEGMENTED.map((s) => `\\p{sc=${s}}`).join("");
+var EXTENDER_CLASS = UNSEGMENTED.map((s) => `\\p{scx=${s}}`).join("");
+var UNSEGMENTED_SCRIPT = new RegExp(`[${ANCHOR_CLASS}]`, "u");
+var CANDIDATE_RUN = new RegExp(`[${ANCHOR_CLASS}${EXTENDER_CLASS}]+`, "gu");
+var WORD_RUN = new RegExp("[\\p{L}\\p{N}][\\p{L}\\p{N}\\p{M}]*", "gu");
+function foldForMatching(s) {
+  return s.normalize("NFKC").toLowerCase().normalize("NFC").replace(/i\u0307/gu, "i");
+}
+function foldedWords(s) {
+  return [...foldForMatching(s).matchAll(WORD_RUN)].map((m) => m[0]);
+}
+
 // ../shared/dist/auth/capabilities.js
 var CAPABILITY_MATRIX = {
   "wiki:read": ["admin", "curator", "member"],
@@ -11943,7 +11988,19 @@ function can(role, capability) {
 
 // ../shared/dist/wiki/charter.js
 var WIKI_AUDIENCES = ["just-me", "my-team", "whole-company"];
-var CHARTER_PAGE_ID = "company/wiki-charter";
+var CHARTER_PAGE_ID = "wiki-charter";
+var LEGACY_CHARTER_PAGE_IDS = ["company/wiki-charter"];
+var CHARTER_PAGE_IDS = [CHARTER_PAGE_ID, ...LEGACY_CHARTER_PAGE_IDS];
+function isCharterPageId(pageId) {
+  return CHARTER_PAGE_IDS.includes(pageId);
+}
+function resolveCharterPageId(pageIds) {
+  const present = new Set(pageIds);
+  for (const candidate of CHARTER_PAGE_IDS)
+    if (present.has(candidate))
+      return candidate;
+  return null;
+}
 
 // ../shared/dist/wiki/voice.js
 function wikiVoiceClass(audience) {
@@ -11998,7 +12055,6 @@ function sanitizeBrief(brief) {
 }
 
 // ../shared/dist/wiki/page.js
-var PAGE_TYPES = ["entity", "concept", "decision", "summary", "template", "charter"];
 var PAGE_STATUSES = ["active", "hypothetical", "deprecated"];
 
 // ../shared/dist/wiki/layout.js
@@ -12012,11 +12068,9 @@ var WIKI_LAYOUT = {
   /** Repo config (schema version + settings). */
   configDir: ".commonground"
 };
-var SCOPE_DIRS = {
-  company: "company",
-  department: "departments",
-  team: "teams",
-  product: "products"
+var MACHINE_FILES = {
+  index: WIKI_LAYOUT.indexFile,
+  log: WIKI_LAYOUT.logFile
 };
 function pageIdFromPath(path) {
   return path.replace(/\.md$/, "");
@@ -12046,6 +12100,7 @@ function shapeDefaultScope(shape, scopeKey) {
     case "team":
       return `team:${key}`;
     case "solo":
+      return void 0;
     case "company":
     default:
       return "company";
@@ -12065,8 +12120,7 @@ var FrontmatterSchema = external_exports.object({
   // Capped generously above the ≤140-char contract the maintainer skill states: the cap is a
   // payload guard (every entry ships in every `get_index`), not a style rule to fail writes on.
   summary: external_exports.string().trim().max(200, "summary must be 200 characters or fewer").optional(),
-  type: external_exports.enum(PAGE_TYPES),
-  scope: external_exports.string().refine((s) => parseScope(s) !== null, "invalid scope"),
+  scope: external_exports.string().refine((s) => parseScope(s) !== null, "invalid scope").optional(),
   section: external_exports.enum(SCOPE_SECTIONS).optional(),
   owner: external_exports.string().optional(),
   status: external_exports.enum(PAGE_STATUSES).default("active"),
@@ -12074,8 +12128,7 @@ var FrontmatterSchema = external_exports.object({
   updated: DateString,
   aliases: external_exports.array(external_exports.string()).optional(),
   tags: external_exports.array(external_exports.string()).optional(),
-  sources: external_exports.array(external_exports.string()).default([]),
-  related: external_exports.array(external_exports.string()).default([]),
+  sources: external_exports.array(external_exports.string()).optional(),
   extra: external_exports.record(external_exports.unknown()).optional()
 }).strict();
 var FRONTMATTER_KEYS = Object.keys(FrontmatterSchema.shape);
@@ -12155,12 +12208,148 @@ function validateFrontmatter(input) {
 }
 
 // ../shared/dist/wiki/index-log.js
-function buildIndexLine(entry) {
+function buildIndexLine(entry, opts) {
   const link2 = `- [[${entry.pageId}|${entry.title}]]`;
-  return entry.summary ? `${link2} \u2014 ${entry.summary}` : link2;
+  if (opts?.form === "link")
+    return link2;
+  let line = link2;
+  if (entry.summary)
+    line += ` \u2014 ${entry.summary}`;
+  const categories = entry.categories ?? [];
+  if (categories.length >= 2)
+    line += ` \xB7 ${categories.join(", ")}`;
+  if (entry.updated)
+    line += ` \xB7 ${entry.updated}`;
+  return line;
 }
 function buildLogLine(entry) {
   return `## [${entry.date}] ${entry.op} | ${entry.title}`;
+}
+var LOG_HEADER = "# Wiki log";
+function appendLogLine(existing, line) {
+  const base = existing === null || existing.trim() === "" ? `${LOG_HEADER}
+` : existing;
+  const sep = base.endsWith("\n\n") ? "" : base.endsWith("\n") ? "\n" : "\n\n";
+  return `${base}${sep}${line}
+`;
+}
+function logEntries(content) {
+  const lines = content.split("\n").map((l) => l.trimEnd()).filter((l) => l !== "");
+  return lines[0] === LOG_HEADER ? lines.slice(1) : lines;
+}
+function findLogRewrite(prior, next) {
+  const a = logEntries(prior);
+  const b = logEntries(next);
+  for (let i = 0; i < a.length; i++) {
+    if (b[i] !== a[i])
+      return { entry: i + 1, was: a[i], now: b[i] ?? null };
+  }
+  return null;
+}
+function mergeAppendOnlyLogs(base, theirs, mine) {
+  const added = logEntries(mine).slice(logEntries(base).length);
+  return added.reduce((acc, line) => appendLogLine(acc, line), theirs);
+}
+
+// ../shared/dist/wiki/catalog.js
+var WIKI_GLOBAL_LABEL = "wiki";
+var LEVEL_RANK = { company: 1, department: 2, team: 3, product: 4 };
+function levelRank(scope) {
+  if (!scope)
+    return 0;
+  const level = scope.split(":", 1)[0];
+  return LEVEL_RANK[level] ?? 99;
+}
+var UNCATEGORISED_LABEL = "(uncategorised)";
+function compareCodeUnits(a, b) {
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+function categoryToken(s) {
+  return foldedWords(s).join("-");
+}
+function normalizeCategories(tags) {
+  if (!tags)
+    return [];
+  const seen = /* @__PURE__ */ new Set();
+  for (const tag of tags) {
+    const token = categoryToken(tag);
+    if (token)
+      seen.add(token);
+  }
+  return [...seen].sort(compareCodeUnits);
+}
+var MIN_STEM = 3;
+function nearMissKeys(token) {
+  const segments = token.normalize("NFD").replace(new RegExp("\\p{Diacritic}", "gu"), "").normalize("NFC").split("-");
+  const kept = segments.filter((s) => s !== "and");
+  const flat = (kept.length > 0 ? kept : segments).join("");
+  const keys = /* @__PURE__ */ new Set([flat]);
+  if (flat.endsWith("ies") && flat.length - 3 >= MIN_STEM)
+    keys.add(`${flat.slice(0, -3)}y`);
+  if (flat.endsWith("es") && flat.length - 2 >= MIN_STEM)
+    keys.add(flat.slice(0, -2));
+  if (flat.endsWith("s") && flat.length - 1 >= MIN_STEM)
+    keys.add(flat.slice(0, -1));
+  return keys;
+}
+function nearMissCategories(token, vocabulary) {
+  if (!token || vocabulary.includes(token))
+    return [];
+  const keys = nearMissKeys(token);
+  const out = [];
+  for (const category of vocabulary) {
+    if (category === token)
+      continue;
+    for (const key of nearMissKeys(category)) {
+      if (keys.has(key)) {
+        out.push(category);
+        break;
+      }
+    }
+  }
+  return out;
+}
+function compareCatalogEntries(a, b) {
+  return levelRank(a.scope) - levelRank(b.scope) || compareCodeUnits(a.scope ?? "", b.scope ?? "") || compareCodeUnits(a.pageId, b.pageId);
+}
+function catalogContentEntries(entries) {
+  return entries.filter((e) => !isCharterPageId(e.pageId)).sort(compareCatalogEntries);
+}
+function hasMultipleScopes(entries) {
+  return new Set(entries.map((e) => e.scope ?? "")).size > 1;
+}
+function compareCategoryTokens(order = []) {
+  const rank = /* @__PURE__ */ new Map();
+  order.forEach((token, i) => {
+    if (!rank.has(token))
+      rank.set(token, i);
+  });
+  return (a, b) => {
+    if (a === null || b === null)
+      return a === b ? 0 : a === null ? 1 : -1;
+    const ra = rank.get(a);
+    const rb = rank.get(b);
+    if (ra !== void 0 && rb !== void 0)
+      return ra - rb;
+    if (ra !== void 0)
+      return -1;
+    if (rb !== void 0)
+      return 1;
+    return compareCodeUnits(a, b);
+  };
+}
+function catalogCategoryBuckets(entries, compare) {
+  const buckets = /* @__PURE__ */ new Map();
+  for (const entry of entries) {
+    const categories = entry.categories ?? [];
+    for (const category of categories.length > 0 ? categories : [null]) {
+      let bucket = buckets.get(category);
+      if (!bucket)
+        buckets.set(category, bucket = []);
+      bucket.push(entry);
+    }
+  }
+  return [...buckets.entries()].sort((a, b) => compare(a[0], b[0]));
 }
 
 // ../shared/dist/seeding/question-sets.js
@@ -12168,12 +12357,12 @@ var COMMON = [
   {
     id: "mission",
     prompt: "What is your team's mission \u2014 the durable reason you exist?",
-    page: { pageId: "company/mission", title: "Mission", type: "concept", scope: "company" }
+    page: { pageId: "mission", title: "Mission" }
   },
   {
     id: "glossary",
     prompt: "List the key terms and acronyms your team uses, and what each means.",
-    page: { pageId: "company/glossary", title: "Glossary", type: "concept", scope: "company" }
+    page: { pageId: "glossary", title: "Glossary" }
   }
 ];
 function set(discipline, intro, specific) {
@@ -12184,102 +12373,102 @@ var QUESTION_SETS = {
     {
       id: "roadmap",
       prompt: "What are the current priorities and roadmap themes?",
-      page: { pageId: "company/roadmap", title: "Roadmap", type: "concept", scope: "company" }
+      page: { pageId: "roadmap", title: "Roadmap" }
     },
     {
       id: "personas",
       prompt: "Who are your primary users or customers?",
-      page: { pageId: "company/personas", title: "Personas", type: "entity", scope: "company" }
+      page: { pageId: "personas", title: "Personas" }
     },
     {
       id: "metrics",
       prompt: "How do you measure success \u2014 the key metrics that matter?",
-      page: { pageId: "company/success-metrics", title: "Success Metrics", type: "concept", scope: "company" }
+      page: { pageId: "success-metrics", title: "Success Metrics" }
     }
   ]),
   dev: set("dev", "Seed the engineering context your team and its coding tools should share.", [
     {
       id: "stack",
       prompt: "What is your core tech stack, and why those choices?",
-      page: { pageId: "company/tech-stack", title: "Tech Stack", type: "entity", scope: "company" }
+      page: { pageId: "tech-stack", title: "Tech Stack" }
     },
     {
       id: "architecture",
       prompt: "Describe the high-level system architecture.",
-      page: { pageId: "company/architecture", title: "Architecture", type: "concept", scope: "company" }
+      page: { pageId: "architecture", title: "Architecture" }
     },
     {
       id: "conventions",
       prompt: "What engineering conventions and standards does the team follow?",
-      page: { pageId: "company/engineering-conventions", title: "Engineering Conventions", type: "concept", scope: "company" }
+      page: { pageId: "engineering-conventions", title: "Engineering Conventions" }
     }
   ]),
   design: set("design", "Seed the design context that keeps work consistent.", [
     {
       id: "principles",
       prompt: "What design principles guide your work?",
-      page: { pageId: "company/design-principles", title: "Design Principles", type: "concept", scope: "company" }
+      page: { pageId: "design-principles", title: "Design Principles" }
     },
     {
       id: "personas",
       prompt: "Who are you designing for \u2014 the key user personas?",
-      page: { pageId: "company/personas", title: "Personas", type: "entity", scope: "company" }
+      page: { pageId: "personas", title: "Personas" }
     },
     {
       id: "design-system",
       prompt: "Describe your design system or component library.",
-      page: { pageId: "company/design-system", title: "Design System", type: "entity", scope: "company" }
+      page: { pageId: "design-system", title: "Design System" }
     }
   ]),
   qa: set("qa", 'Seed the quality context \u2014 how the team tests and what "done" means.', [
     {
       id: "test-strategy",
       prompt: "What is your testing strategy \u2014 levels, tools, coverage expectations?",
-      page: { pageId: "company/qa-strategy", title: "QA Strategy", type: "concept", scope: "company" }
+      page: { pageId: "qa-strategy", title: "QA Strategy" }
     },
     {
       id: "acceptance",
       prompt: 'What does "done" / acceptance look like for your team?',
-      page: { pageId: "company/acceptance-criteria", title: "Acceptance Criteria", type: "concept", scope: "company" }
+      page: { pageId: "acceptance-criteria", title: "Acceptance Criteria" }
     },
     {
       id: "risks",
       prompt: "What are the top quality risks or areas to watch?",
-      page: { pageId: "company/quality-risks", title: "Quality Risks", type: "concept", scope: "company" }
+      page: { pageId: "quality-risks", title: "Quality Risks" }
     }
   ]),
   exec: set("exec", "Seed the strategic context that frames every decision.", [
     {
       id: "vision",
       prompt: "What is the long-term vision?",
-      page: { pageId: "company/vision", title: "Vision", type: "concept", scope: "company" }
+      page: { pageId: "vision", title: "Vision" }
     },
     {
       id: "objectives",
       prompt: "What are the current strategic objectives or OKRs?",
-      page: { pageId: "company/objectives", title: "Objectives", type: "concept", scope: "company" }
+      page: { pageId: "objectives", title: "Objectives" }
     },
     {
       id: "org",
       prompt: "Describe the team/org structure and the key roles.",
-      page: { pageId: "company/org-structure", title: "Org Structure", type: "entity", scope: "company" }
+      page: { pageId: "org-structure", title: "Org Structure" }
     }
   ]),
   other: set("other", "Seed the shared context everyone on the team should start from.", [
     {
       id: "overview",
       prompt: "Give a high-level overview of what your team does.",
-      page: { pageId: "company/overview", title: "Overview", type: "concept", scope: "company" }
+      page: { pageId: "overview", title: "Overview" }
     },
     {
       id: "goals",
       prompt: "What are your team's current goals?",
-      page: { pageId: "company/goals", title: "Goals", type: "concept", scope: "company" }
+      page: { pageId: "goals", title: "Goals" }
     },
     {
       id: "resources",
       prompt: "What key resources or links should everyone know?",
-      page: { pageId: "company/resources", title: "Resources", type: "concept", scope: "company" }
+      page: { pageId: "resources", title: "Resources" }
     }
   ])
 };
@@ -12409,6 +12598,32 @@ function parseCharter(body) {
     excludes: parseBrief(chunks.get("excludes"))
   };
 }
+function charterCategoryOrder(charter) {
+  const order = [];
+  const seen = /* @__PURE__ */ new Set();
+  for (const section of charter?.sections ?? []) {
+    const token = categoryToken(section.label);
+    if (token && !seen.has(token)) {
+      seen.add(token);
+      order.push(token);
+    }
+  }
+  return order;
+}
+function findCharterPage(pages) {
+  const found = /* @__PURE__ */ new Map();
+  for (const page of pages)
+    if (isCharterPageId(page.pageId))
+      found.set(page.pageId, page);
+  const pageId = resolveCharterPageId(found.keys());
+  return pageId ? found.get(pageId) : null;
+}
+function categoryOrderFromPages(pages) {
+  const page = findCharterPage(pages);
+  if (!page || page.frontmatter.status !== "active")
+    return [];
+  return charterCategoryOrder(parseCharter(page.body));
+}
 
 // ../core/dist/coverage/coverage.js
 var hay = (e) => `${e.pageId || ""} ${e.title || ""}`.toLowerCase();
@@ -12416,8 +12631,8 @@ var kw = (...words) => (e) => {
   const h = hay(e);
   return words.some((w) => h.includes(w));
 };
-var typ = (t) => (e) => e.type === t;
 var either = (a, b) => (e) => a(e) || b(e);
+var cat = (token) => (e) => (e.categories ?? []).includes(token);
 var COVERAGE_TEMPLATES = {
   solo: [
     {
@@ -12438,7 +12653,7 @@ var COVERAGE_TEMPLATES = {
       target: 1,
       intent: "ingest",
       hint: "The work you\u2019re doing \u2014 clients, projects, and their context.",
-      match: either(kw("client", "project", "portfolio", "engagement", "work"), typ("entity")),
+      match: kw("client", "project", "portfolio", "engagement", "work"),
       prompt: "Describe a current client or project \u2014 who they are, what you\u2019re building, and the key context.",
       placeholder: 'e.g. "Acme \u2014 a B2B invoicing tool. I own the onboarding redesign; launch is late Q3\u2026"'
     },
@@ -12449,7 +12664,7 @@ var COVERAGE_TEMPLATES = {
       target: 1,
       intent: "decision",
       hint: "The choices and preferences you don\u2019t want to re-explain each time.",
-      match: either(typ("decision"), kw("decision", "preference", "convention", "rule")),
+      match: kw("decision", "preference", "convention", "rule"),
       prompt: "Record a decision or standing preference as a short note \u2014 what you chose and why.",
       placeholder: 'e.g. "I always scope fixed-price, not hourly \u2014 it keeps the relationship about outcomes\u2026"'
     },
@@ -12495,7 +12710,7 @@ var COVERAGE_TEMPLATES = {
       target: 2,
       intent: "decision",
       hint: "The ADRs \u2014 the why behind the directions you took.",
-      match: either(typ("decision"), kw("decision", "adr", "chose", "rejected")),
+      match: kw("decision", "adr", "chose", "rejected"),
       prompt: "Record an architecture decision as an ADR \u2014 the context, the decision, and the rationale.",
       placeholder: 'e.g. "We picked isomorphic-git over nodegit \u2014 pure JS, no native build, browser reuse\u2026"'
     },
@@ -12506,7 +12721,7 @@ var COVERAGE_TEMPLATES = {
       target: 1,
       intent: "ingest",
       hint: "Where the product is headed \u2014 the current priorities and themes.",
-      match: either(kw("roadmap", "priorities", "milestones", "goals", "okr"), typ("summary")),
+      match: kw("roadmap", "priorities", "milestones", "goals", "okr"),
       prompt: "Capture the current roadmap \u2014 the priorities and themes for the next few months.",
       placeholder: 'e.g. "Phase 1 \u2014 the retrieval loop. Phase 2 \u2014 branching/PR UX. Phase 3 \u2014 the alive agent\u2026"'
     },
@@ -12552,7 +12767,7 @@ var COVERAGE_TEMPLATES = {
       target: 2,
       intent: "decision",
       hint: "The decisions the team has made \u2014 recorded so they\u2019re not re-litigated.",
-      match: either(typ("decision"), kw("decision", "adr", "chose")),
+      match: kw("decision", "adr", "chose"),
       prompt: "Record a key team decision \u2014 the context, the decision, and the rationale.",
       placeholder: 'e.g. "We standardized on Vitest \u2014 CI was 3\xD7 slower on Jest\u2026"'
     },
@@ -12563,7 +12778,7 @@ var COVERAGE_TEMPLATES = {
       target: 1,
       intent: "ingest",
       hint: "What the team is focused on now and next.",
-      match: either(kw("roadmap", "priorities", "goals", "okr", "plan"), typ("summary")),
+      match: kw("roadmap", "priorities", "goals", "okr", "plan"),
       prompt: "Capture your team\u2019s current priorities and roadmap.",
       placeholder: 'e.g. "This quarter: cut checkout p95 latency, ship the new fraud model, GA the EU region\u2026"'
     },
@@ -12609,7 +12824,7 @@ var COVERAGE_TEMPLATES = {
       target: 3,
       intent: "decision",
       hint: "The company-shaping decisions \u2014 recorded as ADRs.",
-      match: either(typ("decision"), kw("decision", "adr")),
+      match: kw("decision", "adr"),
       prompt: "Record a company-shaping decision as an ADR \u2014 the context, the decision, and the rationale.",
       placeholder: 'e.g. "Hosted repo per team \u2014 GitHub-grade versioning with a trust model teams already understand\u2026"'
     },
@@ -12644,7 +12859,7 @@ var COVERAGE_TEMPLATES = {
       hint: "The shared vocabulary and acronyms.",
       match: kw("glossary", "terms", "acronym", "vocabulary", "definitions"),
       prompt: "List the key terms and acronyms your company uses, and what each means.",
-      placeholder: 'e.g. "SoT \u2014 source of truth. RLS \u2014 row-level security. Model B \u2014 in-app synthesis on the team key\u2026"'
+      placeholder: 'e.g. "SoT \u2014 source of truth. RLS \u2014 row-level security. CAS \u2014 compare-and-swap\u2026"'
     }
   ]
 };
@@ -12674,18 +12889,20 @@ function labelTokens(label) {
 function sectionsFromCharter(sections) {
   const seenIds = /* @__PURE__ */ new Set();
   return sections.map((sec, i) => {
-    const slug = sec.label.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
-    let id = slug || `section-${i + 1}`;
+    const token = categoryToken(sec.label);
+    let id = token || `section-${i + 1}`;
     while (seenIds.has(id))
       id = `${id}-${i + 1}`;
     seenIds.add(id);
     const intent = /\b(decision|adr|convention)/i.test(`${sec.label} ${sec.hint}`) ? "decision" : "ingest";
     const phrase = sec.label.toLowerCase().replace(/\s+/g, " ").trim();
     const words = [phrase, ...labelTokens(sec.label)];
-    const match = intent === "decision" ? either(typ("decision"), kw(...words)) : kw(...words);
+    const keywordMatch = kw(...words);
+    const match = token ? either(cat(token), keywordMatch) : keywordMatch;
     return {
       id,
       label: sec.label,
+      category: token || void 0,
       icon: intent === "decision" ? "gavel" : "file-text",
       target: 1,
       intent,
@@ -12716,12 +12933,12 @@ function excludeMatcher(excludes) {
   if (!text.trim())
     return () => false;
   return (label) => {
-    const tokens = labelTokens(label);
-    return tokens.length > 0 && tokens.some((token) => text.includes(token));
+    const tokens2 = labelTokens(label);
+    return tokens2.length > 0 && tokens2.some((token) => text.includes(token));
   };
 }
 function computeCoverage(entries, shape, scopeKey, charter) {
-  const idx = (Array.isArray(entries) ? entries : []).filter((e) => e.pageId !== CHARTER_PAGE_ID && hasSubstance(e));
+  const idx = (Array.isArray(entries) ? entries : []).filter((e) => !isCharterPageId(e.pageId) && hasSubstance(e));
   const defaultScope = shapeDefaultScope(shape || "company", scopeKey || "team");
   const template = charter?.sections?.length ? sectionsFromCharter(charter.sections) : templateFor(shape, charter?.audience);
   const isExcluded = excludeMatcher(charter?.excludes ?? null);
@@ -12735,6 +12952,7 @@ function computeCoverage(entries, shape, scopeKey, charter) {
       label: sec.label,
       icon: sec.icon,
       hint: sec.hint,
+      ...sec.category !== void 0 ? { category: sec.category } : {},
       target: sec.target,
       intent: sec.intent,
       prompt: sec.prompt,
@@ -12747,6 +12965,12 @@ function computeCoverage(entries, shape, scopeKey, charter) {
       ...excluded ? { excludedBy: (charter?.excludes ?? "").trim() } : {}
     };
   });
+}
+function coverageProgress(rows) {
+  const counted = rows.filter((r) => r.status !== "excluded");
+  const total = counted.length;
+  const done = counted.filter((r) => r.status === "done").length;
+  return { done, total, pct: total ? Math.round(done / total * 100) : 0 };
 }
 
 // ../core/dist/wiki/page-serde.js
@@ -12762,8 +12986,8 @@ function orderedFrontmatter(fm) {
   const out = { title: fm.title };
   if (fm.summary !== void 0)
     out.summary = fm.summary;
-  out.type = fm.type;
-  out.scope = fm.scope;
+  if (fm.scope !== void 0)
+    out.scope = fm.scope;
   if (fm.section !== void 0)
     out.section = fm.section;
   if (fm.owner !== void 0)
@@ -12776,8 +13000,8 @@ function orderedFrontmatter(fm) {
     out.aliases = fm.aliases;
   if (fm.tags !== void 0)
     out.tags = fm.tags;
-  out.sources = fm.sources;
-  out.related = fm.related;
+  if (fm.sources !== void 0)
+    out.sources = fm.sources;
   for (const key of Object.keys(fm.extra ?? {}).sort()) {
     if (key === "__proto__" || key === "constructor" || key === "prototype")
       continue;
@@ -12835,65 +13059,36 @@ function deriveSummary(body, max = 140) {
 }
 
 // ../core/dist/wiki/index-regen.js
-var LEVEL_RANK = { company: 0, department: 1, team: 2, product: 3 };
-function levelRank(scope) {
-  const level = scope.split(":", 1)[0];
-  return LEVEL_RANK[level] ?? 99;
-}
-function compareCodeUnits(a, b) {
-  return a < b ? -1 : a > b ? 1 : 0;
-}
-function compareEntries(a, b) {
-  return levelRank(a.scope) - levelRank(b.scope) || compareCodeUnits(a.scope, b.scope) || compareCodeUnits(a.pageId, b.pageId);
-}
-function scopeDir(scope) {
-  const parsed = parseScope(scope);
-  if (!parsed)
-    return null;
-  const dir = SCOPE_DIRS[parsed.level];
-  return parsed.key ? `${dir}/${parsed.key}` : dir;
-}
-function subgroupOf(entry) {
-  const dir = scopeDir(entry.scope);
-  const rest = dir && entry.pageId.startsWith(`${dir}/`) ? entry.pageId.slice(dir.length + 1) : entry.pageId;
-  const cut = rest.indexOf("/");
-  return cut > 0 ? rest.slice(0, cut) : null;
-}
-function regenerateIndex(entries) {
+function regenerateIndex(entries, opts) {
   const lines = ["# Wiki catalog", ""];
-  if (entries.length === 0) {
+  const sorted = catalogContentEntries(entries);
+  if (sorted.length === 0) {
     lines.push("_No pages yet._", "");
     return lines.join("\n");
   }
-  const sorted = [...entries].sort(compareEntries);
-  const multiScope = new Set(sorted.map((e) => e.scope)).size > 1;
+  const multiScope = hasMultipleScopes(sorted);
   const subHeading = multiScope ? "###" : "##";
-  let scope = null;
+  const compare = compareCategoryTokens(opts?.categoryOrder);
+  let scope;
   for (let i = 0; i < sorted.length; ) {
     scope = sorted[i].scope;
     const inScope = [];
     while (i < sorted.length && sorted[i].scope === scope)
       inScope.push(sorted[i++]);
     if (multiScope)
-      lines.push(`## ${scope}`, "");
-    const grouped = /* @__PURE__ */ new Map();
-    for (const entry of inScope) {
-      const group = subgroupOf(entry);
-      if (group === null) {
-        lines.push(buildIndexLine(entry));
-        continue;
-      }
-      let bucket = grouped.get(group);
-      if (!bucket)
-        grouped.set(group, bucket = []);
-      bucket.push(entry);
+      lines.push(`## ${scope ?? WIKI_GLOBAL_LABEL}`, "");
+    const buckets = catalogCategoryBuckets(inScope, compare);
+    const primary = /* @__PURE__ */ new Map();
+    for (const [category, bucket] of buckets) {
+      for (const entry of bucket)
+        if (!primary.has(entry))
+          primary.set(entry, category);
     }
-    if (grouped.size > 0 && lines[lines.length - 1] !== "")
-      lines.push("");
-    for (const [group, groupEntries] of grouped) {
-      lines.push(`${subHeading} ${group}`, "");
-      for (const entry of groupEntries)
-        lines.push(buildIndexLine(entry));
+    for (const [category, bucket] of buckets) {
+      lines.push(`${subHeading} ${category ?? UNCATEGORISED_LABEL}`, "");
+      for (const entry of bucket) {
+        lines.push(buildIndexLine(entry, primary.get(entry) === category ? void 0 : { form: "link" }));
+      }
       lines.push("");
     }
     if (lines[lines.length - 1] !== "")
@@ -12912,14 +13107,29 @@ function toIndexEntry(p) {
   const entry = {
     pageId: p.pageId,
     title: p.frontmatter.title,
-    type: p.frontmatter.type,
     scope: p.frontmatter.scope,
     summary: p.frontmatter.summary ?? deriveSummary(p.body),
     updated: p.frontmatter.updated
   };
   if (p.frontmatter.section !== void 0)
     entry.section = p.frontmatter.section;
+  const categories = normalizeCategories(p.frontmatter.tags);
+  if (categories.length > 0)
+    entry.categories = categories;
+  if (p.frontmatter.aliases?.length)
+    entry.aliases = p.frontmatter.aliases;
   return entry;
+}
+function placeholderEntry(pageId) {
+  return {
+    pageId,
+    title: pageId,
+    scope: "(unparseable)",
+    summary: "\u26A0 could not parse frontmatter \u2014 needs attention",
+    // No frontmatter to read it from; sorts last wherever freshness is used, and (since every
+    // clause of an index line is conditional) renders no dangling ` · ` in the catalog.
+    updated: ""
+  };
 }
 
 // ../core/dist/wiki/import-normalize.js
@@ -12935,8 +13145,8 @@ function firstH1(body) {
 }
 function titleFromStem(relPath) {
   const base = relPath.split(/[/\\]/).pop() ?? relPath;
-  const stem = base.replace(/\.md$/i, "");
-  return stem.split(/[-_\s]+/).filter(Boolean).map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
+  const stem2 = base.replace(/\.md$/i, "");
+  return stem2.split(/[-_\s]+/).filter(Boolean).map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
 }
 function isRecord2(v) {
   return typeof v === "object" && v !== null && !Array.isArray(v);
@@ -12958,6 +13168,10 @@ function stringArray(v) {
     return [v];
   return Array.isArray(v) && v.every((s) => typeof s === "string") ? v : void 0;
 }
+function tagList(v) {
+  const list = stringArray(v);
+  return list?.flatMap((s) => s.split(",").map((t) => t.trim())).filter(Boolean);
+}
 function isDateString(v) {
   return FrontmatterSchema.shape.updated.safeParse(v).success;
 }
@@ -12973,19 +13187,19 @@ function backfill(file, opts) {
   const loss = { dropped: [], replaced: [] };
   const replaced = (key, from, to) => {
     if (from !== void 0 && from !== to)
-      loss.replaced.push(`${key}: ${JSON.stringify(from)} \u2192 ${to}`);
+      loss.replaced.push(`${key}: ${JSON.stringify(from)} \u2192 ${to ?? "(none)"}`);
   };
   const title = typeof old.title === "string" && old.title.trim().length > 0 ? old.title : firstH1(body) ?? titleFromStem(file.relPath);
   replaced("title", old.title, title);
-  const type = typeof old.type === "string" && PAGE_TYPES.includes(old.type) ? old.type : "concept";
-  replaced("type", old.type, type);
   const scope = typeof old.scope === "string" && parseScope(old.scope) !== null ? old.scope : opts.defaultScope;
   replaced("scope", old.scope, scope);
   const status2 = typeof old.status === "string" && PAGE_STATUSES.includes(old.status) ? old.status : "active";
   replaced("status", old.status, status2);
   const updated = resolveUpdated(old.updated, file.mtime, opts.today);
   replaced("updated", old.updated, updated);
-  const fm = { title, type, scope, status: status2, updated };
+  const fm = { title, status: status2, updated };
+  if (scope !== void 0)
+    fm.scope = scope;
   if (typeof old.section === "string" && SCOPE_SECTIONS.includes(old.section)) {
     fm.section = old.section;
   } else if (old.section !== void 0)
@@ -13002,8 +13216,8 @@ function backfill(file, opts) {
     fm.created = old.created;
   else if (old.created !== void 0)
     loss.dropped.push("created");
-  for (const key of ["sources", "related", "tags", "aliases"]) {
-    const list = stringArray(old[key]);
+  for (const key of ["sources", "tags", "aliases"]) {
+    const list = key === "tags" ? tagList(old[key]) : stringArray(old[key]);
     if (list)
       fm[key] = list;
     else if (old[key] !== void 0)
@@ -13063,6 +13277,147 @@ function normalizeImport(files, opts) {
   }
   return { files: out, skipped };
 }
+
+// ../core/dist/wiki/retired-keys.js
+var RETIRED_PAGE_TYPES = [
+  "entity",
+  "concept",
+  "decision",
+  "summary",
+  "template",
+  "charter"
+];
+var RETIRED_KEYS = [
+  {
+    key: "type",
+    /*
+     * Value-conditional — for a reason `related` cannot share. `type:` on a page is not proof the
+     * page is ours: an imported Obsidian vault routinely uses it as its own Dataview discriminator
+     * (`type: recipe`, `type: person`), and `normalizeImport` explicitly promises to carry exactly
+     * that through verbatim, "as it carries an imported vault's `cssclass:`". A key-conditional
+     * rule broke that promise in the same breath as the CLI telling the user an imported vault's
+     * frontmatter is not ours to delete. Constraining to the dead enum costs the migration nothing:
+     * the schema rejected any other value, so a CommonGround-authored `type:` is always in here.
+     */
+    values: RETIRED_PAGE_TYPES,
+    since: "SER-200",
+    why: "a page's genre was a pure function of the category it already declares in `tags:`"
+  },
+  {
+    key: "related",
+    since: "SER-201",
+    why: "body wikilinks are the only edge channel now"
+  },
+  {
+    key: "scope",
+    values: ["company"],
+    since: "SER-191",
+    why: '`company` is the only keyless scope level, so where nothing else is scoped it just means "the whole wiki" \u2014 which an absent scope already says',
+    appliesTo: (wiki) => {
+      if (wiki.partial) {
+        return {
+          ok: false,
+          reason: "some pages could not be read, and this one needs to see every scope in the wiki before it can call `company` meaningless \u2014 fix those files and run this again"
+        };
+      }
+      if (wiki.writesCompanyScope) {
+        return {
+          ok: false,
+          reason: "this team is company-shaped, so CommonGround still writes `scope: company` on new pages here \u2014 removing it now would only split the catalog when the next page arrives"
+        };
+      }
+      const others = [...wiki.scopes].filter((s) => s !== "company").sort();
+      return others.length === 0 ? { ok: true } : {
+        ok: false,
+        reason: `this wiki also uses ${others.join(", ")}, so \`company\` still tells those pages apart`
+      };
+    }
+  }
+];
+function retiredKeyLabel(rule) {
+  return rule.values ? `${rule.key}: ${rule.values.join(" | ")}` : rule.key;
+}
+function retires(rule, value) {
+  if (rule.values === void 0)
+    return true;
+  return typeof value === "string" && rule.values.includes(value);
+}
+function surveyWiki(parsed, partial, writesCompanyScope) {
+  const scopes = /* @__PURE__ */ new Set();
+  for (const p of parsed)
+    if (p.frontmatter.scope !== void 0)
+      scopes.add(p.frontmatter.scope);
+  return { scopes, partial, ...writesCompanyScope !== void 0 ? { writesCompanyScope } : {} };
+}
+function sweepRetiredKeys(files, opts = {}) {
+  const unreadable = [...opts.unreadable ?? []];
+  const parsed = [];
+  const unparseable = [];
+  for (const file of files) {
+    try {
+      parsed.push({ relPath: file.relPath, page: parsePage(file.content) });
+    } catch (e) {
+      unparseable.push({
+        relPath: file.relPath,
+        reason: e instanceof PageParseError ? e.message : "could not be parsed"
+      });
+    }
+  }
+  const facts = surveyWiki(parsed.map((p) => p.page), unparseable.length > 0 || unreadable.length > 0, opts.writesCompanyScope);
+  const judged = RETIRED_KEYS.map((rule) => ({
+    rule,
+    verdict: rule.appliesTo?.(facts) ?? { ok: true }
+  }));
+  const withheldPaths = /* @__PURE__ */ new Map();
+  const rewrites = [];
+  for (const { relPath, page } of parsed) {
+    const frontmatter = { ...page.frontmatter };
+    const extra = { ...page.frontmatter.extra ?? {} };
+    const removed = [];
+    for (const { rule, verdict } of judged) {
+      for (const bag of [frontmatter, extra]) {
+        if (bag === frontmatter && rule.key === "extra")
+          continue;
+        const value = bag[rule.key];
+        if (value === void 0 || !retires(rule, value))
+          continue;
+        if (!verdict.ok) {
+          withheldPaths.set(rule, [...withheldPaths.get(rule) ?? [], relPath]);
+          continue;
+        }
+        delete bag[rule.key];
+        removed.push({ key: rule.key, value: JSON.stringify(value) });
+      }
+    }
+    if (removed.length === 0)
+      continue;
+    if (Object.keys(extra).length > 0)
+      frontmatter.extra = extra;
+    else
+      delete frontmatter.extra;
+    rewrites.push({
+      relPath,
+      removed,
+      content: serializePage(frontmatter, page.body)
+    });
+  }
+  return {
+    rewrites,
+    unparseable,
+    unreadable,
+    // Only rules that would ACTUALLY have matched something. A wiki with no `scope: company` page
+    // has nothing withheld from it, and saying otherwise turns every report into a lecture.
+    withheld: judged.filter(({ rule, verdict }) => !verdict.ok && withheldPaths.has(rule)).map(({ rule, verdict }) => ({
+      rule: retiredKeyLabel(rule),
+      reason: verdict.ok ? "" : verdict.reason,
+      relPaths: withheldPaths.get(rule)
+    })),
+    facts
+  };
+}
+
+// ../core/dist/retrieval/math.js
+var COMBINING_MARK = new RegExp("\\p{M}", "u");
 
 // ../core/dist/ops/body-links.js
 function isExternalUrl(ref) {
@@ -13135,24 +13490,27 @@ function extractBodyLinks(body) {
 }
 function buildBodyLinkResolver(pages) {
   const byId = /* @__PURE__ */ new Set();
-  const byBasename = /* @__PURE__ */ new Map();
-  const byTitle = /* @__PURE__ */ new Map();
-  const add = (m, k, v) => {
-    const set2 = m.get(k);
+  const byName = /* @__PURE__ */ new Map();
+  const add = (k, v) => {
+    const set2 = byName.get(k);
     if (set2)
       set2.add(v);
     else
-      m.set(k, /* @__PURE__ */ new Set([v]));
+      byName.set(k, /* @__PURE__ */ new Set([v]));
   };
   for (const p of pages) {
     byId.add(p.pageId);
     if (p.active === false)
       continue;
-    const base = (p.pageId.split("/").pop() ?? p.pageId).toLowerCase();
-    add(byBasename, base, p.pageId);
+    add((p.pageId.split("/").pop() ?? p.pageId).toLowerCase(), p.pageId);
     const title = p.title?.trim().toLowerCase();
     if (title)
-      add(byTitle, title, p.pageId);
+      add(title, p.pageId);
+    for (const a of p.aliases ?? []) {
+      const alias = a.trim().toLowerCase();
+      if (alias)
+        add(alias, p.pageId);
+    }
   }
   return (target) => {
     const raw = target.trim();
@@ -13160,13 +13518,8 @@ function buildBodyLinkResolver(pages) {
       return null;
     if (byId.has(raw))
       return raw;
-    const key = raw.toLowerCase();
-    const candidates = /* @__PURE__ */ new Set();
-    for (const id of byBasename.get(key) ?? [])
-      candidates.add(id);
-    for (const id of byTitle.get(key) ?? [])
-      candidates.add(id);
-    return candidates.size === 1 ? candidates.values().next().value ?? null : null;
+    const candidates = byName.get(raw.toLowerCase());
+    return candidates?.size === 1 ? candidates.values().next().value ?? null : null;
   };
 }
 
@@ -13199,14 +13552,14 @@ function detectOrphans(input) {
   for (const p of input.subjects) {
     if (p.status !== "active")
       continue;
-    if (p.pageId === CHARTER_PAGE_ID)
+    if (isCharterPageId(p.pageId))
       continue;
     if (!input.inbound.has(p.pageId)) {
       findings.push({
         kind: "orphan",
         pageIds: [p.pageId],
-        detail: "no other page links to this one (via `related` or an inline body link)",
-        suggestedAction: "add a `related` entry (the canonical cross-reference) or an inline link from a relevant page, or confirm the page is an intentional entry point"
+        detail: "no other page links to this one (no inline body link resolves to it)",
+        suggestedAction: "link to it in the prose of a relevant page \u2014 `[[pageId]]`, `[[Its Title]]` or `[text](pageId)` \u2014 or confirm the page is an intentional entry point"
       });
     }
   }
@@ -13223,16 +13576,12 @@ function detectBrokenCitations(input) {
       if (!input.sourcePaths.has(path))
         broken.push(`source "${ref}"`);
     }
-    for (const ref of p.related) {
-      if (!input.existingPageIds.has(ref))
-        broken.push(`related page "${ref}"`);
-    }
     if (broken.length > 0) {
       findings.push({
         kind: "broken-citation",
         pageIds: [p.pageId],
         detail: `references that no longer exist: ${broken.join(", ")}`,
-        suggestedAction: "fix or remove the dangling reference(s) in the page frontmatter"
+        suggestedAction: "fix or remove the dangling `sources:` reference(s) in the page frontmatter"
       });
     }
   }
@@ -13240,28 +13589,357 @@ function detectBrokenCitations(input) {
 }
 var PROVENANCE_OPENERS = /^(stated|said|captured|recorded|written|noted|documented|transcribed)\b|^(the )?canonical page\b|^an? [a-z-]* ?(adr|decision record)\b|^this (page|note|file|document)\b/i;
 var SAMPLE_SIZE = 5;
+function sampled(items) {
+  const sample = items.slice(0, SAMPLE_SIZE);
+  const more = items.length - sample.length;
+  return `${sample.join(", ")}${more > 0 ? `, +${more} more` : ""}`;
+}
+function isThinSummary(p) {
+  const summary = p.summary?.trim();
+  return !summary || p.derivedSummary !== void 0 && summary === p.derivedSummary.trim() || PROVENANCE_OPENERS.test(summary);
+}
 function detectThinSummaries(input) {
   const thin = [];
   for (const p of input.subjects) {
     if (p.status !== "active")
       continue;
-    if (p.pageId === CHARTER_PAGE_ID)
+    if (isCharterPageId(p.pageId))
       continue;
-    const summary = p.summary?.trim();
-    if (!summary || p.derivedSummary !== void 0 && summary === p.derivedSummary.trim() || PROVENANCE_OPENERS.test(summary)) {
+    if (isThinSummary(p))
       thin.push(p.pageId);
-    }
   }
   if (thin.length === 0)
     return [];
-  const sample = thin.slice(0, SAMPLE_SIZE);
-  const more = thin.length - sample.length;
   return [
     {
       kind: "thin-summary",
       pageIds: thin,
-      detail: `${thin.length} page(s) have no authored \`summary:\` \u2014 their catalog line falls back to the first body line, which is also what search matches against: ${sample.join(", ")}${more > 0 ? `, +${more} more` : ""}`,
+      detail: `${thin.length} page(s) have no authored \`summary:\` \u2014 their catalog line falls back to the first body line, which is also what search matches against: ${sampled(thin)}`,
       suggestedAction: "write a `summary:` on each \u2014 one plain-text line, \u2264140 chars, naming the concrete things the page covers"
+    }
+  ];
+}
+var SUMMARY_STOPWORDS = /* @__PURE__ */ new Set([
+  // articles + determiners + quantifiers
+  "an",
+  "the",
+  "this",
+  "that",
+  "these",
+  "those",
+  "some",
+  "any",
+  "no",
+  "each",
+  "every",
+  "all",
+  "both",
+  "either",
+  "neither",
+  "much",
+  "many",
+  "more",
+  "most",
+  "few",
+  "several",
+  "such",
+  "another",
+  // pronouns + possessives
+  "me",
+  "my",
+  "mine",
+  "we",
+  "us",
+  "our",
+  "ours",
+  "you",
+  "your",
+  "yours",
+  "he",
+  "him",
+  "his",
+  "she",
+  "her",
+  "hers",
+  "it",
+  "its",
+  "they",
+  "them",
+  "their",
+  "theirs",
+  "here",
+  "there",
+  // prepositions
+  "of",
+  "in",
+  "on",
+  "at",
+  "to",
+  "from",
+  "by",
+  "for",
+  "with",
+  "without",
+  "about",
+  "into",
+  "onto",
+  "over",
+  "under",
+  "between",
+  "through",
+  "during",
+  "before",
+  "after",
+  "above",
+  "below",
+  "up",
+  "down",
+  "out",
+  "off",
+  "per",
+  "via",
+  "across",
+  "against",
+  "within",
+  "upon",
+  // conjunctions + subordinators
+  "and",
+  "or",
+  "but",
+  "nor",
+  "so",
+  "yet",
+  "if",
+  "than",
+  "then",
+  "because",
+  "while",
+  "as",
+  "whether",
+  // wh-words
+  "who",
+  "whom",
+  "whose",
+  "which",
+  "what",
+  "when",
+  "where",
+  "why",
+  "how",
+  // auxiliaries + copulas
+  "be",
+  "am",
+  "is",
+  "are",
+  "was",
+  "were",
+  "been",
+  "being",
+  "do",
+  "does",
+  "did",
+  "have",
+  "has",
+  "had",
+  "can",
+  "could",
+  "will",
+  "would",
+  "shall",
+  "should",
+  "may",
+  "might",
+  "must",
+  // negation
+  "not"
+]);
+var WORD_RE = /[\p{L}\p{N}]+/gu;
+function tokens(text) {
+  const folded = text.normalize("NFD").replace(new RegExp("\\p{Diacritic}", "gu"), "").toLowerCase();
+  return [...folded.matchAll(WORD_RE)].map((m) => m[0]).filter((w) => w.length >= 2);
+}
+var STEM_SUFFIXES = ["ing", "ed", "es", "s"];
+function stem(w) {
+  for (const suffix of STEM_SUFFIXES) {
+    if (w.length - suffix.length >= 4 && w.endsWith(suffix))
+      return w.slice(0, -suffix.length);
+  }
+  return w;
+}
+var REDUNDANT_SUMMARY_THRESHOLD = 0.6;
+function summaryTitleOverlap(title, summary) {
+  if (UNSEGMENTED_SCRIPT.test(summary))
+    return 0;
+  const inSummary = new Set(contentStems(summary));
+  if (inSummary.size === 0)
+    return 0;
+  const inTitle = new Set(contentStems(title));
+  let shared = 0;
+  for (const s of inSummary)
+    if (inTitle.has(s))
+      shared += 1;
+  return shared / inSummary.size;
+}
+function contentStems(text) {
+  return tokens(text).filter((w) => !SUMMARY_STOPWORDS.has(w)).map(stem);
+}
+var TITLE_DESCRIPTION_SEPARATOR = /[—–]|\s-\s|[([]/u;
+function titleName(title) {
+  const cut = title.search(TITLE_DESCRIPTION_SEPARATOR);
+  return cut === -1 ? title : title.slice(0, cut);
+}
+function titleEchoOpening(title, summary) {
+  if (UNSEGMENTED_SCRIPT.test(summary))
+    return { run: 0, beyondName: false };
+  const inTitle = new Set(contentStems(title));
+  if (inTitle.size === 0)
+    return { run: 0, beyondName: false };
+  const opening = contentStems(summary);
+  let run = 0;
+  while (run < opening.length && inTitle.has(opening[run]))
+    run += 1;
+  const named = contentStems(titleName(title));
+  const name = new Set(named.length > 0 ? named : inTitle);
+  return { run, beyondName: opening.slice(0, run).some((w) => !name.has(w)) };
+}
+var TITLE_ECHO_MIN_RUN = 3;
+function redundantSummaryVerdict(p) {
+  if (p.status !== "active")
+    return void 0;
+  if (isCharterPageId(p.pageId))
+    return void 0;
+  if (isThinSummary(p))
+    return void 0;
+  const summary = p.summary.trim();
+  const echo = summaryTitleOverlap(p.title, summary);
+  if (echo >= REDUNDANT_SUMMARY_THRESHOLD)
+    return { rule: "whole-summary", echo };
+  const opening = titleEchoOpening(p.title, summary);
+  if (opening.run >= TITLE_ECHO_MIN_RUN && opening.beyondName)
+    return { rule: "opening", opening };
+  return void 0;
+}
+function describeRedundantSummary(v) {
+  if (v.rule === "whole-summary")
+    return `${Math.round(v.echo * 100)}% of the summary is already in the title`;
+  return `it opens with ${v.opening.run} words straight from the title, past the page's own name`;
+}
+function detectRedundantSummaries(input) {
+  const flagged = [];
+  for (const p of input.subjects) {
+    const verdict = redundantSummaryVerdict(p);
+    if (verdict !== void 0)
+      flagged.push({ pageId: p.pageId, why: describeRedundantSummary(verdict) });
+  }
+  if (flagged.length === 0)
+    return [];
+  return [
+    {
+      kind: "redundant-summary",
+      pageIds: flagged.map((f) => f.pageId),
+      // The per-page measurement costs nothing and turns a complaint into a triage list.
+      detail: `${flagged.length} page(s) reuse their \`title:\` in their \`summary:\` instead of adding to it, so the catalog line gives no new basis to choose the page: ${sampled(flagged.map((f) => `${f.pageId} (${f.why})`))}`,
+      suggestedAction: "rewrite each summary to say what is INSIDE the page \u2014 the title is its name \u2014 or trim an over-stuffed title and let the summary carry the detail"
+    }
+  ];
+}
+function hasCategoryAxis(p) {
+  return p.status === "active" && !isCharterPageId(p.pageId);
+}
+function classifyTag(raw, vocabulary) {
+  const token = categoryToken(raw);
+  return { raw, token, near: nearMissCategories(token, vocabulary) };
+}
+function quoteTag(v) {
+  if (!v.token)
+    return `"${v.raw}" (folds to nothing)`;
+  return v.raw === v.token ? `"${v.raw}"` : `"${v.raw}" (folds to "${v.token}")`;
+}
+function pagesOf(flagged) {
+  return [...new Set(flagged.map((f) => f.pageId))];
+}
+function detectNearMissTags(input) {
+  const flagged = [];
+  for (const p of input.subjects) {
+    if (!hasCategoryAxis(p))
+      continue;
+    for (const raw of p.tags) {
+      const verdict = classifyTag(raw, input.categoryVocabulary);
+      if (verdict.near.length > 0)
+        flagged.push({ pageId: p.pageId, verdict });
+    }
+  }
+  if (flagged.length === 0)
+    return [];
+  const pageIds = pagesOf(flagged);
+  return [
+    {
+      kind: "near-miss-tag",
+      pageIds,
+      // The "did you mean" phrasing is `classifyFrontmatterKey`'s, verbatim, so a curator meets one
+      // idiom across frontmatter keys and tag values. Every match is named: picking one would be a
+      // guess, and a tag matching two entries says the CHARTER holds two near-duplicate sections.
+      detail: `${flagged.length} tag(s) on ${pageIds.length} page(s) differ from a real category only by plural, separator, accent or \`&\`/\`and\` \u2014 each becomes a heading of its own in \`index.md\` and counts toward no charter section: ${sampled(flagged.map((f) => `${f.pageId}: ${quoteTag(f.verdict)} \u2014 did you mean ${f.verdict.near.map((c) => `"${c}"`).join(" or ")}?`))}`,
+      suggestedAction: "edit each page's `tags:` to the charter's spelling \u2014 never the reverse: adding the near miss to the charter ratifies the drift and splits one section into two"
+    }
+  ];
+}
+function detectOffVocabularyTags(input) {
+  if (input.categoryVocabulary.length === 0)
+    return [];
+  const flagged = [];
+  for (const p of input.subjects) {
+    if (!hasCategoryAxis(p))
+      continue;
+    const hasCategory = p.tags.some((raw) => categoryToken(raw) !== "");
+    for (const raw of p.tags) {
+      const verdict = classifyTag(raw, input.categoryVocabulary);
+      if (!verdict.token && !hasCategory)
+        continue;
+      if (verdict.near.length > 0)
+        continue;
+      if (!input.categoryVocabulary.includes(verdict.token))
+        flagged.push({ pageId: p.pageId, verdict });
+    }
+  }
+  if (flagged.length === 0)
+    return [];
+  const pageIds = pagesOf(flagged);
+  return [
+    {
+      kind: "off-vocabulary-tag",
+      pageIds,
+      detail: `${flagged.length} tag(s) on ${pageIds.length} page(s) are not in the charter's \`## Structure\` vocabulary, so instead of filing the page under a real section each forms a heading of its own in \`index.md\` \u2014 or, when it folds to nothing, disappears: ${sampled(flagged.map((f) => `${f.pageId}: ${quoteTag(f.verdict)}`))}`,
+      suggestedAction: `retag each page with a charter category (${sampled(input.categoryVocabulary)}) \u2014 or, if the material genuinely fits no section, add the section to the charter first`
+    }
+  ];
+}
+var CATEGORY_ALIAS_KEYS = /* @__PURE__ */ new Set(["tag", "category", "categories"]);
+function categoryAliasKeys(p) {
+  return p.extraKeys.filter((k) => CATEGORY_ALIAS_KEYS.has(k.normalize("NFC").toLowerCase().replace(/[^a-z0-9]/g, "")));
+}
+function detectUncategorisedPages(input) {
+  const flagged = [];
+  for (const p of input.subjects) {
+    if (!hasCategoryAxis(p))
+      continue;
+    if (p.tags.some((raw) => categoryToken(raw) !== ""))
+      continue;
+    const aliases = categoryAliasKeys(p);
+    const note = aliases.length ? ` (has \`${aliases[0]}:\` \u2014 CommonGround's category field is \`tags:\`)` : p.tags.length ? ` (its tags name no category: ${p.tags.map((t) => `"${t}"`).join(", ")})` : "";
+    flagged.push({ pageId: p.pageId, rendered: `${p.pageId}${note}` });
+  }
+  if (flagged.length === 0)
+    return [];
+  const chartered = input.categoryVocabulary.length > 0;
+  const rendered = flagged.map((f) => f.rendered);
+  return [
+    {
+      kind: "uncategorised-page",
+      // The notes ride in `detail`; `pageIds` stays the bare ids every consumer expects.
+      pageIds: flagged.map((f) => f.pageId),
+      detail: chartered ? `${flagged.length} page(s) declare no category, so they group under "(uncategorised)" in \`index.md\` \u2014 last \u2014 and count toward no charter section: ${sampled(rendered)}` : `INFORMATIONAL \u2014 this wiki has no charter, so it has no category vocabulary yet and all ${flagged.length} page(s) group under "(uncategorised)" in \`index.md\`: ${sampled(rendered)}`,
+      suggestedAction: chartered ? `add a \`tags:\` entry to each, drawn from the charter's \`## Structure\` list (${sampled(input.categoryVocabulary)})` : "charter the wiki with `/commonground:seed` \u2014 its `## Structure` list becomes the vocabulary these pages' `tags:` draw from; nothing needs retagging until then"
     }
   ];
 }
@@ -13270,48 +13948,161 @@ function runDeterministicLint(input) {
     ...detectStale(input),
     ...detectOrphans(input),
     ...detectBrokenCitations(input),
-    ...detectThinSummaries(input)
+    ...detectThinSummaries(input),
+    // Beside `thin-summary`: the two catalog-line checks stay adjacent, which is how the CLI's
+    // `formatLint` groups them and how the report reads.
+    ...detectRedundantSummaries(input),
+    // Then the three category checks as one block, for the same reason — they are one story, and
+    // most-actionable first: a near miss is a typo with a known fix, an off-vocabulary tag is a
+    // decision to make, and an uncategorised page may be nothing at all on an unchartered wiki.
+    ...detectNearMissTags(input),
+    ...detectOffVocabularyTags(input),
+    ...detectUncategorisedPages(input)
   ];
 }
 
-// ../core/dist/ops/wiki-ops.js
-var INGEST_SYSTEM = [
-  "You are a disciplined wiki maintainer. Read the SOURCE and propose markdown wiki pages",
-  "that capture its durable, factual takeaways. Prefer UPDATING an existing catalog page",
-  "over creating a duplicate. Keep each page focused and schema-correct.",
-  "Respond with ONLY JSON, no prose, of the form:",
-  '{"pages":[{"pageId":"<scope-dir>/<slug>","frontmatter":{"title":"...","type":"entity|concept|decision|summary|template","scope":"company|department:<x>|team:<x>|product:<x>"},"body":"<markdown>"}],"changeSummary":"<one short paragraph>"}'
-].join(" ");
-var QUERY_SYSTEM = [
-  "Answer the QUESTION using ONLY the WIKI CONTEXT provided. Cite the page ids you rely on",
-  "inline like [pageId]. If the context is insufficient, say so plainly. Never invent facts",
-  "or cite pages not in the context."
-].join(" ");
-var NL_EDIT_SYSTEM = [
-  "You apply a plain-language INSTRUCTION to a wiki by proposing the COMPLETE new content of",
-  "each page you change (create or update). Touch as FEW pages as possible and never more than",
-  "the stated cap. Keep every page schema-correct. Respond with ONLY JSON, no prose, of the form:",
-  '{"edits":[{"pageId":"<scope-dir>/<slug>","frontmatter":{"title":"...","type":"entity|concept|decision|summary|template","scope":"company|department:<x>|team:<x>|product:<x>"},"body":"<markdown>"}],"changeSummary":"<one short paragraph>"}'
-].join(" ");
-var SEED_DRAFT_SYSTEM = [
-  "You are a disciplined wiki maintainer helping a team seed its shared knowledge base from a short",
-  "interview and (optionally) uploaded sources. Turn the ANSWERS and SOURCES into a small set of",
-  "durable, well-structured markdown wiki pages \u2014 prefer a few focused pages over many thin ones.",
-  "Each page needs a valid scope (company | department:<x> | team:<x> | product:<x>) \u2014 use the",
-  "DEFAULT SCOPE given below unless a page clearly belongs elsewhere. Keep each page focused and",
-  "schema-correct; do not invent facts beyond the interview and sources. Respond with ONLY JSON,",
-  "no prose, of the form:",
-  '{"pages":[{"pageId":"<scope-dir>/<slug>","frontmatter":{"title":"...","type":"entity|concept|decision|summary|template","scope":"company|department:<x>|team:<x>|product:<x>"},"body":"<markdown>"}],"changeSummary":"<one short paragraph>"}'
-].join(" ");
-var LINT_LLM_SYSTEM = [
-  "You are a wiki quality reviewer. Examine the PAGES and report ONLY two kinds of issue:",
-  '"contradiction" (two or more pages asserting conflicting facts) and "missing-xref" (two pages',
-  "clearly about related topics that should be cross-referenced \u2014 via `related` (the canonical emit)",
-  "or an inline body link \u2014 but are not). Report nothing else.",
-  "Use ONLY the pageIds given \u2014 never invent one. Respond with ONLY JSON:",
-  '{"findings":[{"kind":"contradiction|missing-xref","pageIds":["..."],"detail":"...","suggestedAction":"..."}]}.',
-  'If there are no issues, respond {"findings":[]}.'
-].join(" ");
+// ../core/dist/ops/link-graph.js
+function buildLinkGraph(pages) {
+  const resolveBodyLink = buildBodyLinkResolver(pages.map((p) => ({
+    pageId: p.pageId,
+    title: p.frontmatter.title,
+    aliases: p.frontmatter.aliases,
+    // other names the page answers to (SER-205)
+    active: p.frontmatter.status === "active"
+  })));
+  const edges = [];
+  const seenEdges = /* @__PURE__ */ new Set();
+  const inbound = /* @__PURE__ */ new Set();
+  const missing = /* @__PURE__ */ new Map();
+  for (const p of pages) {
+    if (p.frontmatter.status !== "active")
+      continue;
+    for (const link2 of extractBodyLinks(p.body)) {
+      const resolved = resolveBodyLink(link2.target);
+      if (resolved) {
+        if (resolved === p.pageId)
+          continue;
+        inbound.add(resolved);
+        const key = `${p.pageId}\0${resolved}`;
+        if (seenEdges.has(key))
+          continue;
+        seenEdges.add(key);
+        edges.push({ from: p.pageId, to: resolved });
+      } else {
+        const key = link2.target.toLowerCase();
+        const entry = missing.get(key) ?? { target: link2.target, from: /* @__PURE__ */ new Set() };
+        entry.from.add(p.pageId);
+        missing.set(key, entry);
+      }
+    }
+  }
+  return {
+    edges,
+    inbound,
+    // Most-referenced missing pages first (bigger demand signal), then alphabetical for stability.
+    missingLinks: [...missing.values()].map((m) => ({ target: m.target, fromPageIds: [...m.from].sort() })).sort((a, b) => b.fromPageIds.length - a.fromPageIds.length || a.target.localeCompare(b.target))
+  };
+}
+var UNCATEGORISED_RECENT_DAYS = 30;
+function categoryCohesion(input) {
+  const vocabulary = input.vocabulary ?? [];
+  const now = input.now ?? /* @__PURE__ */ new Date();
+  const compare = compareCategoryTokens(vocabulary);
+  const catsOf = /* @__PURE__ */ new Map();
+  for (const p of input.pages) {
+    if (p.frontmatter.status !== "active")
+      continue;
+    if (isCharterPageId(p.pageId))
+      continue;
+    catsOf.set(p.pageId, normalizeCategories(p.frontmatter.tags));
+  }
+  const pageCount2 = /* @__PURE__ */ new Map();
+  for (const cats of catsOf.values())
+    for (const c of cats)
+      pageCount2.set(c, (pageCount2.get(c) ?? 0) + 1);
+  const acc = /* @__PURE__ */ new Map();
+  const bucket = (c) => {
+    let a = acc.get(c);
+    if (!a)
+      acc.set(c, a = { outgoing: 0, internal: 0, unresolved: 0, offCatalog: 0, outboundTo: /* @__PURE__ */ new Map() });
+    return a;
+  };
+  for (const c of pageCount2.keys())
+    bucket(c);
+  for (const edge of input.graph.edges) {
+    const from = catsOf.get(edge.from);
+    if (!from || from.length === 0)
+      continue;
+    const to = catsOf.get(edge.to);
+    for (const c of from) {
+      const a = bucket(c);
+      if (!to) {
+        a.offCatalog += 1;
+        continue;
+      }
+      a.outgoing += 1;
+      if (to.includes(c)) {
+        a.internal += 1;
+        continue;
+      }
+      for (const t of to.length > 0 ? to : [null])
+        a.outboundTo.set(t, (a.outboundTo.get(t) ?? 0) + 1);
+    }
+  }
+  for (const m of input.graph.missingLinks) {
+    for (const from of m.fromPageIds) {
+      for (const c of catsOf.get(from) ?? [])
+        bucket(c).unresolved += 1;
+    }
+  }
+  const categories = [...acc.entries()].map(([category, a]) => {
+    const pages = pageCount2.get(category) ?? 0;
+    return {
+      category,
+      pageCount: pages,
+      outgoing: a.outgoing,
+      internal: a.internal,
+      // `pages < 2` first: a singleton's 0 is arithmetic, not evidence.
+      ratio: pages < 2 || a.outgoing === 0 ? null : a.internal / a.outgoing,
+      unresolved: a.unresolved,
+      offCatalog: a.offCatalog,
+      outboundTo: [...a.outboundTo.entries()].map(([c, count]) => ({ category: c, count })).sort((x, y) => y.count - x.count || compare(x.category, y.category))
+    };
+  }).sort((x, y) => compare(x.category, y.category));
+  const singles = categories.filter((c) => c.pageCount === 1).map((c) => c.category);
+  const declaredSingletons = vocabulary.filter((v) => singles.includes(v));
+  const cutoff = new Date(now.getTime() - UNCATEGORISED_RECENT_DAYS * 864e5).toISOString().slice(0, 10);
+  let uncategorisedPages = 0;
+  let recent = 0;
+  for (const p of input.pages) {
+    const cats = catsOf.get(p.pageId);
+    if (!cats || cats.length > 0)
+      continue;
+    uncategorisedPages += 1;
+    if ((p.frontmatter.updated ?? "") >= cutoff)
+      recent += 1;
+  }
+  const inUse = new Set(pageCount2.keys());
+  return {
+    categories,
+    singletons: {
+      declared: declaredSingletons,
+      other: singles.length - declaredSingletons.length,
+      total: categories.length
+    },
+    uncategorised: {
+      pages: uncategorisedPages,
+      activePages: catsOf.size,
+      recent,
+      withinDays: UNCATEGORISED_RECENT_DAYS
+    },
+    drift: vocabulary.length === 0 ? null : {
+      declared: [...vocabulary],
+      unused: vocabulary.filter((v) => !inUse.has(v)),
+      undeclared: categories.map((c) => c.category).filter((c) => !vocabulary.includes(c))
+    }
+  };
+}
 
 // ../../apps/sync-agent/dist/health.js
 var import_promises3 = require("node:fs/promises");
@@ -13377,8 +14168,11 @@ async function readWorkingTree(dir) {
     try {
       const parsed = parsePage(raw);
       pages.push({ pageId: pageIdFromPath(rel), frontmatter: parsed.frontmatter, body: parsed.body });
-    } catch {
-      unparseable.push(rel);
+    } catch (e) {
+      unparseable.push({
+        relPath: rel,
+        reason: e instanceof PageParseError ? e.message : "could not be parsed"
+      });
     }
   }
   const sourcePaths = new Set((await walk((0, import_node_path4.join)(dir, WIKI_LAYOUT.sourcesDir), () => true).catch(() => [])).map((rel) => `${WIKI_LAYOUT.sourcesDir}/${rel}`));
@@ -13386,52 +14180,39 @@ async function readWorkingTree(dir) {
 }
 async function localLint(dir, now = /* @__PURE__ */ new Date()) {
   const { pages, sourcePaths, unparseable } = await readWorkingTree(dir);
-  const resolveBodyLink = buildBodyLinkResolver(pages.map((p) => ({
-    pageId: p.pageId,
-    title: p.frontmatter.title,
-    active: p.frontmatter.status === "active"
-  })));
-  const inbound = /* @__PURE__ */ new Set();
-  const missing = /* @__PURE__ */ new Map();
-  for (const p of pages) {
-    if (p.frontmatter.status !== "active")
-      continue;
-    for (const ref of p.frontmatter.related)
-      if (ref !== p.pageId)
-        inbound.add(ref);
-    for (const link2 of extractBodyLinks(p.body)) {
-      const resolved = resolveBodyLink(link2.target);
-      if (resolved) {
-        if (resolved !== p.pageId)
-          inbound.add(resolved);
-      } else {
-        const key = link2.target.toLowerCase();
-        const entry = missing.get(key) ?? { target: link2.target, from: /* @__PURE__ */ new Set() };
-        entry.from.add(p.pageId);
-        missing.set(key, entry);
-      }
-    }
-  }
+  const graph = buildLinkGraph(pages);
+  const categoryVocabulary = categoryOrderFromPages(pages);
   const subjects = pages.map((p) => ({
     pageId: p.pageId,
+    title: p.frontmatter.title,
     status: p.frontmatter.status,
     updated: p.frontmatter.updated,
-    sources: p.frontmatter.sources,
-    related: p.frontmatter.related,
+    // `?? []` since SER-201 dropped the schema default: no citations is now an absent key.
+    sources: p.frontmatter.sources ?? [],
     summary: p.frontmatter.summary,
-    derivedSummary: deriveSummary(p.body)
+    derivedSummary: deriveSummary(p.body),
+    // VERBATIM, unfolded (SER-197) — the category checks quote what the author wrote, and the key
+    // names beside them are what identifies an Obsidian `tag:` that vanished into `extra`.
+    tags: p.frontmatter.tags ?? [],
+    extraKeys: Object.keys(p.frontmatter.extra ?? {})
   }));
   return {
     findings: runDeterministicLint({
       subjects,
-      existingPageIds: new Set(pages.map((p) => p.pageId)),
-      inbound,
+      inbound: graph.inbound,
       sourcePaths,
+      // Core's own derivation, NOT the `findCharterPage` + `parseCharter` sequence `localCoverage`
+      // below spells out — that one needs the parsed charter object, this one needs only the
+      // vocabulary, and a second hand-rolled "which page is the charter" is precisely the defect
+      // SER-196's review found. The clone and the hosted lint must read one charter.
+      categoryVocabulary,
       now,
       staleDays: STALE_DAYS
     }),
-    // Most-referenced first, then alphabetical — the same ordering the server surfaces.
-    missingLinks: [...missing.values()].map((m) => ({ target: m.target, fromPageIds: [...m.from].sort() })).sort((a, b) => b.fromPageIds.length - a.fromPageIds.length || a.target.localeCompare(b.target)),
+    // Most-referenced first, then alphabetical — the same ordering the server surfaces, because it
+    // is now literally the same code.
+    missingLinks: graph.missingLinks,
+    structure: categoryCohesion({ pages, graph, vocabulary: categoryVocabulary, now }),
     unparseable,
     pageCount: pages.length
   };
@@ -13439,14 +14220,15 @@ async function localLint(dir, now = /* @__PURE__ */ new Date()) {
 async function localCoverage(dir, profile = {}) {
   const { pages } = await readWorkingTree(dir);
   const entries = pages.map((p) => toIndexEntry({ pageId: p.pageId, frontmatter: p.frontmatter, body: p.body }));
-  const charterPage = pages.find((p) => p.pageId === CHARTER_PAGE_ID);
+  const charterPage = findCharterPage(pages);
   const charter = charterPage && charterPage.frontmatter.status === "active" ? parseCharter(charterPage.body) : null;
   const shape = profile.shape ?? "company";
+  const rows = computeCoverage(entries, shape, profile.scopeSlug ?? profile.teamName ?? "team", charter);
   return {
-    // Prefer the pinned slug; a cache written before SER-186 has only the name, and `scopeSlug` is
-    // idempotent, so that path produces exactly what it produced before.
-    rows: computeCoverage(entries, shape, profile.scopeSlug ?? profile.teamName ?? "team", charter),
+    rows,
+    progress: coverageProgress(rows),
     chartered: Boolean(charter?.sections?.length),
+    categories: charterCategoryOrder(charter),
     shape,
     assumed: !profile.shape
   };
@@ -13476,14 +14258,14 @@ function modeMarker(mode) {
 <!-- commonground:mode:${mode} -->`;
 }
 function briefBullet(voice) {
-  const capped = sanitizeBrief((voice?.retrievalBrief ?? "").replace(/<!--|-->/g, " "));
-  return capped ? `
-- The wiki's charter states when to consult it: "${capped}"` : "";
+  const capped2 = sanitizeBrief((voice?.retrievalBrief ?? "").replace(/<!--|-->/g, " "));
+  return capped2 ? `
+- The wiki's charter states when to consult it: "${capped2}"` : "";
 }
 function excludesBullet(voice) {
-  const capped = sanitizeBrief((voice?.excludes ?? "").replace(/<!--|-->/g, " "));
-  return capped ? `
-- It also states what does NOT belong here: "${capped}" \u2014 don't file that material here, and don't expect to find it.` : "";
+  const capped2 = sanitizeBrief((voice?.excludes ?? "").replace(/<!--|-->/g, " "));
+  return capped2 ? `
+- It also states what does NOT belong here: "${capped2}" \u2014 don't file that material here, and don't expect to find it.` : "";
 }
 function cloneRouterRule(voice) {
   const v = wikiVoice(voice?.audience);
@@ -13586,7 +14368,12 @@ function parseRouterBlock(claudeMd) {
   };
 }
 async function charterVoiceFromWiki(wikiDir) {
-  const raw = await readFileOr((0, import_node_path5.join)(wikiDir, `${CHARTER_PAGE_ID}.md`), "");
+  let raw = "";
+  for (const pageId of CHARTER_PAGE_IDS) {
+    raw = await readFileOr((0, import_node_path5.join)(wikiDir, `${pageId}.md`), "");
+    if (raw)
+      break;
+  }
   if (!raw)
     return null;
   const fence = raw.startsWith("---") ? /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/.exec(raw) : null;
@@ -13844,6 +14631,10 @@ async function importWiki(deps, opts) {
     await cloneRepo(remote.url, dir, remote.env);
     await injectAll(dir);
   }
+  const rewritten = await localLogRewrite(dir);
+  if (rewritten) {
+    throw new AgentError(`${WIKI_LAYOUT.logFile} is append-only, and entry ${rewritten.entry} was changed \u2014 it read "${rewritten.was}" and now ${rewritten.now === null ? "is gone" : `reads "${rewritten.now}"`}. Put it back (new entries go at the bottom), then import again. Nothing was imported.`);
+  }
   const guardedHomes = [
     deps.configHome,
     ...isInside2(deps.dataHome, sourceDir) ? [] : [deps.dataHome]
@@ -13950,13 +14741,14 @@ var RESERVED_ROOT_REASON = {
   [WIKI_LAYOUT.indexFile]: "the catalog is regenerated from the whole wiki",
   [WIKI_LAYOUT.logFile]: "the change log is append-only \u2014 the team's history stays"
 };
-async function walkFiles(root, keep) {
+async function walkFiles(root, keep, onUnreadableDir) {
   const out = [];
   async function walk2(abs, rel) {
     let entries;
     try {
       entries = await (0, import_promises5.readdir)(abs, { withFileTypes: true });
-    } catch {
+    } catch (e) {
+      onUnreadableDir?.(rel || ".", e instanceof Error ? e.message : "could not be read");
       return;
     }
     for (const e of entries) {
@@ -13973,8 +14765,8 @@ async function walkFiles(root, keep) {
   await walk2(root, "");
   return out;
 }
-async function walkMarkdown(root) {
-  return walkFiles(root, (rel) => rel.endsWith(".md"));
+async function walkMarkdown(root, onUnreadableDir) {
+  return walkFiles(root, (rel) => rel.endsWith(".md"), onUnreadableDir);
 }
 async function normalizeAndReindex(dir, sourceDir, teamId, today) {
   const importedRel = (await walkMarkdown(sourceDir)).filter(isWikiPagePath);
@@ -13988,8 +14780,7 @@ async function normalizeAndReindex(dir, sourceDir, teamId, today) {
       continue;
     }
   }
-  const defaultScope = shapeDefaultScope("company", teamId);
-  const result = normalizeImport(importFiles, { defaultScope, today });
+  const result = normalizeImport(importFiles, { today });
   for (const f of result.files)
     await (0, import_promises5.writeFile)((0, import_node_path6.join)(dir, f.relPath), f.content, "utf8");
   if (result.skipped.length > 0) {
@@ -14011,22 +14802,30 @@ ${lines}
 ${lines}
 `);
   }
-  await rebuildIndex(dir);
+  const unparseable = await rebuildIndex(dir);
+  if (unparseable.length > 0) {
+    const lines = unparseable.map((u) => `  ${u.relPath}: ${u.reason}`).join("\n");
+    process.stderr.write(`commonground import: ${unparseable.length} page(s) don't parse \u2014 listed in the catalog as "(unparseable)":
+${lines}
+`);
+  }
   const normalized = result.files.filter((f) => f.action === "normalized").length;
   return { normalized, skipped: result.skipped.length, lossy };
 }
+function catalogEntries(tree) {
+  const entries = tree.pages.map(toIndexEntry);
+  for (const u of tree.unparseable)
+    entries.push(placeholderEntry(pageIdFromPath(u.relPath)));
+  return entries;
+}
+async function writeIndex(dir, tree) {
+  const categoryOrder = categoryOrderFromPages(tree.pages);
+  await (0, import_promises5.writeFile)((0, import_node_path6.join)(dir, WIKI_LAYOUT.indexFile), regenerateIndex(catalogEntries(tree), { categoryOrder }), "utf8");
+}
 async function rebuildIndex(dir) {
-  const entries = [];
-  for (const relPath of (await walkMarkdown(dir)).filter(isWikiPagePath)) {
-    let parsed;
-    try {
-      parsed = parsePage(await (0, import_promises5.readFile)((0, import_node_path6.join)(dir, relPath), "utf8"));
-    } catch {
-      continue;
-    }
-    entries.push(toIndexEntry({ pageId: pageIdFromPath(relPath), ...parsed }));
-  }
-  await (0, import_promises5.writeFile)((0, import_node_path6.join)(dir, WIKI_LAYOUT.indexFile), regenerateIndex(entries), "utf8");
+  const tree = await readWorkingTree(dir);
+  await writeIndex(dir, tree);
+  return tree.unparseable;
 }
 async function mtimeDate(path) {
   try {
@@ -14037,14 +14836,11 @@ async function mtimeDate(path) {
 }
 async function appendLog(dir, line) {
   const path = (0, import_node_path6.join)(dir, WIKI_LAYOUT.logFile);
-  let existing = "";
-  try {
-    existing = await (0, import_promises5.readFile)(path, "utf8");
-  } catch {
-  }
-  const sep = existing.length === 0 || existing.endsWith("\n") ? "" : "\n";
-  await (0, import_promises5.writeFile)(path, `${existing}${sep}${line}
-`, "utf8");
+  const existing = await (0, import_promises5.readFile)(path, "utf8").catch(() => null);
+  await (0, import_promises5.writeFile)(path, appendLogLine(existing, line), "utf8");
+}
+async function localLogRewrite(dir) {
+  return findLogRewrite(await showBlob(dir, "HEAD", WIKI_LAYOUT.logFile), await (0, import_promises5.readFile)((0, import_node_path6.join)(dir, WIKI_LAYOUT.logFile), "utf8").catch(() => ""));
 }
 async function isDir(path) {
   try {
@@ -14270,6 +15066,7 @@ async function push(deps, teamId, opts = {}) {
     const snapshot = await snapshotWorkingTree(dir, "commonground preview", agentAuthor(binding));
     const pending = toPageChanges(await diffNameStatus(dir, base, snapshot));
     const wouldDelete = pending.filter((p) => p.kind === "deleted");
+    const { unparseable: unparseable2 } = await readWorkingTree(dir);
     return {
       teamId,
       clonePath: dir,
@@ -14278,11 +15075,29 @@ async function push(deps, teamId, opts = {}) {
       behind: b,
       pages: pending,
       deletions: wouldDelete.length ? wouldDelete : void 0,
+      unparseable: unparseable2.length ? unparseable2 : void 0,
+      logRewrite: await localLogRewrite(dir) ?? void 0,
       incoming: b > 0 ? toPageChanges(await diffNameStatus(dir, base, remoteRef)) : []
     };
   }
-  if (!await isWorkingTreeClean(dir))
-    await rebuildIndex(dir);
+  const tree = await readWorkingTree(dir);
+  if (tree.unparseable.length > 0 && !opts.allowUnparseable) {
+    return {
+      teamId,
+      clonePath: dir,
+      action: "needs-unparseable-fix",
+      ahead: 0,
+      behind: 0,
+      unparseable: tree.unparseable
+    };
+  }
+  let unparseable = tree.unparseable;
+  const logRewrite = await localLogRewrite(dir);
+  if (logRewrite) {
+    return { teamId, clonePath: dir, action: "needs-log-fix", ahead: 0, behind: 0, logRewrite };
+  }
+  if (tree.unparseable.length > 0 || await hasWorkToCommit(dir))
+    await writeIndex(dir, tree);
   await commitAllIfAny(dir, binding, "curate wiki");
   await refreshRemote(dir, origin);
   const branch = await currentBranch(dir);
@@ -14311,8 +15126,11 @@ async function push(deps, teamId, opts = {}) {
     await resetHardTo(dir, remote);
     await runGitOverPaths(dir, ["checkout", draftBranch], myEdits);
     await runGitOverPaths(dir, ["rm", "-f", "--ignore-unmatch"], myDeletions);
+    const mergedLog = mergeAppendOnlyLogs(await showBlob(dir, base, WIKI_LAYOUT.logFile), await showBlob(dir, remote, WIKI_LAYOUT.logFile), await showBlob(dir, draftBranch, WIKI_LAYOUT.logFile));
+    if (mergedLog !== "")
+      await (0, import_promises5.writeFile)((0, import_node_path6.join)(dir, WIKI_LAYOUT.logFile), mergedLog, "utf8");
     await injectAll(dir);
-    await rebuildIndex(dir);
+    unparseable = await rebuildIndex(dir);
     await commitAllIfAny(dir, binding, "curate wiki (published over hosted changes)");
     ({ ahead, behind } = await aheadBehind(dir, "HEAD", remote));
   }
@@ -14342,6 +15160,10 @@ async function push(deps, teamId, opts = {}) {
     behind,
     pages: published,
     deletions: deletions.length ? deletions : void 0,
+    // These went out as placeholders — usually because the caller waived them, but the `--mine`
+    // replay can add pages nobody waived (they arrived with the hosted tip). Reported either way:
+    // the receipt describes what this push published, not what the caller asked for.
+    unparseable: unparseable.length ? unparseable : void 0,
     draftBranch,
     // Read AFTER the push so it names the commit the team actually received.
     commitId: await headOid(dir)
@@ -14439,6 +15261,50 @@ async function coverage(deps, teamId) {
     clonePath: dir
   };
 }
+async function normalizeRetiredKeys(deps, teamId, opts = {}) {
+  const binding = await readBinding(teamId, deps.configHome, deps.dataHome);
+  if (!binding)
+    throw notLoggedIn(teamId, deps.configHome);
+  const dir = clonePath(teamId, deps.dataHome);
+  if (!await pathExists2(dir))
+    throw new AgentError(`no local clone for "${teamId}" \u2014 run "commonground pull" first`);
+  const files = [];
+  const unreadable = [];
+  const pageFiles = (await walkMarkdown(dir, (relPath, reason) => {
+    if (isWikiPagePath(relPath))
+      unreadable.push({ relPath, reason });
+  })).filter(isWikiPagePath);
+  for (const relPath of pageFiles) {
+    try {
+      files.push({ relPath, content: await (0, import_promises5.readFile)((0, import_node_path6.join)(dir, relPath), "utf8") });
+    } catch (e) {
+      unreadable.push({ relPath, reason: e instanceof Error ? e.message : "could not be read" });
+    }
+  }
+  const profile = await readTeamProfile(teamId, deps.configHome);
+  const sweep = sweepRetiredKeys(files, {
+    unreadable,
+    ...profile.shape ? {
+      writesCompanyScope: shapeDefaultScope(profile.shape, profile.scopeSlug ?? profile.teamName ?? "team") === "company"
+    } : {}
+  });
+  const plan = {
+    teamId,
+    clonePath: dir,
+    rewrites: sweep.rewrites.map(({ relPath, removed }) => ({ relPath, removed })),
+    unparseable: sweep.unparseable,
+    unreadable: sweep.unreadable,
+    withheld: sweep.withheld
+  };
+  if (sweep.rewrites.length === 0)
+    return { ...plan, action: "nothing-to-do" };
+  if (!opts.apply)
+    return { ...plan, action: "preview" };
+  for (const r of sweep.rewrites)
+    await (0, import_promises5.writeFile)((0, import_node_path6.join)(dir, r.relPath), r.content, "utf8");
+  await rebuildIndex(dir);
+  return { ...plan, action: "applied" };
+}
 function agentAuthor(binding) {
   return { name: binding.userId, email: `${binding.userId}@users.commonground.local` };
 }
@@ -14469,19 +15335,27 @@ Usage:
   commonground push [team]     publish your local changes (admins/curators) \u2014 commits for you.
                                --dry-run previews without publishing. Stops if the published wiki
                                moved (--mine keeps YOUR version of pages both sides changed;
-                               never force-pushes), and stops if the change REMOVES pages
-                               (--allow-deletes confirms those)
+                               never force-pushes), stops if the change REMOVES pages
+                               (--allow-deletes confirms those), and stops if a page doesn't parse
+                               (--allow-unparseable publishes it as a flagged placeholder)
   commonground status [team]   show sync state ("N commits behind") + local divergence.
                                --clear-stale-credential removes a leftover pre-0.4.1 sign-in file
                                from inside your wiki folder \u2014 refused unless that file is provably
                                unused, so it can never sign you out
   commonground lint [team]     health-check YOUR LOCAL COPY (everyone): stale / orphan / broken
-                               citation / thin summary, plus pages referenced but not written yet.
+                               citation / thin + redundant summary / off-vocabulary, near-miss and
+                               missing category tags, plus pages referenced but not written yet.
                                Reads the working tree, so unpublished edits count. --json for the
                                machine-readable form. Detection only \u2014 it never edits
   commonground coverage [team] what the wiki's own checklist still wants (everyone), against your
                                LOCAL copy: the charter's structure when chartered, else the team
                                shape template. --json for the machine-readable form
+  commonground normalize --drop-retired-keys
+                               remove frontmatter keys CommonGround has RETIRED (type, related,
+                               and scope: company where nothing else is scoped) from your local
+                               copy. Reports what would go and changes nothing until --apply.
+                               Never touches a key that isn't on that list \u2014 an imported vault's
+                               own frontmatter stays. Publishing is still "commonground push"
   commonground resolve <how>   low-level divergence escape hatch: keep-local | take-remote |
                                save-as-draft
   commonground export [team]   write a static tar of the current wiki (HEAD)
@@ -14644,7 +15518,7 @@ function formatImport(r, v) {
 ` + importCaveats(r) + importConvergence(r);
   const tail = r.synced?.action === "pushed" ? ` Published to ${v.wiki}.` : r.synced?.action === "local-only" ? " Committed locally (your role is read-only, so nothing was published)." : r.synced?.action === "diverged" ? ` NOTE: ${v.wiki} diverged \u2014 run "commonground status" to resolve.` : "";
   const normalized = r.normalized ? ` Normalized frontmatter on ${r.normalized} page(s).` : "";
-  const skipped = r.skipped ? ` ${r.skipped} file(s) couldn't be normalized (imported as-is).` : "";
+  const skipped = r.skipped ? ` ${r.skipped} file(s) couldn't be normalized (imported as-is) \u2014 "commonground push" names them before publishing.` : "";
   const blocked = r.synced?.action === "blocked-deletes" ? ` Committed locally, NOT published \u2014 the pending changes also REMOVE ${pageCount((r.synced.deletions ?? []).length)} from ${v.wiki}${r.synced.deletions?.length ? ` (${r.synced.deletions.map((p) => p.page).join(", ")})` : ""}.
   Review with "commonground push --dry-run", then publish with:
     commonground push --allow-deletes
@@ -14775,34 +15649,124 @@ function deleteWarning(deletions, v) {
     ${capitalize2(v.removalImpact)}. Past versions stay in history, but the page goes away.
 `;
 }
+function unparseableLines(pages, indent) {
+  return pages.map((p) => `${indent}${p.relPath}: ${p.reason}
+`).join("");
+}
+function placeholderNote(unparseable) {
+  if (!unparseable?.length)
+    return "";
+  return `  \u26A0 ${unparseable.length} page(s) went out as "(unparseable)" placeholders \u2014 listed, but nothing can read them:
+${unparseableLines(unparseable, "    ")}`;
+}
 function capitalize2(s) {
   return s.charAt(0).toUpperCase() + s.slice(1);
+}
+var MAX_PRINTED_IDS = 5;
+var MAX_COHESION_ROWS = 5;
+var MAX_NAMED_PER_LINE = 4;
+function capped(items, more) {
+  const shown = items.slice(0, MAX_NAMED_PER_LINE);
+  const rest = items.length - shown.length;
+  return shown.join(", ") + (rest > 0 ? `, and ${more(rest)}` : "");
+}
+function formatStructure(s) {
+  const out = [];
+  const leaving = s.categories.filter((c) => c.ratio !== null && c.outgoing - c.internal > c.internal);
+  for (const c of leaving.slice(0, MAX_COHESION_ROWS)) {
+    const external = c.outgoing - c.internal;
+    const dests = capped(c.outboundTo.map((o) => `${o.count} into ${o.category ?? "a page with no category"}`), (n) => `${n} other categor${n === 1 ? "y" : "ies"}`);
+    out.push(`    ${c.category} \u2014 ${pageCount(c.pageCount)}. ${external} of their ${c.outgoing} link(s) to other pages point outside the category: ${dests}.
+      That is what the links say; whether the grouping is right is your call.
+`);
+    if (c.outboundTo.reduce((n, o) => n + o.count, 0) > external) {
+      out.push(`      (Those add up to more than ${external} \u2014 a destination page carrying two categories is counted under each.)
+`);
+    }
+    const aside = [
+      c.unresolved ? `${c.unresolved} more link(s) point at a page that doesn't exist yet` : "",
+      c.offCatalog ? `${c.offCatalog} at a page the catalog doesn't render` : ""
+    ].filter(Boolean);
+    if (aside.length)
+      out.push(`      (${aside.join(", and ")} \u2014 not counted above.)
+`);
+  }
+  if (leaving.length > MAX_COHESION_ROWS) {
+    out.push(`    +${leaving.length - MAX_COHESION_ROWS} more categor(y/ies) whose links mostly leave \u2014 see --json.
+`);
+  }
+  const isolated = s.categories.filter((c) => c.pageCount > 1 && c.outgoing === 0 && c.unresolved === 0 && c.offCatalog === 0);
+  for (const c of isolated.slice(0, MAX_COHESION_ROWS)) {
+    out.push(`    ${c.category} \u2014 ${pageCount(c.pageCount)}, none of which links to any other page in the wiki.
+`);
+  }
+  if (isolated.length > MAX_COHESION_ROWS) {
+    out.push(`    +${isolated.length - MAX_COHESION_ROWS} more categor(y/ies) whose pages link nowhere \u2014 see --json.
+`);
+  }
+  if (s.singletons.declared.length) {
+    out.push(`    Charter sections holding a single page: ${s.singletons.declared.join(", ")} \u2014 there is nothing for their links to be internal to, so no ratio is reported.
+`);
+  }
+  if (s.singletons.other) {
+    out.push(`    ${s.singletons.other} of your ${s.singletons.total} categor(y/ies) in use hold a single page and are not charter sections` + // The pointer holds ONLY where a vocabulary exists. `detectOffVocabularyTags` returns
+    // nothing on an unchartered wiki ("with no vocabulary there is nothing to be outside of"),
+    // and there every singleton lands in `other` — so this line fired while the section it sent
+    // the user to could not exist in the report. `near-miss-tag` is named beside it because the
+    // three category checks PARTITION: a near-miss tag is claimed by that kind, not this one.
+    (s.drift ? " (named per page under off-vocabulary-tag / near-miss-tag)" : "") + ".\n");
+  }
+  const u = s.uncategorised;
+  if (u.pages) {
+    const share = u.activePages ? Math.round(u.pages / u.activePages * 100) : 0;
+    out.push(`    ${u.pages} of ${u.activePages} active page(s) (${share}%) declare no category` + // A FACT, never a trend: nothing stores a history of category counts, so this can say how
+    // many are recent and must never say the bucket is "growing".
+    (u.recent ? `, ${u.recent} of them written or revised in the last ${u.withinDays} days` : "") + ".\n");
+  }
+  if (s.drift?.unused.length) {
+    out.push(`    ${s.drift.unused.length} charter section(s) have no page declaring them: ${s.drift.unused.join(", ")}.
+      A section can still read complete in coverage \u2014 the checklist falls back to matching a page's NAME \u2014 so check whether those pages just need the tag.
+`);
+  }
+  if (s.drift?.undeclared.length) {
+    out.push(`    The charter lists ${s.drift.declared.length} section(s); pages use ${s.singletons.total} categor(y/ies), ${s.drift.undeclared.length} of them undeclared: ${capped(s.drift.undeclared, (n) => `${n} more`)}.
+`);
+  }
+  if (!out.length)
+    return "";
+  return `  structure \u2014 what the links say about your categories (a question, not a defect; the fix is a retag, never a move):
+${out.join("")}`;
 }
 function formatLint(r) {
   const head = `${r.clonePath} \u2014 ${r.pageCount} page(s), lint of your LOCAL copy (unpublished work included).
 `;
   const broken = r.unparseable.length ? `  BROKEN (${r.unparseable.length}) \u2014 these files don't parse, so nothing else here sees them:
-` + r.unparseable.map((p) => `    ${p}
-`).join("") : "";
-  if (!r.findings.length && !r.missingLinks.length && !broken)
+` + unparseableLines(r.unparseable, "    ") : "";
+  const structure = formatStructure(r.structure);
+  if (!r.findings.length && !r.missingLinks.length && !broken) {
     return `${head}  No issues found.
-`;
+${structure}`;
+  }
   const byKind = /* @__PURE__ */ new Map();
   for (const f of r.findings)
     byKind.set(f.kind, [...byKind.get(f.kind) ?? [], f]);
   const groups = [...byKind.entries()].map(([kind, fs]) => `  ${kind} (${fs.length}):
-` + fs.map((f) => `    ${f.pageIds.join(", ")} \u2014 ${f.detail}
-`).join("")).join("");
+` + fs.map((f) => {
+    const shown = f.pageIds.slice(0, MAX_PRINTED_IDS).join(", ");
+    const rest = f.pageIds.length - MAX_PRINTED_IDS;
+    const fix = f.suggestedAction.trim() ? `      \u2192 ${f.suggestedAction.trim()}
+` : "";
+    return `    ${shown}${rest > 0 ? `, +${rest} more` : ""} \u2014 ${f.detail}
+${fix}`;
+  }).join("")).join("");
   const red = r.missingLinks.length ? `  referenced but not written yet (${r.missingLinks.length}):
 ` + r.missingLinks.map((m) => `    ${m.target} \u2014 linked from ${m.fromPageIds.join(", ")}
 `).join("") : "";
-  return `${head}${broken}${groups}${red}`;
+  return `${head}${broken}${groups}${red}${structure}`;
 }
 function formatCoverage(r) {
-  const done = r.rows.filter((s) => s.status === "done").length;
-  const counted = r.rows.filter((s) => s.status !== "excluded").length;
   const basis = r.chartered ? "against this wiki's charter" : `against the default "${r.shape}" shape template` + (r.assumed ? ' (no cached team profile \u2014 run "commonground pull" to refresh)' : "");
-  const head = `${r.clonePath} \u2014 ${done}/${counted} section(s) complete, ${basis}.
+  const head = `${r.clonePath} \u2014 ${r.progress.done}/${r.progress.total} section(s) complete, ${basis}.
 `;
   const open2 = r.rows.filter((s) => s.status === "empty" || s.status === "partial");
   if (!open2.length)
@@ -14812,17 +15776,66 @@ function formatCoverage(r) {
 ` + (s.prompt ? `      ${s.prompt}
 ` : "")).join("");
 }
+function retiredKeyLines(r) {
+  return r.rewrites.map((f) => `  ${f.relPath}
+` + f.removed.map((k) => `    ${k.key}: ${k.value}
+`).join("")).join("");
+}
+function retiredKeyList() {
+  return RETIRED_KEYS.map((rule) => `${retiredKeyLabel(rule)} (${rule.since})`).join(", ");
+}
+function withheldLines(r) {
+  return r.withheld.map((w) => `  Left alone \u2014 ${w.rule} on ${pageCount(w.relPaths.length)}: ${w.reason}
+    ${w.relPaths.join(", ")}
+`).join("");
+}
+function normalizeBroken(r) {
+  const parse = r.unparseable.length ? `  \u26A0 ${r.unparseable.length} page(s) don't parse, so nothing here can touch them:
+` + unparseableLines(r.unparseable, "    ") : "";
+  const io = r.unreadable.length ? `  \u26A0 ${r.unreadable.length} file(s) or folder(s) couldn't be read at all, so this ran on part of the wiki:
+` + unparseableLines(r.unreadable, "    ") : "";
+  return parse + io;
+}
+function formatNormalize(r) {
+  const tail = withheldLines(r) + normalizeBroken(r);
+  switch (r.action) {
+    case "nothing-to-do":
+      return r.withheld.length ? `${r.clonePath} \u2014 nothing to change.
+${tail}` : `${r.clonePath} \u2014 no retired keys. Nothing to do.
+${tail}`;
+    case "preview":
+      return `${r.clonePath} \u2014 ${r.rewrites.length} page(s) carry a key CommonGround has retired. Nothing was changed.
+` + retiredKeyLines(r) + tail + `  Removed by name, from an explicit list: ${retiredKeyList()}.
+  Every key not on that list stays exactly as it is \u2014 an imported vault's own frontmatter is not ours to delete.
+  To go ahead:
+    commonground normalize --drop-retired-keys --apply
+`;
+    case "applied":
+      return `Removed retired keys from ${r.rewrites.length} page(s) in ${r.clonePath}.
+` + retiredKeyLines(r) + tail + // Editing the clone is not publishing (SER-184) — and `push` previews and confirms on its
+      // own, so pointing at it is a handoff rather than an instruction to bulldoze ahead.
+      `  Nothing was published \u2014 run "commonground push" when you want the team to have it.
+`;
+  }
+}
 function formatPush(r, v) {
   switch (r.action) {
     case "preview": {
       const pages = r.pages ?? [];
+      const broken = r.unparseable?.length ? `  \u26A0 ${r.unparseable.length} page(s) don't parse, so the catalog can't describe them:
+` + unparseableLines(r.unparseable, "    ") + `    Publishing stops until they're fixed (or "commonground push --allow-unparseable").
+` : "";
+      const rewritten = r.logRewrite ? `  \u26A0 the change log was rewritten \u2014 this entry used to read:
+      ${r.logRewrite.was}
+    Publishing stops until it's restored; ${WIKI_LAYOUT.logFile} is append-only.
+` : "";
       if (!pages.length)
         return `${r.teamId}: nothing to publish.
-`;
+${broken}${rewritten}`;
       const conflict = r.behind ? `  Heads up: ${v.wiki} moved (${r.behind} change(s)): ${formatReceipt(r.incoming ?? []) || "(none)"}
 ` : "";
       return `${r.teamId}: would publish ${pageCount(pages.length)}: ${formatReceipt(pages)}
-` + conflict + deleteWarning(r.deletions, v) + `  Nothing published yet \u2014 run "commonground push" to confirm.
+` + conflict + broken + rewritten + deleteWarning(r.deletions, v) + `  Nothing published yet \u2014 run "commonground push" to confirm.
 `;
     }
     case "needs-delete-confirm":
@@ -14833,6 +15846,26 @@ function formatPush(r, v) {
 ` : "") + `  Nothing was published. To go ahead including the removal(s):
     commonground push --allow-deletes
 `;
+    case "needs-unparseable-fix": {
+      const broken = r.unparseable ?? [];
+      return `${r.teamId}: ${broken.length} page(s) don't parse \u2014 nothing was published.
+` + unparseableLines(broken, "  ") + `  These would be invisible in the wiki catalog. Fix them, or publish as-is:
+    commonground push --allow-unparseable
+`;
+    }
+    case "needs-log-fix": {
+      const w = r.logRewrite;
+      return `${r.teamId}: the change log was rewritten \u2014 nothing was published.
+` + (w ? `  This entry used to read:
+    ${w.was}
+` + (w.now === null ? `  \u2026and is now gone.
+` : `  \u2026and now reads:
+    ${w.now}
+`) : "") + `  ${WIKI_LAYOUT.logFile} is append-only: it is the wiki's record of what was done to it,
+  so entries are added at the bottom and never changed. Put the entry back the way it was
+  (adding your own new entry below it is fine), then publish again.
+`;
+    }
     case "read-only": {
       const pages = r.pages ?? [];
       return `${r.teamId}: your role is read-only \u2014 publishing is admins/curators only.
@@ -14849,8 +15882,8 @@ function formatPush(r, v) {
       const removed = r.deletions?.length ? `  Removed from ${v.wiki}: ${r.deletions.map((p) => p.page).join(", ")}
 ` : "";
       return pages.length ? `Published ${pageCount(pages.length)} to ${r.teamId}: ${formatReceipt(pages)}
-${removed}` : `Published ${r.ahead} change(s) to ${r.teamId}.
-${removed}`;
+${removed}${placeholderNote(r.unparseable)}` : `Published ${r.ahead} change(s) to ${r.teamId}.
+${removed}${placeholderNote(r.unparseable)}`;
     }
     case "blocked":
       return `${r.teamId}: ${v.remoteMoved} (${r.behind} change(s)) \u2014 nothing was published.
@@ -14863,7 +15896,7 @@ ${removed}`;
       const pages = r.pages ?? [];
       return `Published your version to ${r.teamId}${pages.length ? `: ${formatReceipt(pages)}` : ""}
 ` + (r.deletions?.length ? `  Removed from ${v.wiki}: ${r.deletions.map((p) => p.page).join(", ")}
-` : "") + (r.draftBranch ? `  Your pre-merge state is saved on ${r.draftBranch}.
+` : "") + placeholderNote(r.unparseable) + (r.draftBranch ? `  Your pre-merge state is saved on ${r.draftBranch}.
 ` : "");
     }
   }
@@ -14971,8 +16004,9 @@ Then run "commonground login --wait" (the code is valid for about ${Math.round(p
       const mine = rest.includes("--mine");
       const dryRun = rest.includes("--dry-run");
       const allowDeletes = rest.includes("--allow-deletes");
+      const allowUnparseable = rest.includes("--allow-unparseable");
       const teamId = await resolveTeamId(deps, teamArg(rest));
-      const result = await push(deps, teamId, { mine, dryRun, allowDeletes });
+      const result = await push(deps, teamId, { mine, dryRun, allowDeletes, allowUnparseable });
       process.stdout.write(formatPush(result, await voiceFor(deps, teamId)));
       return;
     }
@@ -14985,6 +16019,20 @@ Then run "commonground login --wait" (the code is valid for about ${Math.round(p
       const result = await status(deps, await resolveTeamId(deps, teamArg(rest)));
       const project = await detectRouterBlock(process.cwd());
       process.stdout.write(formatStatus(result, deps, project?.mode ?? null));
+      return;
+    }
+    case "normalize": {
+      if (!rest.includes("--drop-retired-keys")) {
+        throw new AgentError(`usage: commonground normalize --drop-retired-keys [--apply] [team]
+  Removes only the keys CommonGround has retired: ${retiredKeyList()}.
+  There is no general "normalize" \u2014 every other key in your frontmatter is yours,
+  and CommonGround has no way to tell a retired key of ours from one of yours
+  except by this list.`);
+      }
+      const deps = await buildDeps();
+      const apply = rest.includes("--apply");
+      const teamId = await resolveTeamId(deps, teamArg(rest));
+      process.stdout.write(formatNormalize(await normalizeRetiredKeys(deps, teamId, { apply })));
       return;
     }
     case "resolve": {

@@ -44,7 +44,15 @@ else — an explanation that contradicts the screen is worse than the jargon.
 Run `commonground push --dry-run`. This changes nothing, locally or on the server, and reports the
 pages that *would* be published (including brand-new pages that were never staged in git).
 
-- **Nothing to publish** — say so and stop.
+- **Any file the preview says doesn't parse** — deal with that first, before asking to publish.
+  `push` refuses the whole change set over it (§3b), so confirming now only to be stopped
+  afterwards asks the user the same question twice and answers it differently. The preview reports
+  these even when there is nothing to publish, and `push` still refuses then — so relay them rather
+  than stopping at "nothing to publish".
+- **Any warning that the change log was rewritten** — deal with that first too (§3c). `push`
+  refuses over it with **no override at all**, so this is the one preview warning that cannot be
+  confirmed past; leaving it until then only wastes the user's yes.
+- **Nothing to publish, nothing broken** — say so and stop.
 - Otherwise, show the user the page list in plain language: what's being added, what's being
   updated.
 
@@ -58,9 +66,11 @@ their teammates' Claude will start answering from it. Personal: *"Publish these 
 wiki?"* — it becomes what every Claude they use starts from, on any machine. Never offer a personal
 wiki a choice phrased around teammates.
 
-On confirmation, run `commonground push` and report the receipt (the pages published). If this
-publishes a change someone asked for, close their request with `resolve_suggestion` (`applied`) and
-pass the `commitId` push reports — that's the commit their suggestion produced.
+On confirmation, run `commonground push`. It publishes and reports the receipt (the pages published)
+— unless it comes back **needs-delete-confirm** (§3), **needs-unparseable-fix** (§3b) or
+**needs-log-fix** (§3c), in which case nothing was published and that section takes over. If this publishes a change someone asked
+for, close their request with `resolve_suggestion` (`applied`) and pass the `commitId` push reports
+— that's the commit their suggestion produced.
 
 ## 2b. If the user is a member (`read-only`) — shared wikis only
 
@@ -92,6 +102,44 @@ published**. Stop and make the removal impossible to miss:
 
 Only on that explicit yes, run `commonground push --allow-deletes` (add `--mine` too if you're in
 the conflict case below). Report exactly what was removed.
+
+## 3b. If a page doesn't parse (the catalog guardrail)
+
+If `push` comes back **needs-unparseable-fix**, **nothing was published** — and **nothing was
+lost**: every file is still in the clone exactly as written. Say both, in that order.
+
+A page whose frontmatter doesn't parse can be published but not *catalogued*, so it reaches nobody:
+it's absent from the index every session starts from, from retrieval, and from every health check.
+That's what makes this worth stopping for, and it's what to explain — not the YAML.
+
+- Relay each file **with the reason the CLI gave** (`invalid frontmatter: updated: Required`,
+  `missing frontmatter block`). The reason names the missing field, so it *is* the fix.
+- **The right first move is to fix the file**, not to override. Open it in the clone, repair the
+  frontmatter, and push again. Usually one line.
+- **Never reach for `--allow-unparseable` on your own initiative.** Unlike a deletion, this refusal
+  is cheap to bulldoze past, and bulldozing is the one thing that recreates the original bug.
+- If the user asks to publish as-is anyway — after an import that left a file unsalvageable, say —
+  run `commonground push --allow-unparseable` and tell them plainly what lands: the page is
+  published *and* listed in the catalog as an `(unparseable)` placeholder, flagged for attention.
+  Visible, not readable. "Published and flagged" is not the same promise as "published".
+
+## 3c. If the change log was rewritten (the history guardrail)
+
+If `push` comes back **needs-log-fix** — or the preview in §1 already flagged it — **nothing was
+published** and **nothing was lost**: the file is still in the clone exactly as written. The CLI
+names the entry, quoting what it used to say and what it says now.
+
+`log.md` is the wiki's record of what has been done to it: entries are added at the bottom and never
+changed, which is what lets anyone read the file and trust it. A changed or missing entry means an
+earlier one was edited, reordered or tidied away — usually by a well-meant cleanup pass.
+
+- **There is no override, and don't go looking for one.** Unlike a page that doesn't parse, a
+  rewritten history line has no legitimate case, so `push` has no flag to bulldoze past this.
+- **The fix is to put the entry back the way it was**, exactly, with the wording the CLI quotes.
+  Adding a *new* entry below it is fine and expected — that is the only edit the file ever wants.
+- If the user genuinely wants an entry gone, say plainly that the log doesn't work that way, and
+  offer to record a **new** entry correcting the record instead.
+- Reflowing blank lines is not a rewrite and never trips this — only a changed or removed entry does.
 
 ## 4. If the published wiki moved (the conflict case)
 

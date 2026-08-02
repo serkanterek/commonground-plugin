@@ -47,8 +47,8 @@ personal and subjective material is in-scope by definition — never drop or fla
 omission.
 
 Follow the `maintainer` skill's **ingest** procedure (decisions included) — read it for the wiki
-schema (frontmatter, pageIds, scopes, the golden rules). Work through this like an assistant taking
-notes: conversational, one thing at a time, never a rigid form.
+schema (frontmatter, pageIds, categories, scopes, the golden rules). Work through this like an
+assistant taking notes: conversational, one thing at a time, never a rigid form.
 
 ## 1. Open the capture session
 
@@ -71,13 +71,13 @@ notes: conversational, one thing at a time, never a rigid form.
 
 ## 3. Detect the shape
 
-Look at what you gathered and pick the page type it wants (see the skill for the full set):
+Look at what you gathered and pick the shape the page wants, then the charter category it belongs
+to (`tags:` — see the skill):
 
-- **A decision** ("we decided…", "we're going with…", an ADR) → draft a `type: decision` page in
-  the ADR shape: context/problem → the decision → options considered → rationale → consequences.
-  Ask only for the parts that are missing; never invent an outcome the user didn't state.
-- **Everything else** → the fitting type (`entity`, `concept`, `summary`, …) with the durable
-  takeaways as the body.
+- **A decision** ("we decided…", "we're going with…", an ADR) → draft it in the ADR shape:
+  context/problem → the decision → options considered → rationale → consequences. Ask only for the
+  parts that are missing; never invent an outcome the user didn't state.
+- **Everything else** → the durable takeaways as the body.
 
 ## 4. Stage the raw source (immutable)
 
@@ -95,10 +95,16 @@ the record.
 Check the current catalog first — the clone's `index.md` in local-clone mode (it lists pages the
 user hasn't published yet, which `get_index` cannot), `get_index` in MCP mode — and prefer
 **updating** an existing page
-over creating a near-duplicate. Write schema-correct pages, each citing any stored source under
-`sources:` and capturing durable cross-references in `related:` (the canonical link emit); inline
-`[[wikilinks]]` / `[text](pageId)` in the body are welcome where they read naturally and count
-toward the link graph too. **Show each drafted page and persist only on the user's confirm** — never
+over creating a near-duplicate. That same read gives you the wiki's **category vocabulary**: the
+catalog's headings are the charter's `## Structure` sections, and every page you write carries the
+one or more it belongs to in `tags:` (that is what groups it — folders don't). Write schema-correct
+pages, each carrying its `tags:`, citing any stored source under
+`sources:` and linking the pages they relate to inline in the body — `[[wikilink]]` /
+`[text](pageId)`, wherever they read naturally. That is the whole link graph: a page nothing links
+to is an orphan, and a link to a page not written yet is a useful demand signal. Give
+each one a `summary:` that **partitions** with its title rather than echoing it — the title is the
+page's name, the summary is what is *inside* it (the full contract is in the `maintainer` skill).
+**Show each drafted page and persist only on the user's confirm** — never
 auto-write, never assert a fact the source doesn't support.
 
 ## 6. Persist + report

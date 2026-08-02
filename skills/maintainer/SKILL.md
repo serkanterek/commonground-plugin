@@ -8,7 +8,7 @@ user-invocable: false
 
 CommonGround is a curated, version-controlled **context wiki** — a team's shared base, or a
 single user's personal one — so every LLM connected to it starts from the same compounding
-context. Who it's for is declared in its **charter** (the `company/wiki-charter` page, written
+context. Who it's for is declared in its **charter** (the `wiki-charter` page, written
 during `/commonground:seed`): audience (`just-me` / `my-team` / `whole-company`), the wiki's own
 structure checklist, and a retrieval brief. When a charter exists, honor it.
 
@@ -79,21 +79,40 @@ The curation procedures are also exposed as slash commands — **`/commonground:
 **Layout** (repo root of the clone):
 - `index.md` — generated catalog (one line per active page). **Machine-owned — never write it by
   hand.** It is rebuilt from the pages themselves; you shape it by writing each page's `summary:`.
-- `log.md` — append-only history. Never rewrite prior lines.
+- `log.md` — the wiki's append-only operations journal. **Local-clone mode only:** add your entry as
+  a new line at the BOTTOM, with one blank line before it, and never touch a line that is already
+  there. `/commonground:push` refuses to publish a `log.md` whose existing lines changed, and names
+  the line — restore it rather than working around it. **In MCP mode don't write it at all:**
+  `save_page` appends the entry for you, and a hand-written one duplicates it.
 - `sources/` — raw inputs, **immutable**. Once a source file exists, never edit or delete it.
-- `company/`, `departments/<dept>/`, `teams/<team>/`, `products/<product>/` — pages by scope
-  (products may have `dev/` and `pm/` subsections).
+- **everything else is just where the files sit.** Folders exist because pages were written into
+  them (`people/`, `decisions/`, `products/acme/dev/`); they carry no meaning and group nothing.
+  The wiki's structure is its **categories** — a page's `tags:`, drawn from the charter's
+  `## Structure` list (see below). There is no prescribed tree and no required top-level folder, and
+  reorganising a wiki means **retagging**, never moving files (a move breaks every link into them).
 
 A **pageId** is the repo-relative path without `.md` (e.g. `products/acme/dev/retrieval-decision`).
 
-**Page types:** `entity` · `concept` · `decision` (ADR-style) · `summary` · `template` ·
-`charter` (the wiki's one meta page, `company/wiki-charter`).
+The wiki's one meta page is the **charter**, `wiki-charter` at the repo root (older wikis have it
+at `company/wiki-charter`; both are read).
 
-**Frontmatter** (YAML at the top of every page). Required: `title`, `type`, `scope`, `updated`.
+**Frontmatter** (YAML at the top of every page). Required: `title`, `updated`.
 Optional: **`summary`** (the page's catalog line — see below; write one on every page you touch),
-`section` (`dev`|`pm`), `owner`, `status` (`active`|`hypothetical`|`deprecated`, default
-`active`), `created` (`YYYY-MM-DD`), `aliases` (other names this page answers to), `tags`,
-`sources` (paths under `sources/`), `related` (pageIds).
+`scope` (see below — omit it unless this wiki partitions a real org), `section` (`dev`|`pm`), `owner`, `status` (`active`|`hypothetical`|`deprecated`, default
+`active`), `created` (`YYYY-MM-DD`), `aliases` (other names this page answers to — a `[[Ece]]` in
+any page's body resolves to a page titled "Ece Yagman" that lists it, and a search for the short
+name finds it; write them when a page is habitually called something shorter or other than its title),
+**`tags`** (the page's categories — see below; write them on every page you touch),
+`sources` (paths under `sources/` — only when the page actually cites a stored source).
+
+There is **no `type:` field and no `related:` field to write**. A page's genre is already implied
+by the category it declares in `tags:`, so a separate type only ever restated it. And
+cross-references belong in the PROSE, as `[[wikilinks]]` or `[text](pageId)` — that is the only
+link channel there is, so a page nothing links to from another page's body is an orphan, and a
+frontmatter list of pageIds counts for nothing. An older page may still carry either key — they are
+just keys CommonGround doesn't own now (next paragraph), so leave them: don't add one, don't strip
+one. If you see such a line move to the bottom of a page's frontmatter, that is the server
+re-emitting it with the other keys it doesn't own. Expected; don't put it back.
 
 Any **other** key a page already carries (an imported vault's own `cssclass:`, `publish:`, …) is
 preserved verbatim — don't strip it, and don't invent new ones either. What is NOT allowed is a
@@ -103,23 +122,23 @@ near-miss of a contract key (`Tags`, `up-dated`): the server rejects those rathe
 ---
 title: Retrieval Architecture
 summary: Hosted git repo per team as the source of truth; local clone + optional hosted MCP as the two read surfaces.
-type: decision
-scope: product:acme
 section: dev
 status: active
 updated: 2026-07-01
+tags:
+  - decisions
 sources:
   - sources/architecture-notes.md
-related:
-  - products/acme/dev/tech-stack
 ---
 
-The decision, its context, and the rationale go here.
+The decision, its context, and the rationale go here — linking to
+[[products/acme/dev/tech-stack]] and any other page it builds on, in the prose where it belongs.
 ```
 
-`scope` is one of `company` · `department:<x>` · `team:<x>` · `product:<x>`. `updated` is
-`YYYY-MM-DD` (today). For a **just-me** wiki, `company` is simply the wiki root — present it as
-"personal" when talking to the user; the stored value stays `company`.
+`updated` is `YYYY-MM-DD` (today). **`scope` is optional and usually omitted** — leave it out and
+the page belongs to the whole wiki. Set it (`company` · `department:<x>` · `team:<x>` ·
+`product:<x>`) only when this wiki already uses scopes to partition a real org. Never put one on a
+personal wiki: there is nothing to partition, and `company` on somebody's own notes is a wrong word.
 
 ## Golden rules
 
@@ -127,24 +146,25 @@ The decision, its context, and the rationale go here.
    value, ask — don't guess.
 2. **Cite your sources.** A page built from a raw input lists that input under `sources:`; the
    file lives immutably in `sources/`.
-3. **Write the page's `summary:`; append to `log.md`.** Every page you create or edit carries a
-   `summary:` (format below) — that is how the catalog gets its line. The catalog file itself is
-   regenerated for you; append the `log.md` line (format below) in the SAME change.
+3. **Write the page's `summary:`; in local-clone mode, append to `log.md`.** Every page you create or
+   edit carries a `summary:` (format below) — that is how the catalog gets its line. The catalog file
+   itself is regenerated for you. In **local-clone mode** append the `log.md` line (format below) in
+   the SAME change; in **MCP mode** don't — `save_page` appends it, so writing one duplicates it.
 4. **`sources/` is append-only.** Never modify or remove a file under `sources/`.
 5. **Never invent facts.** Only write what the source, the interview, or the user actually says.
 6. **Finish by persisting.** In local-clone mode that means writing the files — then publishing with
    `/commonground:push`, which commits for the user, so never ask them to run git or say the word
    "commit". Publishing needs an admin/curator role; a member's edits stay in their clone as real
    work, and `suggest_change` is how they reach the team. In MCP mode, persist via the write tools.
-7. **The wiki belongs to its audience.** Read the charter (`company/wiki-charter`) when present.
+7. **The wiki belongs to its audience.** Read the charter (`wiki-charter`, or `company/wiki-charter` on an older wiki) when present.
    **just-me** → nothing is off-topic or "too personal"; personal and subjective material is
    in-scope by definition — never suggest removing content for shareability. **my-team /
    whole-company** → a sensitivity concern is **flag-and-ask**, never an auto-remove and never a
    repeated nag. What belongs in the wiki is the audience's call, not yours.
 
-### `company/conventions` — the user's own working rules
+### `conventions` — the user's own working rules
 
-If the wiki has a `company/conventions` page, **read it before curating** and treat what it says as
+If the wiki has a `conventions` page, **read it before curating** and treat what it says as
 load-bearing: it holds process preferences the user has stated explicitly ("one source per ingest,
 with discussion — not batch-ingest"), which the procedures below otherwise assume. Where it and a
 default here disagree, the page wins; change it only with the user's sign-off. If it doesn't exist,
@@ -153,9 +173,15 @@ nothing changes — and when the user states a durable working preference, offer
 ### `summary:` — the page's catalog line
 
 The one line that represents this page everywhere: it is what `get_index` returns and what
-`index.md` shows, and it is the text a search query is matched against. Write one on every page
-you touch.
+`index.md` shows, and it is the text a search query is matched against. **The title is the page's
+name; the summary is what is inside it.** Read together they should partition the information, not
+restate each other. Write one on every page you touch.
 
+- **Never restate the title.** A summary that re-says its title gives a reader no new basis to
+  choose the page. `Lightbug — fantasy novel (on hold, wants to resume)` with the summary `Fantasy
+  novel on hold, wants to resume` is one fact written twice. Title `Lightbug` + summary `Fantasy
+  novel, 3 POV chapters drafted, magic system unresolved, paused Nov 2025` routes better *and* is
+  shorter. If the title already carries detail, the summary goes past it — it never echoes it.
 - **One plain-text line, ≤140 characters.** No markdown emphasis, no `[[wikilinks]]` — it is
   rendered as data, not prose.
 - **Name the concrete things.** The nouns someone would actually search for: products, people,
@@ -170,9 +196,35 @@ Omit it and the catalog falls back to the page's first body line — a working d
 one. `index.md` itself is **generated**: rebuilt from the pages on every write, grouped and sorted
 for you, with deprecated and hypothetical pages omitted. Never hand-write or hand-edit that file.
 
+### `tags:` — the page's categories
+
+**`tags` are this wiki's one structural axis.** They are not free-form labels, not keywords, and
+not a folksonomy: a page's tags are the sections of the wiki it belongs to, and they are what
+groups it in `index.md` / `get_index` and what satisfies a charter section in the coverage
+checklist. In MCP mode they ride in `frontmatter.tags` on `save_page`.
+
+- **The vocabulary is the charter's `## Structure` list, and nothing else.** In MCP mode
+  `get_coverage` hands it to you directly: every row carries `category`, the exact token to write.
+  In local-clone mode, read the charter page and copy the headings out of `index.md`. Don't invent
+  a category; if the material genuinely doesn't fit any section, say so and offer to add one.
+- **Lowercase token form**, matching the heading exactly — `orgs-projects`, not `Orgs & projects`.
+- **Multi-valued, and list syntax.** `tags: [decisions, places]` — a page needn't choose between
+  its genre and its subject, and it is listed under each category it names. A bare scalar
+  (`tags: rag`) is **rejected** on save; it must be a list.
+- **A page with no tags groups nowhere** — it lands in the catalog's `(uncategorised)` bucket at
+  the very end. That is a real state, not an error, but it means the page is hard to find.
+- **Imported pages carry the vault's own tags.** Those are legacy labels, not categories: when you
+  touch such a page, add the charter category it actually belongs to.
+- **The vocabulary is CHECKED, not merely requested.** `lint` reports a tag outside the charter's
+  Structure list (`off-vocabulary-tag`), a tag that near-misses a real category by plural, separator
+  or accent (`near-miss-tag` — `decisions` where the charter says `decision`), and a page with no
+  category at all (`uncategorised-page`). The near miss is the one to fear: the page saves, renders,
+  and quietly becomes a heading of its own that nobody else uses. Copy the token, don't retype it.
+
 ### `log.md` format
 
-Append-only. One line per change, newest at the bottom, never rewriting earlier lines:
+The wiki's operations journal: one line per **operation**, newest at the bottom, with **one blank
+line before it**, never rewriting earlier lines:
 
 ```
 ## [YYYY-MM-DD] <op> | <title>
@@ -180,13 +232,21 @@ Append-only. One line per change, newest at the bottom, never rewriting earlier 
 
 `<op>` is `ingest`, `edit`, or `lint` (use the one that fits the change).
 
+One operation is one line no matter how many files it touched — an import of forty pages is a single
+`ingest` entry. It is not a commit log (`get_history` serves those, per commit and per page) and not
+a per-page changelog (a page's own dates live in its `created` / `updated`).
+
+**Only write it in local-clone mode**, and only ever by adding to the bottom. `/commonground:push`
+refuses to publish a log whose existing entries changed, so a "tidy-up" of the file costs the user a
+blocked publish. In MCP mode `save_page` writes the entry itself.
+
 ---
 
 ## Seed — first-run guided interview
 
 Bootstrap an empty (or thin) wiki with the durable context its LLMs should always start from.
 Exposed as **`/commonground:seed`** — the guided arc that first **charters** the wiki (audience,
-structure, retrieval brief → the `company/wiki-charter` page), forks to **importing** an existing
+structure, retrieval brief → the `wiki-charter` page), forks to **importing** an existing
 folder/vault (triaged per cluster), and finishes on the gap-loop over the charter's checklist;
 this section is the **from-scratch interview** at its core. The questions are **discipline-aware**
 and come from `seeding.md` **in this skill's folder** — the same set the in-app seeding uses (one
@@ -202,11 +262,13 @@ source of truth, kept in lockstep by a drift guard). Never edit `seeding.md` its
    `get_coverage` is charter-aware — its rows are the charter's Structure list when one exists
    (the shape template otherwise), and the charter page itself never counts; each saved page
    ticks a section from empty → done.
-3. For each answered question, draft the page it names (pageId, title, type, scope from the guide)
-   with the user's answer as the body and valid frontmatter (`updated` = today). **Show it and
-   persist only on confirm** — never auto-write or invent facts.
-4. Append one `log.md` line (`ingest | Guided seeding (<discipline>)`). The catalog rebuilds itself
-   from the pages' `summary:` lines.
+3. For each answered question, draft the page it names (pageId, title, scope from the guide,
+   and `tags:` = the coverage row's `category` — the charter section this page is filling) with the
+   user's answer as the body and valid frontmatter (`updated` = today). **Show it and persist only
+   on confirm** — never auto-write or invent facts.
+4. In local-clone mode append one `log.md` line (`ingest | Guided seeding (<discipline>)`) — one
+   entry for the whole seeding pass, not one per page; in MCP mode `save_page` writes it. The catalog
+   rebuilds itself from the pages' `summary:` lines.
 5. Persist (`/commonground:push` in local-clone mode — it commits for them — or the MCP write tools).
 
 ## Ingest — turn anything into pages (`/commonground:ingest`)
@@ -226,14 +288,18 @@ looping "anything else?" until they're done — then organize and persist.
 3. **Detect the shape and draft.** Identify the durable takeaways. Prefer **updating** an existing
    catalog page over creating a near-duplicate (check the clone's `index.md`, or `get_index` in MCP
    mode — in local-clone mode read the file, since it includes pages not yet published). Write/update
-   schema-correct pages, each citing any stored source under `sources:` and capturing durable
-   cross-references in `related:` (inline `[[wikilinks]]` / `[text](pageId)` in the body count too,
-   but are never required).
-   - **A decision** ("we decided…", an ADR) → a `type: decision` page in the ADR shape:
-     context/problem → the decision → options considered → rationale → consequences, with `related:`
-     to the pages it affects. Ask only for the missing parts; never invent an outcome.
-4. **Show each page and persist only on confirm.** Append a `log.md` line
-   (`ingest | <source title>`, or `edit | <decision title>` for a decision).
+   schema-correct pages, each carrying its `tags:` (the charter categories it belongs to — the
+   catalog you just read shows the vocabulary), citing any stored source under `sources:`, and
+   linking the pages they relate to inline in the body — `[[wikilinks]]` / `[text](pageId)`,
+   wherever they read naturally. That is the whole link graph: a page nothing links to is an
+   orphan, and a link to a page not written yet is a useful demand signal.
+   - **A decision** ("we decided…", an ADR) → a page in the ADR shape, tagged with the charter's
+     decisions category:
+     context/problem → the decision → options considered → rationale → consequences, linking to
+     the pages it affects from the prose. Ask only for the missing parts; never invent an outcome.
+4. **Show each page and persist only on confirm.** In local-clone mode append one `log.md` line for
+   the ingest (`ingest | <source title>`, or `edit | <decision title>` for a decision) — one entry
+   for the operation, however many pages it produced; in MCP mode `save_page` writes it.
 5. Persist and report a short change summary (pages added/updated). For a new decision, offer to
    link it from the pages it affects.
 
@@ -250,12 +316,11 @@ the same kinds:
 
 **Hygiene** (deterministic):
 - **Stale** — an `active` page whose `updated` is old (say > 6 months).
-- **Orphan** — an `active` page no other page links to — by a `related:` entry **or** an inline
-  body link (`[[wikilink]]` / `[text](pageId)`). (Never report `company/wiki-charter` as an orphan
-  — the charter is meta and rarely linked.)
+- **Orphan** — an `active` page no other page's body links to (`[[wikilink]]` / `[text](pageId)`).
+  (Never report the charter page as an orphan — the charter is meta and rarely linked.)
 - **Broken citation** — a `sources:` **path** with no matching file under `sources/` (a `sources:`
-  URL is always valid), or a `related:` entry pointing to a pageId that doesn't exist. A dangling
-  inline `[[wikilink]]` is a demand signal, not a broken citation.
+  URL is always valid). That is the whole check: a dangling `[[wikilink]]` is a demand signal, not
+  a broken citation.
 - **Thin summary** — active pages with no authored `summary:` (or one that is just a copy of the
   first body line, or pure provenance). Arrives as ONE batched finding for the whole wiki, naming a
   sample and a count — report it as one line, and offer a backfill pass rather than a page-by-page
@@ -265,15 +330,30 @@ the same kinds:
 
 **Coverage gaps** (the `get_coverage` tool, charter-aware): the empty/partial sections of the
 charter's Structure list (or the org-shape template if the wiki isn't chartered yet), each with its
-intent (`prompt`) and the pages it already has.
+intent (`prompt`) and the pages it already has. **The progress number is deterministic — report it,
+never recompute it.**
+
+**Structure** (on the `lint` result): what the wiki's own links say about its categories — how many
+of a category's links stay inside it, single-page categories, the uncategorised share, and drift
+between the charter's sections and the tags in use. It is **not a finding and never a defect**: it
+says the links disagree with a grouping, not that the grouping is wrong, and the repair is a
+**retag** — no page moves, no link breaks. A `ratio` of `null` means no honest ratio exists (a
+single-page category, or one with no links); never render it as 0%.
 
 **Optional judgement checks** (your reasoning, over pages you've read): **contradiction** (two pages
-conflicting) and **missing cross-reference** (two clearly related pages that don't link).
+conflicting), **missing cross-reference** (two clearly related pages whose bodies don't link), and
+the **gap reading** — the qualitative read of the coverage gaps, which is the only thing that can
+say *what* is missing from a section rather than *that* it is short.
+
+The gap reading is **opt-in**: it costs the user's own tokens, so say so and get a yes before
+running it, only on a chartered wiki, and never because a report looked thin. Cite real pageIds and
+**never name a page the wiki does not have**; drop an observation you cannot cite. Read the sections'
+statuses and counts — never restate or re-derive them, and never produce a second percentage.
 
 Produce a short report — hygiene, then gaps, then red links. Apply fixes / fill gaps only with the
 user's go-ahead: in local-clone mode anyone may, since it's their own copy (publishing is the gated
 step); in MCP mode it takes an admin/curator. Filling a gap is the ingest flow, gap-driven. Then
-append `log.md`, and persist.
+append one `log.md` line (local-clone mode only), and persist.
 
 ## Summarize a topic or scope (when asked)
 
@@ -284,9 +364,9 @@ already makes Claude consult the wiki and cite. When the user wants a written sy
    topic). Gather grounded material: `get_index` (optionally scoped), then `search` / `get_page`.
    **Never assert a fact no page backs**; flag what the wiki is silent on rather than filling it in.
 2. Write the summary in-session, **citing the pageIds** each point draws on.
-3. **(Optional) Save it** — only if the user wants it persisted: a `type: summary` page
-   (schema-correct, `related:` to the pages it draws on), written as a file in the clone (local) or
-   via `save_page` (MCP, admins/curators). Otherwise just present it in chat.
+3. **(Optional) Save it** — only if the user wants it persisted: a schema-correct page that links
+   to the pages it draws on from its prose, written as a file in the clone (local) or via
+   `save_page` (MCP, admins/curators). Otherwise just present it in chat.
 
 ## Bridge to claude.ai Chat (when asked)
 
@@ -295,8 +375,9 @@ instruction that makes plain **claude.ai Chat** reflexively consult the wiki (a 
 from Claude Code's `CLAUDE.md` router). The user pastes it into **Settings → Profile preferences**
 (every chat) or a **Project's custom instructions**.
 
-1. **Read the charter to tailor it.** `get_page` `company/wiki-charter` (or `get_coverage` for just
-   the `audience`); local-clone → read `company/wiki-charter.md`. No charter yet → don't guess: ask
+1. **Read the charter to tailor it.** `get_page` `wiki-charter` — `company/wiki-charter` on an older
+   wiki — (or `get_coverage` for just
+   the `audience`); local-clone → read `wiki-charter.md`. No charter yet → don't guess: ask
    whether this wiki is just for them or for a team, print the matching variant, and suggest
    `/commonground:seed` to charter (and tailor) it properly later.
 2. **Pick the variant** by audience: `just-me` → Personal, `my-team` → Team, `whole-company` →

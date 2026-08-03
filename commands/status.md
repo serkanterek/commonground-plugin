@@ -48,7 +48,7 @@ the rest needs a connection.
 
 ## 2. Wiki state
 
-If connected, call the `get_awareness` MCP tool (or `GET /wiki/awareness`) and report a short
+If connected, call the `get_awareness` MCP tool and report a short
 glance: `pageCount` (an **empty** wiki = `0` pages), open suggestions, lint TODOs, and the most
 recent changes. Optionally add coverage progress from `get_coverage`. If the wiki is **empty**,
 lead with that — the next step is seeding, not asking questions.

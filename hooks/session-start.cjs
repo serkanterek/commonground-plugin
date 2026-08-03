@@ -258,62 +258,6 @@ function awarenessFromState(state) {
   };
 }
 
-/**
- * Decide the initialized-path context from the fetched awareness + the caller's role (SER-150).
- * `pageCount === 0` is the ONLY unambiguous "connected-but-empty" signal — a missing/non-number
- * pageCount (fetch failed, older API) falls through to the normal awareness line, so we never nudge
- * onboarding on uncertainty. A curator can seed too, so they get the nudge, not the read-only note.
- */
-function startupContext(awareness, role, voice) {
-  const v = voice || NEUTRAL_VOICE;
-  const empty = awareness && typeof awareness === 'object' && awareness.pageCount === 0;
-  if (empty) {
-    if (canSeed(role)) {
-      return (
-        `This project is connected to ${v.wiki}, but it's empty (0 pages) — ` +
-        "onboarding hasn't happened yet. Suggest running /commonground:seed: a short, discipline-aware " +
-        'interview that bootstraps the wiki, or imports an existing folder/vault. Point the user there ' +
-        "before trying to answer from it (there's nothing to consult yet)."
-      );
-    }
-    return (
-      `This project is connected to ${v.wiki}, but it's empty (0 pages) — nothing ` +
-      'to consult yet. An admin or curator can seed it with /commonground:seed. You have read-only access.'
-    );
-  }
-  return awarenessContext(awareness, v);
-}
-
-/** The hosted wiki's newest commit oid from an awareness payload, or null. */
-function hostedHeadOf(awareness) {
-  const recent =
-    awareness && typeof awareness === 'object' && Array.isArray(awareness.recentCommits)
-      ? awareness.recentCommits
-      : [];
-  const oid = recent[0] && recent[0].oid;
-  return typeof oid === 'string' && oid ? oid : null;
-}
-
-/**
- * A one-line, DIRECTIONAL nudge, or '' when there's nothing to say. Fires only in local-clone mode
- * (localHead resolved) on a non-empty wiki whose hosted head differs from the clone's head.
- * `hostedPresentLocally` decides the direction: if the clone already contains the hosted tip, the
- * local side is ahead (unpublished work → push); otherwise the clone hasn't seen the team's latest
- * (→ pull, which stops and asks if that would overwrite anything). An empty wiki (pageCount 0) is a
- * seeding case, not a sync one.
- */
-function syncNudge(awareness, localHead, hostedPresentLocally) {
-  if (!localHead) return ''; // MCP mode or no clone → nothing to pull or push
-  if (!awareness || typeof awareness !== 'object' || awareness.pageCount === 0) return '';
-  const hostedHead = hostedHeadOf(awareness);
-  if (!hostedHead || hostedHead === localHead) return '';
-  return hostedPresentLocally
-    ? 'This project has CommonGround wiki changes that have not been published to the team yet — ' +
-        'suggest running /commonground:push.'
-    : "The team's CommonGround wiki has moved on since this local clone last updated — suggest " +
-        'running /commonground:pull.';
-}
-
 async function main() {
   const input = lib.readStdinInput();
   const cwd = lib.projectCwd(input);
@@ -439,35 +383,23 @@ async function main() {
     return;
   }
 
-  // FALLBACK: an older API (no /wiki/state yet) or a failed fetch. Deliberately kept rather than
-  // deleted — a locally-installed plugin and the hosted API version drift, and the degraded path
-  // must still say something true rather than going silent.
-  const keywordsStale = lib.keywordsCacheStale(lib.readKeywordsCache(binding.teamId), now);
-  const [awareness, keywords] = await Promise.all([
-    lib.fetchJson('/wiki/awareness', binding, 1500),
-    keywordsStale ? lib.fetchJson('/wiki/keywords', binding, 1500) : Promise.resolve(null),
-  ]);
-  if (keywords && Array.isArray(keywords.keywords)) {
-    lib.writeKeywordsCache(binding.teamId, keywords.keywords, now);
-  }
-  // In local-clone mode, append a directional pull/push nudge when the clone's head differs from
-  // the hosted tip. Gate it on THIS project being local-clone mode (SER-168): a clone lives at
-  // <dataHome>/<teamId> regardless of which project you're in, so keying only on its existence made
-  // the nudge fire in every MCP-mode project of the team too (worse once the SER-166 recovery pull
-  // makes a clone more likely). An MCP project is skipped here — also sparing it a git subprocess.
-  const base = startupContext(awareness, binding.role);
-  const localMode = projectMode === 'local';
-  const localHead = localMode ? lib.localCloneHead(binding.teamId) : null;
-  const hostedHead = hostedHeadOf(awareness);
-  const hostedPresent =
-    localHead && hostedHead ? lib.cloneHasCommit(binding.teamId, hostedHead) : false;
-  // Same caveat as the resolved path (SER-182). This is the branch reached when the composed read
-  // FAILED, which correlates with a dropped connector rather than ruling one out — so it is the last
-  // path that should be confidently telling Claude to go and use tools it may not have.
+  // DEGRADED: the one composed read failed (network, outage, expired token). There is deliberately
+  // no second fetch to fall back to (SER-216). The old fallback called `/wiki/awareness` +
+  // `/wiki/keywords`, which are mounted on the browser-session resolver and so returned 401 to the
+  // device token this hook authenticates with — every time, for every plugin version. It read as a
+  // version-drift safety net and was one only in appearance; worse, `fetchJson` is fail-open, so its
+  // 401s were indistinguishable from "no wiki configured" and the branch went silent, which is the
+  // one thing its own comment promised it would not do.
+  //
+  // Nor would a second fetch help: what actually fails here is the network, the API, or the token,
+  // and those take every endpoint with them. So say plainly that the wiki could not be reached —
+  // a session that looks unconfigured when it is merely offline is the failure worth avoiding.
+  const localHead = projectMode === 'local' ? lib.localCloneHead(binding.teamId) : null;
   emit(
-    base,
+    `${awarenessContext(null)} CommonGround could not be reached this session, so the figures above ` +
+      'are unavailable — the wiki itself is fine; run /commonground:status to check.',
     modeRule(projectMode, binding.teamId),
-    syncNudge(awareness, localHead, hostedPresent),
+    localHead ? 'This project has a local wiki clone; /commonground:pull and /commonground:push still work offline-first.' : '',
     CONNECTOR_HEALTH_CLAUSE,
   );
 }
@@ -482,8 +414,6 @@ if (require.main === module) {
 module.exports = {
   main,
   awarenessContext,
-  startupContext,
-  syncNudge,
   modeRule,
   canSeed,
   stepProse,

@@ -6,8 +6,10 @@
  * session, so every I/O path swallows its error and returns a safe default.
  *
  * Auth: the local device token (`cgdt_…`, stored by `commonground login`) is team-bound, so a plain
- * `Authorization: Bearer <token>` reaches the team's `/wiki/*` reads with no `X-Team-Id` header
- * (the API's device-token adapter resolves the team from the token itself).
+ * `Authorization: Bearer <token>` needs no `X-Team-Id` header — the API resolves the team from the
+ * token. It does NOT reach every `/wiki/*` route: `wikiRoutes` is mounted on the browser-session
+ * resolver because it also carries the write routes, so a device token only reaches the surfaces
+ * that mount `deviceTokenAdapter` — `/wiki/state` and the git transport (SER-216).
  */
 const cp = require('node:child_process');
 const crypto = require('node:crypto');
@@ -25,8 +27,6 @@ const ROUTER_MARKER = 'commonground:router-rule:start';
 const CONFIG_DIR = '.commonground'; // the legacy in-wiki store's directory (read for migration)
 const CREDENTIALS_FILE = 'credentials.json';
 const DEFAULT_API = 'https://api.commongroundapp.io';
-/** How long a cached keyword list is served before the next SessionStart refreshes it. */
-const KEYWORDS_TTL_MS = 60 * 60 * 1000; // 1 hour
 /**
  * Not defined on Windows, where `0` degrades to a plain open. What still guards the adoption there is
  * the `fstat` regular-file check plus the ACLs on the user's own profile directory — NOT the mode
@@ -556,10 +556,6 @@ function verbatimBlock(text) {
   );
 }
 
-/** True when the cached keyword list is missing or older than {@link KEYWORDS_TTL_MS}. */
-function keywordsCacheStale(cache, now) {
-  return !cache || typeof cache.fetchedAt !== 'number' || now - cache.fetchedAt > KEYWORDS_TTL_MS;
-}
 
 /*
  * Plugin-version identity (SER-166). Claude Code installs each plugin BUILD into its own version
@@ -766,7 +762,6 @@ module.exports = {
   CONFIG_DIR,
   foldForMatching,
   CREDENTIALS_FILE,
-  KEYWORDS_TTL_MS,
   configHome,
   dataHome,
   credentialsPath,
@@ -785,7 +780,6 @@ module.exports = {
   keywordsCachePath,
   readKeywordsCache,
   writeKeywordsCache,
-  keywordsCacheStale,
   hasWelcomed,
   markWelcomed,
   verbatimBlock,

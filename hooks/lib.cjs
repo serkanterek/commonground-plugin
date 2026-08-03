@@ -709,18 +709,39 @@ function escapeRegExp(s) {
 }
 
 /**
- * Which keywords appear in the prompt (case-insensitive). Multi-word phrases match as a substring;
- * single tokens match only on word boundaries (so "api" doesn't fire inside "capital"). Returns at
- * most `cap` hits, in the keyword list's order.
+ * The server's matching fold, mirrored (SER-212). MUST stay identical to `foldForMatching` in
+ * `packages/shared/src/text.ts`, which is where the reasoning for each step lives; the plugin ships
+ * as dependency-free CommonJS, so it cannot import it. `scripts/hook-fold.test.ts` pins the two
+ * against each other over a corpus and reds the moment they diverge.
+ *
+ * Why the hook needs it at all: `deriveKeywords` folds, so a keyword is NFKC/NFC-normalised with the
+ * Turkic dotted-i collapsed. Lowercasing the prompt alone leaves the two sides speaking different
+ * normalisations — a wiki page `İstanbul` serves the keyword `istanbul` while the prompt lowercases
+ * to `i` + U+0307 + `stanbul`, which does not contain it, so the hook silently stops firing for
+ * Turkish. Folding one side of a comparison is worse than folding neither.
+ */
+function foldForMatching(s) {
+  return String(s == null ? '' : s)
+    .normalize('NFKC')
+    .toLowerCase()
+    .normalize('NFC')
+    // U+0307 as an escape, never the literal combining mark: an invisible code point in source is
+    // unreviewable, and survives a copy-paste only by luck.
+    .replace(/i\u0307/gu, 'i');
+}
+
+/**
+ * Which keywords appear in the prompt (case-insensitive, and normalisation-insensitive per
+ * {@link foldForMatching}). Multi-word phrases match as a substring; single tokens match only on
+ * word boundaries (so "api" doesn't fire inside "capital"). Returns at most `cap` hits, in the
+ * keyword list's order.
  */
 function matchKeywords(prompt, keywords, cap) {
-  const hay = ` ${String(prompt || '').toLowerCase()} `;
+  const hay = ` ${foldForMatching(prompt)} `;
   const limit = cap || 6;
   const hits = [];
   for (const raw of Array.isArray(keywords) ? keywords : []) {
-    const k = String(raw || '')
-      .toLowerCase()
-      .trim();
+    const k = foldForMatching(raw).trim();
     if (!k) continue;
     const found = k.includes(' ')
       ? hay.includes(k)
@@ -743,6 +764,7 @@ function emitContext(hookEventName, additionalContext) {
 module.exports = {
   ROUTER_MARKER,
   CONFIG_DIR,
+  foldForMatching,
   CREDENTIALS_FILE,
   KEYWORDS_TTL_MS,
   configHome,

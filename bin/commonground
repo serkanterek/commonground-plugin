@@ -11972,6 +11972,8 @@ function foldForMatching(s) {
 function foldedWords(s) {
   return [...foldForMatching(s).matchAll(WORD_RUN)].map((m) => m[0]);
 }
+var MORPHEMIC_SCRIPT = /[\p{sc=Han}\p{sc=Hiragana}\p{sc=Katakana}\p{sc=Hangul}]/u;
+var COMBINING_MARK = new RegExp("\\p{M}", "u");
 
 // ../shared/dist/auth/capabilities.js
 var CAPABILITY_MATRIX = {
@@ -12626,7 +12628,7 @@ function categoryOrderFromPages(pages) {
 }
 
 // ../core/dist/coverage/coverage.js
-var hay = (e) => `${e.pageId || ""} ${e.title || ""}`.toLowerCase();
+var hay = (e) => foldForMatching(`${e.pageId || ""} ${e.title || ""}`);
 var kw = (...words) => (e) => {
   const h = hay(e);
   return words.some((w) => h.includes(w));
@@ -12877,11 +12879,13 @@ function hasSubstance(e) {
   return s.length >= MIN_SUMMARY_CHARS && !STUB_SUMMARY_RE.test(s);
 }
 var LABEL_STOPWORDS = /* @__PURE__ */ new Set(["and", "the", "for", "our", "your", "with", "from", "etc"]);
+var MIN_LABEL_TOKEN_LEN = 3;
+var MIN_MORPHEMIC_LABEL_TOKEN_LEN = 2;
 function labelTokens(label) {
   const out = [];
-  for (const m of label.toLowerCase().matchAll(/[a-z0-9]+/g)) {
-    const w = m[0];
-    if (w.length >= 3 && !LABEL_STOPWORDS.has(w) && !/^\d+$/.test(w))
+  for (const w of foldedWords(label)) {
+    const floor = MORPHEMIC_SCRIPT.test(w) ? MIN_MORPHEMIC_LABEL_TOKEN_LEN : MIN_LABEL_TOKEN_LEN;
+    if (w.length >= floor && !LABEL_STOPWORDS.has(w) && !new RegExp("^\\p{Nd}+$", "u").test(w))
       out.push(w);
   }
   return out;
@@ -12895,7 +12899,7 @@ function sectionsFromCharter(sections) {
       id = `${id}-${i + 1}`;
     seenIds.add(id);
     const intent = /\b(decision|adr|convention)/i.test(`${sec.label} ${sec.hint}`) ? "decision" : "ingest";
-    const phrase = sec.label.toLowerCase().replace(/\s+/g, " ").trim();
+    const phrase = foldForMatching(sec.label).replace(/\s+/g, " ").trim();
     const words = [phrase, ...labelTokens(sec.label)];
     const keywordMatch = kw(...words);
     const match = token ? either(cat(token), keywordMatch) : keywordMatch;
@@ -12929,7 +12933,7 @@ var DISCIPLINE_BY_SECTION = {
   teams: "exec"
 };
 function excludeMatcher(excludes) {
-  const text = (excludes ?? "").toLowerCase();
+  const text = foldForMatching(excludes ?? "");
   if (!text.trim())
     return () => false;
   return (label) => {
@@ -12972,6 +12976,9 @@ function coverageProgress(rows) {
   const done = counted.filter((r) => r.status === "done").length;
   return { done, total, pct: total ? Math.round(done / total * 100) : 0 };
 }
+
+// ../core/dist/keywords/keywords.js
+var ALL_HIRAGANA = new RegExp("^\\p{sc=Hiragana}+$", "u");
 
 // ../core/dist/wiki/page-serde.js
 var import_yaml = __toESM(require_dist(), 1);
@@ -13415,9 +13422,6 @@ function sweepRetiredKeys(files, opts = {}) {
     facts
   };
 }
-
-// ../core/dist/retrieval/math.js
-var COMBINING_MARK = new RegExp("\\p{M}", "u");
 
 // ../core/dist/ops/body-links.js
 function isExternalUrl(ref) {

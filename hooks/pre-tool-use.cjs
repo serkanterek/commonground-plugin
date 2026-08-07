@@ -74,10 +74,16 @@ const GATED_COMMANDS = [
     // `commonground push|import`, however it is invoked — bare, via an absolute path to the bundled
     // binary, or after a `cd ... &&`. Routing around the slash command is exactly how this failed.
     re: /(^|[;&|(]|\s)([^\s;&|]*[/\\])?commonground\s+(push|import)(\s|$)/,
-    why:
-      '`commonground push`/`import` publishes to the hosted wiki, and it COMMITS for you — so ' +
-      'uncommitted work is not a safety margin. Show the user `commonground push --dry-run` and get ' +
-      'an explicit yes for THIS publish. Consent never carries forward from an earlier one.',
+    // Shown to the PERSON in the approval dialog: what happens if they say yes, in plain language.
+    reason:
+      'This publishes your CommonGround wiki. From now on everyone who shares it — and every ' +
+      'Claude session or tool that reads it — starts from these changes. It also commits ' +
+      "everything sitting in your local copy, so any edit you haven't published yet goes out too.",
+    // Injected into the MODEL's context: the operating instructions, which are meaningless to a
+    // human staring at an approval dialog and were previously shown to them by mistake.
+    instruction:
+      'Before asking again, show the user `commonground push --dry-run` so they can see exactly ' +
+      'what would be published. Consent is per publish and never carries forward from an earlier one.',
   },
 ];
 
@@ -104,10 +110,7 @@ function decide(input) {
     if (!cmd || READ_ONLY_FLAGS.test(cmd)) return null;
     const hit = GATED_COMMANDS.find((g) => g.re.test(cmd));
     if (!hit) return null;
-    return {
-      decision: 'ask',
-      reason: `CommonGround publish guard — ${hit.why} Get an explicit go-ahead from the user before running it.`,
-    };
+    return { decision: 'ask', reason: hit.reason, instruction: hit.instruction };
   }
 
   if (!GATED_TOOLS.has(bareToolName(toolName))) return null;
@@ -119,10 +122,13 @@ function decide(input) {
     return {
       decision: 'deny',
       reason:
-        'CommonGround publish guard — this project is in LOCAL-CLONE mode, where the MCP write ' +
-        'tools are the wrong path entirely (SER-184): they write the hosted wiki directly and leave ' +
-        "the user's own working copy behind. Write the page as a FILE in the clone instead, then " +
-        'publish with /commonground:push once the user approves.',
+        'Blocked. This project keeps a local copy of your wiki, and this would write straight to ' +
+        'the hosted one instead — leaving your local copy behind and out of step with it. The page ' +
+        'belongs in your local copy first; publishing it is a separate, deliberate step.',
+      instruction:
+        'This project is in LOCAL-CLONE mode, where the MCP write tools are the wrong path entirely ' +
+        '(SER-184). Write the page as a FILE in the clone, then publish with /commonground:push ' +
+        'once the user approves.',
     };
   }
 
@@ -132,11 +138,42 @@ function decide(input) {
   return {
     decision: 'ask',
     reason:
-      'CommonGround publish guard — this write goes DIRECTLY to the hosted wiki and is live the ' +
-      'instant it lands (for the whole team on a shared wiki). There is no local copy, no preview ' +
-      'and no later push step that could catch it. Get an explicit yes from the user for this ' +
-      'specific write before proceeding.',
+      'This writes straight to your CommonGround wiki. It goes live the moment it lands — for ' +
+      'everyone who shares the wiki — and there is no local draft or preview step that could ' +
+      'catch it afterwards.',
+    instruction:
+      'This is the publish itself: there is no staging and no later push step to gate. Get an ' +
+      'explicit yes for THIS specific write, every time.',
   };
+}
+
+/**
+ * The note for the MODEL's own transcript, alongside the dialog the user sees.
+ *
+ * THE TWO CHANNELS CARRY DIFFERENT AUDIENCES, and conflating them is a real defect we shipped once:
+ * `permissionDecisionReason` renders in the approval dialog to a HUMAN, so it must be plain
+ * consequence — what changes if they say yes. It briefly carried model instructions instead, and
+ * users were shown "Show the user `--dry-run` and get an explicit yes", i.e. told to obtain their
+ * own permission. Operating instructions belong here, where only the model reads them.
+ *
+ * The model never receives the reason and never sees the human's answer, so an approved `ask` is
+ * byte-identical, from its side, to no hook at all — a dangerous blind spot: the first time this
+ * guard was tested live, the model read a successful publish as "the guard did not fire" and began
+ * diagnosing the hook, one step from patching a mechanism working exactly as designed. So the
+ * inference is stated outright, because the wrong one is the expensive one. Emitted on `deny` too,
+ * so both verdicts read the same way in a transcript.
+ */
+function noticeFor(decision, instruction) {
+  const head =
+    decision === 'deny'
+      ? 'CommonGround publish guard: this call was REFUSED before it ran (nothing was written). ' +
+        'Do not retry the same call, and do not edit or disable the guard.'
+      : 'CommonGround publish guard: this call was intercepted and the user is being asked to ' +
+        'approve it. You will NOT see their answer. If the command then succeeds, that is because ' +
+        'they said yes — NOT because the guard failed to fire. Do not re-run it, do not look for ' +
+        'another path to the same write, and do not investigate or modify the guard on the ' +
+        'strength of a successful publish. If they decline, the call simply does not run.';
+  return instruction ? `${head} ${instruction}` : head;
 }
 
 function main() {
@@ -148,6 +185,9 @@ function main() {
         hookEventName: 'PreToolUse',
         permissionDecision: verdict.decision,
         permissionDecisionReason: verdict.reason,
+        // Injected into the model's context. If a Claude Code build ignores this field on
+        // PreToolUse it is simply dropped — the gate itself is unaffected either way.
+        additionalContext: noticeFor(verdict.decision, verdict.instruction),
       },
     }),
   );
@@ -162,4 +202,4 @@ if (require.main === module) {
   }
 }
 
-module.exports = { main, decide, bareToolName, GATED_TOOLS, GATED_COMMANDS };
+module.exports = { main, decide, noticeFor, bareToolName, GATED_TOOLS, GATED_COMMANDS };

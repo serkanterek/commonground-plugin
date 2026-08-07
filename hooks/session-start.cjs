@@ -57,7 +57,7 @@ function voiceOf(state) {
   return v && typeof v === 'object' ? { ...NEUTRAL_VOICE, ...v } : NEUTRAL_VOICE;
 }
 
-/** Build the awareness context line from `/wiki/awareness`, or a static pointer if it's unavailable. */
+/** Build the awareness context line from the state DTO's figures, or a static pointer without them. */
 function awarenessContext(awareness, voice) {
   const v = voice || NEUTRAL_VOICE;
   // `when` is authored to END on "consult it:", so the tool list completes that sentence rather

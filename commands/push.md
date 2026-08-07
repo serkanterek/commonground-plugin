@@ -61,6 +61,18 @@ pages that *would* be published (including brand-new pages that were never stage
 Ask for an explicit go-ahead before anything is published — with the `AskUserQuestion` tool
 (multiple-choice UI) if it's available in this session, as a plain question otherwise.
 
+**This confirmation is not optional, and it is not satisfied by an earlier one.** Consent is per
+publish: a yes from ten minutes ago authorized *that* publish, not this one. Never infer a standing
+go-ahead from "they asked me to push earlier", from "publishing is how this task finishes", or from
+the wiki being personal rather than shared. If you did not ask for THIS publish, you do not have it.
+
+**Never route around this step.** Running the bundled `bin/commonground push` binary directly, or
+any other path that reaches the same write without asking, is the one thing that recreates the bug
+this section exists to prevent — it is how the guard was defeated on 2026-08-04 (SER-217). A
+`PreToolUse` guard now also refuses the publish, and **that refusal is never to be worked around**:
+do not edit, disable or bypass the hook, and do not look for a command shape that slips past it.
+If it fires, the answer is to ask the user.
+
 **Word the question in the frame from §0.** Shared: *"Publish these 3 pages to the team wiki?"* —
 their teammates' Claude will start answering from it. Personal: *"Publish these 3 pages to your
 wiki?"* — it becomes what every Claude they use starts from, on any machine. Never offer a personal

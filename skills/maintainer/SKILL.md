@@ -79,11 +79,10 @@ The curation procedures are also exposed as slash commands — **`/commonground:
 **Layout** (repo root of the clone):
 - `index.md` — generated catalog (one line per active page). **Machine-owned — never write it by
   hand.** It is rebuilt from the pages themselves; you shape it by writing each page's `summary:`.
-- `log.md` — the wiki's append-only operations journal. **Local-clone mode only:** add your entry as
-  a new line at the BOTTOM, with one blank line before it, and never touch a line that is already
-  there. `/commonground:push` refuses to publish a `log.md` whose existing lines changed, and names
-  the line — restore it rather than working around it. **In MCP mode don't write it at all:**
-  `save_page` appends the entry for you, and a hand-written one duplicates it.
+- `log.md` — **retired; never write it.** The wiki's history is its git history, where every change
+  is joined to the diff that made it. Say what you did in the commit message instead (see *Recording
+  what you did* below). A wiki created before the change still has this file: leave it exactly as it
+  is — it is the only copy of that history, and nothing appends to it any more.
 - `sources/` — raw inputs, **immutable**. Once a source file exists, never edit or delete it.
 - **everything else is just where the files sit.** Folders exist because pages were written into
   them (`people/`, `decisions/`, `products/acme/dev/`); they carry no meaning and group nothing.
@@ -146,10 +145,11 @@ personal wiki: there is nothing to partition, and `company` on somebody's own no
    value, ask — don't guess.
 2. **Cite your sources.** A page built from a raw input lists that input under `sources:`; the
    file lives immutably in `sources/`.
-3. **Write the page's `summary:`; in local-clone mode, append to `log.md`.** Every page you create or
-   edit carries a `summary:` (format below) — that is how the catalog gets its line. The catalog file
-   itself is regenerated for you. In **local-clone mode** append the `log.md` line (format below) in
-   the SAME change; in **MCP mode** don't — `save_page` appends it, so writing one duplicates it.
+3. **Write the page's `summary:`, and say why you changed it.** Every page you create or edit carries
+   a `summary:` (format below) — that is how the catalog gets its line, and the catalog file itself is
+   regenerated for you. Then record the change: in **MCP mode** pass `message` to `save_page`; in
+   **local-clone mode** pass `--message` to `/commonground:push`. See *Recording what you did* below —
+   the two are different altitudes, not the same sentence.
 4. **`sources/` is append-only.** Never modify or remove a file under `sources/`.
 5. **Never invent facts.** Only write what the source, the interview, or the user actually says.
 6. **Finish by persisting.** In local-clone mode that means writing the files — then publishing with
@@ -221,24 +221,28 @@ checklist. In MCP mode they ride in `frontmatter.tags` on `save_page`.
   category at all (`uncategorised-page`). The near miss is the one to fear: the page saves, renders,
   and quietly becomes a heading of its own that nobody else uses. Copy the token, don't retype it.
 
-### `log.md` format
+### Recording what you did
 
-The wiki's operations journal: one line per **operation**, newest at the bottom, with **one blank
-line before it**, never rewriting earlier lines:
+Your reasoning is the only part of a change that the diff cannot show, and it dies with the session
+unless you write it down. It goes in the **commit message** — never in a file.
 
-```
-## [YYYY-MM-DD] <op> | <title>
-```
+**The two modes commit at different rhythms, so they want different sentences:**
 
-`<op>` is `ingest`, `edit`, or `lint` (use the one that fits the change).
+| | what one commit covers | what to write |
+|---|---|---|
+| **MCP mode** | one `save_page` | why **this page** changed |
+| **local-clone mode** | one `/commonground:push` — everything since the last one | what **this session** did |
 
-One operation is one line no matter how many files it touched — an import of forty pages is a single
-`ingest` entry. It is not a commit log (`get_history` serves those, per commit and per page) and not
-a per-page changelog (a page's own dates live in its `created` / `updated`).
+In MCP mode pass `message` to `save_page`: *"rewrote the career section after the Sequence move"*.
+In local-clone mode pass `--message` to `/commonground:push`: *"split Concepts by retrieval
+contract — 6 pages retagged, ai-web3-interest rebuilt as a runnable routine"*.
 
-**Only write it in local-clone mode**, and only ever by adding to the bottom. `/commonground:push`
-refuses to publish a log whose existing entries changed, so a "tidy-up" of the file costs the user a
-blocked publish. In MCP mode `save_page` writes the entry itself.
+Say what changed and **why**. Never restate what the diff already shows: "updated page" and "edited
+people/taylan" are worth nothing, because the history already lists the page and the date. Don't
+carry a session-scale sentence into a single `save_page`, or a page-scale one into a push.
+
+`get_history` reads this back, per commit and per page. A page's own dates stay in its
+`created` / `updated` — the commit is not a per-page changelog.
 
 ---
 
@@ -266,9 +270,10 @@ source of truth, kept in lockstep by a drift guard). Never edit `seeding.md` its
    and `tags:` = the coverage row's `category` — the charter section this page is filling) with the
    user's answer as the body and valid frontmatter (`updated` = today). **Show it and persist only
    on confirm** — never auto-write or invent facts.
-4. In local-clone mode append one `log.md` line (`ingest | Guided seeding (<discipline>)`) — one
-   entry for the whole seeding pass, not one per page; in MCP mode `save_page` writes it. The catalog
-   rebuilds itself from the pages' `summary:` lines.
+4. The catalog rebuilds itself from the pages' `summary:` lines. In local-clone mode the whole
+   seeding pass is ONE push, so give it one session-scale message (`--message "seeded the wiki from
+   the <discipline> interview — 9 pages across 4 sections"`); in MCP mode each `save_page` carries
+   its own `message` about that page.
 5. Persist (`/commonground:push` in local-clone mode — it commits for them — or the MCP write tools).
 
 ## Ingest — turn anything into pages (`/commonground:ingest`)
@@ -297,9 +302,9 @@ looping "anything else?" until they're done — then organize and persist.
      decisions category:
      context/problem → the decision → options considered → rationale → consequences, linking to
      the pages it affects from the prose. Ask only for the missing parts; never invent an outcome.
-4. **Show each page and persist only on confirm.** In local-clone mode append one `log.md` line for
-   the ingest (`ingest | <source title>`, or `edit | <decision title>` for a decision) — one entry
-   for the operation, however many pages it produced; in MCP mode `save_page` writes it.
+4. **Show each page and persist only on confirm.** Record what the ingest did: in local-clone mode
+   one `--message` for the whole operation, however many pages it produced; in MCP mode a `message`
+   per `save_page` saying why that page changed.
 5. Persist and report a short change summary (pages added/updated). For a new decision, offer to
    link it from the pages it affects.
 
@@ -352,8 +357,8 @@ statuses and counts — never restate or re-derive them, and never produce a sec
 
 Produce a short report — hygiene, then gaps, then red links. Apply fixes / fill gaps only with the
 user's go-ahead: in local-clone mode anyone may, since it's their own copy (publishing is the gated
-step); in MCP mode it takes an admin/curator. Filling a gap is the ingest flow, gap-driven. Then
-append one `log.md` line (local-clone mode only), and persist.
+step); in MCP mode it takes an admin/curator. Filling a gap is the ingest flow, gap-driven. Then persist,
+recording what the sweep fixed in the message.
 
 ## Summarize a topic or scope (when asked)
 

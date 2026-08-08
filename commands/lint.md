@@ -207,8 +207,8 @@ UI) when it's available in this session, as a plain question otherwise:
   - Either way, **close it.** An open suggestion the curator has already acted on keeps the count up
     and sends everyone back to a queue with nothing in it.
 - **Fix a hygiene finding** — apply per finding group (apply / skip). Persist by editing the clone
-  (local — then offer `/commonground:push`) or via `save_page` (MCP); append a `log.md` line in the
-  same change.
+  (local — then offer `/commonground:push --message "..."`) or via `save_page` with a `message`
+  (MCP), so the history says what the sweep fixed.
 - **Backfill the missing `summary:` lines** (when `thin-summary` fired) — read each named page and
   write it a catalog line (the `summary:` rules are in the `maintainer` skill). Offer it as one
   pass over the sample or the whole list, show what you'd write, and persist only on confirm —

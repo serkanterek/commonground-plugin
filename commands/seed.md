@@ -302,10 +302,9 @@ a root `index.md`, because the wiki regenerates its own catalog there. Same for 
   missing/invalid frontmatter** (carrying `tags`/`aliases`/`created` onto the schema and preserving
   any other frontmatter key verbatim — an imported `tags:` is the vault's own **legacy label**, not
   a category, so assign the charter category the cluster belongs to as well), **regenerates
-  `index.md`** from the whole wiki, and **appends
-  ONE line to the append-only `log.md`** — it never imports the source folder's own `index.md`,
-  `log.md` or `CLAUDE.md`, and never overwrites anything already under `sources/`. Then it commits
-  and pushes. **Relay the CLI's receipt to the user verbatim** — it names what wasn't imported and
+  `index.md`** from the whole wiki — it never imports the source folder's own `index.md`, `log.md`
+  or `CLAUDE.md`, and never overwrites anything already under `sources/`. Then it commits and
+  pushes. **Relay the CLI's receipt to the user verbatim** — it names what wasn't imported and
   what frontmatter it couldn't carry; that's the answer to "can I retire the original?", so don't
   summarise it away. One thing to say out loud: each page keeps its **real** date (its own
   frontmatter date, else the file's modification time), so genuinely old notes will read as old and
@@ -374,9 +373,9 @@ waiting. If the user isn't an admin, say who to ask instead of offering somethin
 ## 7. Persist + close
 
 Persist every confirmed page:
-- **Local-clone mode:** write the files (each with its own `summary:`), append a `log.md` line
-  (`ingest | Guided seeding (<discipline>)` or `ingest | Imported <folder>`), then **offer**
-  `/commonground:push` — the wiki is seeded either way; publishing is a separate, asked-for step.
+- **Local-clone mode:** write the files (each with its own `summary:`), then **offer**
+  `/commonground:push --message "seeded the wiki from the <discipline> interview — N pages"` (or
+  `"imported <folder>"`) — the wiki is seeded either way; publishing is a separate, asked-for step.
   If the user is a member, say the work is saved in their copy and offer `suggest_change`.
 - **MCP mode:** `save_page` per page (CAS-guarded; re-read + retry on conflict) — each one is
   immediately live for the team.

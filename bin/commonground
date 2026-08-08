@@ -7364,6 +7364,29 @@ var import_node_fs2 = require("node:fs");
 var import_promises6 = require("node:fs/promises");
 var import_node_path7 = require("node:path");
 
+// ../../apps/sync-agent/dist/args.js
+function takeFlagValue(rest, flag) {
+  const remaining = [];
+  let value;
+  for (let i = 0; i < rest.length; i++) {
+    const arg = rest[i];
+    if (arg === flag) {
+      const next = rest[i + 1];
+      if (next !== void 0 && !next.startsWith("--")) {
+        value = next;
+        i++;
+      }
+      continue;
+    }
+    if (arg.startsWith(`${flag}=`)) {
+      value = arg.slice(flag.length + 1);
+      continue;
+    }
+    remaining.push(arg);
+  }
+  return { ...value === void 0 ? {} : { value }, rest: remaining };
+}
+
 // ../../apps/sync-agent/dist/backend.js
 var import_node_path3 = require("node:path");
 
@@ -7715,23 +7738,6 @@ async function refreshRemote(dir, remote) {
 }
 async function currentBranch(dir) {
   return (await runGit(dir, ["rev-parse", "--abbrev-ref", "HEAD"])).trim();
-}
-async function showBlob(dir, ref, path) {
-  try {
-    return await runGit(dir, ["show", `${ref}:${path}`]);
-  } catch (e) {
-    if (!(e instanceof GitError) || e.exitCode !== 128)
-      throw e;
-    let listed;
-    try {
-      listed = await runGit(dir, ["ls-tree", "--name-only", ref, "--", path]);
-    } catch {
-      throw e;
-    }
-    if (listed.trim() !== "")
-      throw e;
-    return "";
-  }
 }
 async function isWorkingTreeClean(dir) {
   const out = await runGit(dir, ["status", "--porcelain", "--untracked-files=no"]);
@@ -12209,9 +12215,9 @@ function validateFrontmatter(input) {
   return { ok: false, errors };
 }
 
-// ../shared/dist/wiki/index-log.js
+// ../shared/dist/wiki/index-line.js
 function buildIndexLine(entry, opts) {
-  const link2 = `- [[${entry.pageId}|${entry.title}]]`;
+  const link2 = `- [${entry.title.replace(/[[\]]/g, "\\$&")}](${entry.pageId}.md)`;
   if (opts?.form === "link")
     return link2;
   let line = link2;
@@ -12223,34 +12229,6 @@ function buildIndexLine(entry, opts) {
   if (entry.updated)
     line += ` \xB7 ${entry.updated}`;
   return line;
-}
-function buildLogLine(entry) {
-  return `## [${entry.date}] ${entry.op} | ${entry.title}`;
-}
-var LOG_HEADER = "# Wiki log";
-function appendLogLine(existing, line) {
-  const base = existing === null || existing.trim() === "" ? `${LOG_HEADER}
-` : existing;
-  const sep = base.endsWith("\n\n") ? "" : base.endsWith("\n") ? "\n" : "\n\n";
-  return `${base}${sep}${line}
-`;
-}
-function logEntries(content) {
-  const lines = content.split("\n").map((l) => l.trimEnd()).filter((l) => l !== "");
-  return lines[0] === LOG_HEADER ? lines.slice(1) : lines;
-}
-function findLogRewrite(prior, next) {
-  const a = logEntries(prior);
-  const b = logEntries(next);
-  for (let i = 0; i < a.length; i++) {
-    if (b[i] !== a[i])
-      return { entry: i + 1, was: a[i], now: b[i] ?? null };
-  }
-  return null;
-}
-function mergeAppendOnlyLogs(base, theirs, mine) {
-  const added = logEntries(mine).slice(logEntries(base).length);
-  return added.reduce((acc, line) => appendLogLine(acc, line), theirs);
 }
 
 // ../shared/dist/wiki/catalog.js
@@ -13467,7 +13445,7 @@ function mdlinkTarget(href) {
   const h = href.trim();
   if (!h || isExternalUrl(h) || h.startsWith("#") || h.startsWith("/"))
     return null;
-  const target = (h.split("#", 1)[0] ?? "").trim();
+  const target = (h.split("#", 1)[0] ?? "").trim().replace(/^\.\//, "").replace(/\.md$/i, "");
   return target.length > 0 ? target : null;
 }
 function extractBodyLinks(body) {
@@ -14328,8 +14306,9 @@ ${capitalize(v.possessive)} CommonGround ${v.noun} is cloned at \`${clonePath2}\
 
 - Start at \`${clonePath2}/index.md\` (the catalog) and open only the pages you need.${briefBullet(voice)}${excludesBullet(voice)}
 ${v.cite}
-- Raw inputs are under \`sources/\`; change history is in \`log.md\`. Use \`/commonground:pull\` to get
-  the team's latest and \`/commonground:push\` to publish your changes (it commits for you).
+- Raw inputs are under \`sources/\`; the change history is the wiki's git history. Use
+  \`/commonground:pull\` to get the team's latest and \`/commonground:push\` to publish your changes
+  (it commits for you \u2014 pass \`--message\` saying what the session did).
 - **Curation writes FILES in that clone \u2014 never the CommonGround MCP write tools.** Do not call
   \`save_page\`, \`stage_sources\` or \`save_charter\` in this project: they write the team's hosted
   wiki directly, skipping the user's review and the publish step. Ingesting, editing, linting,
@@ -14635,10 +14614,6 @@ async function importWiki(deps, opts) {
     await cloneRepo(remote.url, dir, remote.env);
     await injectAll(dir);
   }
-  const rewritten = await localLogRewrite(dir);
-  if (rewritten) {
-    throw new AgentError(`${WIKI_LAYOUT.logFile} is append-only, and entry ${rewritten.entry} was changed \u2014 it read "${rewritten.was}" and now ${rewritten.now === null ? "is gone" : `reads "${rewritten.now}"`}. Put it back (new entries go at the bottom), then import again. Nothing was imported.`);
-  }
   const guardedHomes = [
     deps.configHome,
     ...isInside2(deps.dataHome, sourceDir) ? [] : [deps.dataHome]
@@ -14662,8 +14637,6 @@ async function importWiki(deps, opts) {
       ...lossy.length ? { lossy } : {}
     };
   }
-  await appendLog(dir, buildLogLine({ date: today, op: "ingest", title: `Imported wiki from ${(0, import_node_path6.basename)(sourceDir)}` }));
-  await runGit(dir, ["add", WIKI_LAYOUT.logFile]);
   const who = agentAuthor(binding);
   await runGit(dir, [
     "-c",
@@ -14672,7 +14645,8 @@ async function importWiki(deps, opts) {
     `user.name=${who.name}`,
     "commit",
     "-m",
-    `import wiki from ${(0, import_node_path6.basename)(sourceDir)}`
+    // `ingest: ` to match the hosted writes' `<op>: ` shape (SER-220) — one history, one grammar.
+    `ingest: import wiki from ${(0, import_node_path6.basename)(sourceDir)}`
   ]);
   const synced = await sync(deps, teamId);
   return {
@@ -14743,7 +14717,9 @@ async function differs(a, b) {
 var RESERVED_ROOT_REASON = {
   "CLAUDE.md": "CommonGround owns the wiki folder's CLAUDE.md (the injected router block)",
   [WIKI_LAYOUT.indexFile]: "the catalog is regenerated from the whole wiki",
-  [WIKI_LAYOUT.logFile]: "the change log is append-only \u2014 the team's history stays"
+  // Still refused after SER-220 stopped writing it: a wiki created before then has a real `log.md`,
+  // and letting an imported folder's own file land on top would overwrite history nothing else keeps.
+  [WIKI_LAYOUT.logFile]: "the wiki's own change log stays \u2014 history lives in git now"
 };
 async function walkFiles(root, keep, onUnreadableDir) {
   const out = [];
@@ -14837,14 +14813,6 @@ async function mtimeDate(path) {
   } catch {
     return void 0;
   }
-}
-async function appendLog(dir, line) {
-  const path = (0, import_node_path6.join)(dir, WIKI_LAYOUT.logFile);
-  const existing = await (0, import_promises5.readFile)(path, "utf8").catch(() => null);
-  await (0, import_promises5.writeFile)(path, appendLogLine(existing, line), "utf8");
-}
-async function localLogRewrite(dir) {
-  return findLogRewrite(await showBlob(dir, "HEAD", WIKI_LAYOUT.logFile), await (0, import_promises5.readFile)((0, import_node_path6.join)(dir, WIKI_LAYOUT.logFile), "utf8").catch(() => ""));
 }
 async function isDir(path) {
   try {
@@ -15080,7 +15048,6 @@ async function push(deps, teamId, opts = {}) {
       pages: pending,
       deletions: wouldDelete.length ? wouldDelete : void 0,
       unparseable: unparseable2.length ? unparseable2 : void 0,
-      logRewrite: await localLogRewrite(dir) ?? void 0,
       incoming: b > 0 ? toPageChanges(await diffNameStatus(dir, base, remoteRef)) : []
     };
   }
@@ -15096,13 +15063,9 @@ async function push(deps, teamId, opts = {}) {
     };
   }
   let unparseable = tree.unparseable;
-  const logRewrite = await localLogRewrite(dir);
-  if (logRewrite) {
-    return { teamId, clonePath: dir, action: "needs-log-fix", ahead: 0, behind: 0, logRewrite };
-  }
   if (tree.unparseable.length > 0 || await hasWorkToCommit(dir))
     await writeIndex(dir, tree);
-  await commitAllIfAny(dir, binding, "curate wiki");
+  await commitAllIfAny(dir, binding, `curate: ${opts.message?.trim() || "wiki"}`);
   await refreshRemote(dir, origin);
   const branch = await currentBranch(dir);
   const remote = `origin/${branch}`;
@@ -15130,12 +15093,9 @@ async function push(deps, teamId, opts = {}) {
     await resetHardTo(dir, remote);
     await runGitOverPaths(dir, ["checkout", draftBranch], myEdits);
     await runGitOverPaths(dir, ["rm", "-f", "--ignore-unmatch"], myDeletions);
-    const mergedLog = mergeAppendOnlyLogs(await showBlob(dir, base, WIKI_LAYOUT.logFile), await showBlob(dir, remote, WIKI_LAYOUT.logFile), await showBlob(dir, draftBranch, WIKI_LAYOUT.logFile));
-    if (mergedLog !== "")
-      await (0, import_promises5.writeFile)((0, import_node_path6.join)(dir, WIKI_LAYOUT.logFile), mergedLog, "utf8");
     await injectAll(dir);
     unparseable = await rebuildIndex(dir);
-    await commitAllIfAny(dir, binding, "curate wiki (published over hosted changes)");
+    await commitAllIfAny(dir, binding, `curate: ${opts.message?.trim() || "wiki"} (published over hosted changes)`);
     ({ ahead, behind } = await aheadBehind(dir, "HEAD", remote));
   }
   if (ahead === 0) {
@@ -15337,6 +15297,8 @@ Usage:
                                --take-remote to adopt the published version anyway (your work is
                                saved on a draft branch first)
   commonground push [team]     publish your local changes (admins/curators) \u2014 commits for you.
+                               --message "what you did" becomes the commit message (say what
+                               changed and why; it is the record that outlives the session).
                                --dry-run previews without publishing. Stops if the published wiki
                                moved (--mine keeps YOUR version of pages both sides changed;
                                never force-pushes), stops if the change REMOVES pages
@@ -15829,17 +15791,13 @@ function formatPush(r, v) {
       const broken = r.unparseable?.length ? `  \u26A0 ${r.unparseable.length} page(s) don't parse, so the catalog can't describe them:
 ` + unparseableLines(r.unparseable, "    ") + `    Publishing stops until they're fixed (or "commonground push --allow-unparseable").
 ` : "";
-      const rewritten = r.logRewrite ? `  \u26A0 the change log was rewritten \u2014 this entry used to read:
-      ${r.logRewrite.was}
-    Publishing stops until it's restored; ${WIKI_LAYOUT.logFile} is append-only.
-` : "";
       if (!pages.length)
         return `${r.teamId}: nothing to publish.
-${broken}${rewritten}`;
+${broken}`;
       const conflict = r.behind ? `  Heads up: ${v.wiki} moved (${r.behind} change(s)): ${formatReceipt(r.incoming ?? []) || "(none)"}
 ` : "";
       return `${r.teamId}: would publish ${pageCount(pages.length)}: ${formatReceipt(pages)}
-` + conflict + broken + rewritten + deleteWarning(r.deletions, v) + `  Nothing published yet \u2014 run "commonground push" to confirm.
+` + conflict + broken + deleteWarning(r.deletions, v) + `  Nothing published yet \u2014 run "commonground push" to confirm.
 `;
     }
     case "needs-delete-confirm":
@@ -15855,19 +15813,6 @@ ${broken}${rewritten}`;
       return `${r.teamId}: ${broken.length} page(s) don't parse \u2014 nothing was published.
 ` + unparseableLines(broken, "  ") + `  These would be invisible in the wiki catalog. Fix them, or publish as-is:
     commonground push --allow-unparseable
-`;
-    }
-    case "needs-log-fix": {
-      const w = r.logRewrite;
-      return `${r.teamId}: the change log was rewritten \u2014 nothing was published.
-` + (w ? `  This entry used to read:
-    ${w.was}
-` + (w.now === null ? `  \u2026and is now gone.
-` : `  \u2026and now reads:
-    ${w.now}
-`) : "") + `  ${WIKI_LAYOUT.logFile} is append-only: it is the wiki's record of what was done to it,
-  so entries are added at the bottom and never changed. Put the entry back the way it was
-  (adding your own new entry below it is fine), then publish again.
 `;
     }
     case "read-only": {
@@ -16005,12 +15950,19 @@ Then run "commonground login --wait" (the code is valid for about ${Math.round(p
     }
     case "push": {
       const deps = await buildDeps();
-      const mine = rest.includes("--mine");
-      const dryRun = rest.includes("--dry-run");
-      const allowDeletes = rest.includes("--allow-deletes");
-      const allowUnparseable = rest.includes("--allow-unparseable");
-      const teamId = await resolveTeamId(deps, teamArg(rest));
-      const result = await push(deps, teamId, { mine, dryRun, allowDeletes, allowUnparseable });
+      const { value: message, rest: args } = takeFlagValue(rest, "--message");
+      const mine = args.includes("--mine");
+      const dryRun = args.includes("--dry-run");
+      const allowDeletes = args.includes("--allow-deletes");
+      const allowUnparseable = args.includes("--allow-unparseable");
+      const teamId = await resolveTeamId(deps, teamArg(args));
+      const result = await push(deps, teamId, {
+        mine,
+        dryRun,
+        allowDeletes,
+        allowUnparseable,
+        ...message === void 0 ? {} : { message }
+      });
       process.stdout.write(formatPush(result, await voiceFor(deps, teamId)));
       return;
     }

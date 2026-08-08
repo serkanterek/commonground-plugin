@@ -109,7 +109,7 @@ auto-write, never assert a fact the source doesn't support.
 
 ## 6. Persist + report
 
-- **Local-clone mode:** write the files (each with its own `summary:`) and append a `log.md` line.
+- **Local-clone mode:** write the files (each with its own `summary:`).
   That is the ingest *done* — the work is saved in the user's copy. Then **offer** to publish with
   `/commonground:push` (it commits for them — never ask them to run git, and never push without
   asking). If they'd rather keep drafting, that's a normal outcome, not an unfinished one.

@@ -7460,8 +7460,111 @@ async function writeTeamProfile(teamId, profile, configHome = agentConfigHome())
   } catch {
   }
 }
-function clonePath(teamId, dataHome = agentDataHome()) {
+function uuidClonePath(teamId, dataHome = agentDataHome()) {
   return (0, import_node_path.join)(dataHome, teamId);
+}
+var WINDOWS_RESERVED = /* @__PURE__ */ new Set([
+  "con",
+  "prn",
+  "aux",
+  "nul",
+  ...Array.from({ length: 9 }, (_, i) => `com${i + 1}`),
+  ...Array.from({ length: 9 }, (_, i) => `lpt${i + 1}`)
+]);
+function cloneDirName(profile) {
+  const raw = profile.scopeSlug?.trim() || profile.wikiName?.trim();
+  if (!raw)
+    return null;
+  const name = raw.normalize("NFC").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "-").replace(/^-+|-+$/g, "").slice(0, 48).replace(/-+$/g, "");
+  if (!name || name === "." || name === "..")
+    return null;
+  return WINDOWS_RESERVED.has(name) ? null : name;
+}
+async function resolveClonePath(teamId, configHome = agentConfigHome(), dataHome = agentDataHome()) {
+  const profile = await readTeamProfile(teamId, configHome);
+  if (profile.clonePath)
+    return profile.clonePath;
+  if (profile.cloneDir)
+    return (0, import_node_path.join)(dataHome, profile.cloneDir);
+  const uuid = uuidClonePath(teamId, dataHome);
+  if ((0, import_node_fs.existsSync)(uuid))
+    return uuid;
+  const named = cloneDirName(profile);
+  if (!named)
+    return uuid;
+  const preferred = (0, import_node_path.join)(dataHome, named);
+  if (!(0, import_node_fs.existsSync)(preferred))
+    return preferred;
+  const suffixed = (0, import_node_path.join)(dataHome, `${named}-${teamId.slice(0, 8)}`);
+  return (0, import_node_fs.existsSync)(suffixed) ? uuid : suffixed;
+}
+async function writeCloneLocation(teamId, patch, configHome) {
+  const path = profilesPath(configHome);
+  let store = { teams: {} };
+  try {
+    const parsed = JSON.parse(await (0, import_promises.readFile)(path, "utf8"));
+    if (parsed && typeof parsed === "object" && parsed.teams)
+      store = { teams: parsed.teams };
+  } catch (e) {
+    if (!isMissing(e))
+      store = { teams: {} };
+  }
+  store.teams[teamId] = {
+    ...store.teams[teamId],
+    clonePath: patch.clonePath,
+    cloneDir: patch.cloneDir
+  };
+  try {
+    await (0, import_promises.mkdir)((0, import_node_path.dirname)(path), { recursive: true });
+    await (0, import_promises.writeFile)(path, `${JSON.stringify(store, null, 2)}
+`, "utf8");
+  } catch (e) {
+    throw new AgentError(`could not record your wiki's location in ${path} (${e.message}). Nothing was cloned \u2014 fix that file's permissions and try again.`);
+  }
+}
+async function setClonePath(teamId, clonePath, configHome = agentConfigHome()) {
+  await writeCloneLocation(teamId, { clonePath }, configHome);
+}
+async function setCloneDir(teamId, cloneDir, configHome = agentConfigHome()) {
+  await writeCloneLocation(teamId, { cloneDir }, configHome);
+}
+function expandHome(p) {
+  if (p === "~")
+    return (0, import_node_os.homedir)();
+  if (p.startsWith("~/") || p.startsWith("~\\"))
+    return (0, import_node_path.join)((0, import_node_os.homedir)(), p.slice(2));
+  return p;
+}
+async function validateClonePath(candidate, configHome = agentConfigHome(), dataHome = agentDataHome()) {
+  const raw = expandHome(candidate.trim());
+  if (!raw)
+    throw new AgentError("no folder given for the wiki");
+  if (!(0, import_node_path.isAbsolute)(raw)) {
+    throw new AgentError(`"${candidate}" is a relative path \u2014 give the full folder path (e.g. ${(0, import_node_path.join)((0, import_node_os.homedir)(), "Documents", "my-wiki")})`);
+  }
+  const target = (0, import_node_path.resolve)(raw);
+  if (isInside(target, configHome) || isInside(configHome, target)) {
+    throw new AgentError(`${target} overlaps your CommonGround sign-in at ${configHome} \u2014 pick a folder outside it, so clearing the wiki can never sign you out`);
+  }
+  if ((0, import_node_path.resolve)(dataHome) === target) {
+    throw new AgentError(`${target} is the folder that holds every wiki \u2014 pick a folder inside it (or anywhere else), not it`);
+  }
+  try {
+    const info = await (0, import_promises.stat)(target);
+    if (!info.isDirectory())
+      throw new AgentError(`${target} is a file, not a folder`);
+    const entries = await (0, import_promises.readdir)(target);
+    if (entries.length > 0) {
+      const sample = entries.slice(0, 3).join(", ");
+      throw new AgentError(`${target} isn't empty (${sample}${entries.length > 3 ? ", \u2026" : ""}) \u2014 a wiki clone needs an empty or new folder. To bring existing notes IN, clone somewhere new and use "commonground import ${target}".`);
+    }
+  } catch (e) {
+    if (e instanceof AgentError)
+      throw e;
+    if (!isMissing(e))
+      throw new AgentError(`could not read ${target} (${e.message})`);
+  }
+  return target;
 }
 function isMissing(e) {
   return e?.code === "ENOENT";
@@ -14295,16 +14398,16 @@ ${v.cite}
 Do not edit inside this block \u2014 CommonGround regenerates it. Put your own notes outside it.
 ${ROUTER_END}`;
 }
-function localRouterRule(clonePath2, voice) {
+function localRouterRule(clonePath, voice) {
   const v = wikiVoice(voice?.audience);
   return `${ROUTER_START}
 ## CommonGround \u2014 context wiki (local clone)
 
-${capitalize(v.possessive)} CommonGround ${v.noun} is cloned at \`${clonePath2}\`. That clone is
+${capitalize(v.possessive)} CommonGround ${v.noun} is cloned at \`${clonePath}\`. That clone is
 **the working copy for this project** \u2014 the hosted repo is what the team shares, and
 \`/commonground:push\` is how work here becomes theirs. ${v.when}
 
-- Start at \`${clonePath2}/index.md\` (the catalog) and open only the pages you need.${briefBullet(voice)}${excludesBullet(voice)}
+- Start at \`${clonePath}/index.md\` (the catalog) and open only the pages you need.${briefBullet(voice)}${excludesBullet(voice)}
 ${v.cite}
 - Raw inputs are under \`sources/\`; the change history is the wiki's git history. Use
   \`/commonground:pull\` to get the team's latest and \`/commonground:push\` to publish your changes
@@ -14312,7 +14415,7 @@ ${v.cite}
 - **Curation writes FILES in that clone \u2014 never the CommonGround MCP write tools.** Do not call
   \`save_page\`, \`stage_sources\` or \`save_charter\` in this project: they write the team's hosted
   wiki directly, skipping the user's review and the publish step. Ingesting, editing, linting,
-  seeding and chartering all mean editing files under \`${clonePath2}\`. Nothing reaches the team
+  seeding and chartering all mean editing files under \`${clonePath}\`. Nothing reaches the team
   until \`/commonground:push\`, which previews and asks first.
 - **Read from the clone too** \u2014 it is current with the user's own unpushed work, which the hosted
   wiki is not. The one thing the clone genuinely cannot hold is the suggestions queue
@@ -14577,7 +14680,14 @@ async function initProject(deps, opts) {
   if (!binding)
     throw notLoggedIn(teamId, deps.configHome);
   if (mode === "local") {
-    const synced = await sync(deps, teamId);
+    if (opts.path) {
+      const existing = await resolveClonePath(teamId, deps.configHome, deps.dataHome);
+      if (await pathExists2(existing)) {
+        throw new AgentError(`this wiki is already cloned at ${existing} \u2014 to move it, run "commonground relocate ${opts.path} ${teamId}" (which moves the folder and updates this project's CLAUDE.md), not "init --path"`);
+      }
+      await setClonePath(teamId, await validateClonePath(opts.path, deps.configHome, deps.dataHome), deps.configHome);
+    }
+    const synced = await sync(deps, teamId, { onClone: opts.onClone });
     const voice2 = await charterVoiceFromWiki(synced.clonePath);
     await injectRouterRule(projectDir, routerRuleForMode("local", { clonePath: synced.clonePath, voice: voice2, teamId }));
     return { mode, teamId, projectDir, clonePath: synced.clonePath, synced };
@@ -14592,6 +14702,40 @@ async function detectRouterBlock(projectDir) {
   } catch {
     return null;
   }
+}
+async function relocateClone(deps, opts) {
+  const { teamId, projectDir } = opts;
+  const binding = await readBinding(teamId, deps.configHome, deps.dataHome);
+  if (!binding)
+    throw notLoggedIn(teamId, deps.configHome);
+  const from = await resolveClonePath(teamId, deps.configHome, deps.dataHome);
+  if (!await pathExists2(from)) {
+    throw new AgentError(`there is no wiki folder to move \u2014 nothing is cloned for this team yet. Run "commonground init --mode local --path <folder> ${teamId}" to clone it where you want it.`);
+  }
+  const to = await validateClonePath(opts.to, deps.configHome, deps.dataHome);
+  if (to === from)
+    throw new AgentError(`your wiki is already at ${from}`);
+  await setClonePath(teamId, to, deps.configHome);
+  try {
+    await (0, import_promises5.mkdir)((0, import_node_path6.dirname)(to), { recursive: true });
+    try {
+      await (0, import_promises5.rename)(from, to);
+    } catch (e) {
+      if (e.code !== "EXDEV")
+        throw e;
+      await (0, import_promises5.cp)(from, to, { recursive: true, preserveTimestamps: true });
+      await (0, import_promises5.rm)(from, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+    }
+  } catch (e) {
+    await setClonePath(teamId, from, deps.configHome).catch(() => void 0);
+    throw new AgentError(`could not move ${from} to ${to} (${e.message}) \u2014 nothing changed`);
+  }
+  const block = await detectRouterBlock(projectDir);
+  const routerUpdated = block?.mode === "local" && block.teamId === teamId;
+  if (routerUpdated) {
+    await injectRouterRule(projectDir, routerRuleForMode("local", { clonePath: to, voice: await charterVoiceFromWiki(to), teamId }));
+  }
+  return { teamId, from, to, routerUpdated, projectDir };
 }
 var isReservedImportPath = isReservedPath;
 function isInside2(parent, child) {
@@ -14608,7 +14752,7 @@ async function importWiki(deps, opts) {
   }
   if (!await isDir(sourceDir))
     throw new AgentError(`not a folder: ${sourceDir}`);
-  const dir = clonePath(teamId, deps.dataHome);
+  const dir = await resolveClonePath(teamId, deps.configHome, deps.dataHome);
   const remote = await deps.backend.remoteAccess(teamId);
   if (!await pathExists2(dir)) {
     await cloneRepo(remote.url, dir, remote.env);
@@ -14843,13 +14987,32 @@ function toPageChanges(entries) {
     path: e.path
   }));
 }
+async function resolveCloneTarget(deps, teamId, token) {
+  const dir = await resolveClonePath(teamId, deps.configHome, deps.dataHome);
+  if (await pathExists2(dir))
+    return dir;
+  await refreshTeamProfile(deps, teamId, token);
+  return resolveClonePath(teamId, deps.configHome, deps.dataHome);
+}
+async function recordAndAnnounce(deps, teamId, dir, onClone) {
+  const profile = await readTeamProfile(teamId, deps.configHome);
+  if (!profile.clonePath) {
+    if ((0, import_node_path6.resolve)((0, import_node_path6.dirname)(dir)) === (0, import_node_path6.resolve)(deps.dataHome)) {
+      await setCloneDir(teamId, (0, import_node_path6.basename)(dir), deps.configHome);
+    } else {
+      await setClonePath(teamId, (0, import_node_path6.resolve)(dir), deps.configHome);
+    }
+  }
+  onClone?.(dir);
+}
 async function sync(deps, teamId, opts = {}) {
   const binding = await readBinding(teamId, deps.configHome, deps.dataHome);
   if (!binding)
     throw notLoggedIn(teamId, deps.configHome);
-  const dir = clonePath(teamId, deps.dataHome);
+  const dir = await resolveCloneTarget(deps, teamId, binding.token);
   const origin = await deps.backend.remoteAccess(teamId);
   if (!await pathExists2(dir)) {
+    await recordAndAnnounce(deps, teamId, dir, opts.onClone);
     await cloneRepo(origin.url, dir, origin.env);
     await injectAll(dir);
     return { teamId, clonePath: dir, action: "cloned", ahead: 0, behind: 0 };
@@ -14956,10 +15119,11 @@ async function pull(deps, teamId, opts = {}) {
   const binding = await readBinding(teamId, deps.configHome, deps.dataHome);
   if (!binding)
     throw notLoggedIn(teamId, deps.configHome);
-  const dir = clonePath(teamId, deps.dataHome);
   const origin = await deps.backend.remoteAccess(teamId);
   await refreshTeamProfile(deps, teamId, binding.token);
+  const dir = await resolveClonePath(teamId, deps.configHome, deps.dataHome);
   if (!await pathExists2(dir)) {
+    await recordAndAnnounce(deps, teamId, dir, opts.onClone);
     await cloneRepo(origin.url, dir, origin.env);
     await injectAll(dir);
     return { teamId, clonePath: dir, action: "cloned", ahead: 0, behind: 0, dirty: false };
@@ -15013,7 +15177,7 @@ async function push(deps, teamId, opts = {}) {
   const binding = await readBinding(teamId, deps.configHome, deps.dataHome);
   if (!binding)
     throw notLoggedIn(teamId, deps.configHome);
-  const dir = clonePath(teamId, deps.dataHome);
+  const dir = await resolveClonePath(teamId, deps.configHome, deps.dataHome);
   if (!await pathExists2(dir))
     throw new AgentError(`no local clone for "${teamId}" \u2014 run "commonground pull" first`);
   const origin = await deps.backend.remoteAccess(teamId);
@@ -15137,7 +15301,7 @@ async function exportWiki(deps, teamId, opts = {}) {
   const binding = await readBinding(teamId, deps.configHome, deps.dataHome);
   if (!binding)
     throw notLoggedIn(teamId, deps.configHome);
-  const dir = clonePath(teamId, deps.dataHome);
+  const dir = await resolveClonePath(teamId, deps.configHome, deps.dataHome);
   if (!await pathExists2(dir))
     throw new AgentError(`no local clone for "${teamId}" \u2014 run "commonground pull" first`);
   const out = opts.out ?? (0, import_node_path6.join)(deps.dataHome, `${teamId}-wiki.tar`);
@@ -15150,11 +15314,12 @@ async function status(deps, teamId) {
     throw notLoggedIn(teamId, deps.configHome);
   const legacy = await legacyCredentialState(deps.configHome, deps.dataHome);
   const legacyCredential = legacy ? { legacyCredential: legacy } : {};
-  const dir = clonePath(teamId, deps.dataHome);
+  const dir = await resolveCloneTarget(deps, teamId, binding.token);
   if (!await pathExists2(dir)) {
     return {
       teamId,
       role: binding.role,
+      clonePath: dir,
       state: "not-cloned",
       ahead: 0,
       behind: 0,
@@ -15174,6 +15339,7 @@ async function status(deps, teamId) {
   const changedFiles = changedPages.map((p) => p.path);
   return {
     teamId,
+    clonePath: dir,
     role: binding.role,
     state,
     ahead,
@@ -15188,7 +15354,7 @@ async function resolveDivergence(deps, teamId, choice, opts = {}) {
   const binding = await readBinding(teamId, deps.configHome, deps.dataHome);
   if (!binding)
     throw notLoggedIn(teamId, deps.configHome);
-  const dir = clonePath(teamId, deps.dataHome);
+  const dir = await resolveClonePath(teamId, deps.configHome, deps.dataHome);
   if (!await pathExists2(dir))
     throw new AgentError(`no local clone for "${teamId}" \u2014 run "commonground pull" first`);
   if (choice === "keep-local") {
@@ -15207,7 +15373,7 @@ async function lint(deps, teamId) {
   const binding = await readBinding(teamId, deps.configHome, deps.dataHome);
   if (!binding)
     throw notLoggedIn(teamId, deps.configHome);
-  const dir = clonePath(teamId, deps.dataHome);
+  const dir = await resolveClonePath(teamId, deps.configHome, deps.dataHome);
   if (!await pathExists2(dir))
     throw new AgentError(`no local clone for "${teamId}" \u2014 run "commonground pull" first`);
   return { ...await localLint(dir), clonePath: dir };
@@ -15216,7 +15382,7 @@ async function coverage(deps, teamId) {
   const binding = await readBinding(teamId, deps.configHome, deps.dataHome);
   if (!binding)
     throw notLoggedIn(teamId, deps.configHome);
-  const dir = clonePath(teamId, deps.dataHome);
+  const dir = await resolveClonePath(teamId, deps.configHome, deps.dataHome);
   if (!await pathExists2(dir))
     throw new AgentError(`no local clone for "${teamId}" \u2014 run "commonground pull" first`);
   await refreshTeamProfile(deps, teamId, binding.token);
@@ -15229,7 +15395,7 @@ async function normalizeRetiredKeys(deps, teamId, opts = {}) {
   const binding = await readBinding(teamId, deps.configHome, deps.dataHome);
   if (!binding)
     throw notLoggedIn(teamId, deps.configHome);
-  const dir = clonePath(teamId, deps.dataHome);
+  const dir = await resolveClonePath(teamId, deps.configHome, deps.dataHome);
   if (!await pathExists2(dir))
     throw new AgentError(`no local clone for "${teamId}" \u2014 run "commonground pull" first`);
   const files = [];
@@ -15291,7 +15457,13 @@ Usage:
                                device token for CI/manual binding
   commonground init [team]     connect THIS project to your wiki: write a router block into
                                ./CLAUDE.md (--mode mcp [default] | local; local also clones).
-                               --refresh re-renders the block in the wiki's charter voice
+                               --path <folder> puts the wiki folder where you want it (local mode;
+                               the folder must be empty or new). --refresh re-renders the block in
+                               the wiki's charter voice
+  commonground relocate <folder> [team]
+                               move your wiki folder somewhere else \u2014 moves the files, remembers
+                               the new location, and updates THIS project's ./CLAUDE.md. Other
+                               projects need "commonground init --refresh"
   commonground pull [team]     get the published wiki's latest into your local copy (everyone).
                                Never overwrites local work: it stops and reports instead. Add
                                --take-remote to adopt the published version anyway (your work is
@@ -15330,7 +15502,10 @@ Usage:
                                folder is COPIED into your wiki clone and left untouched \u2014 from then
                                on the clone is the copy CommonGround syncs
 
-Your wiki folder lives at ~/CommonGround/<teamId>/ (override with COMMONGROUND_HOME).
+Your wiki folder is named after the wiki (e.g. ~/CommonGround/acme-handbook/). Choose your own with
+"init --path <folder>", or move it later with "relocate <folder>"; a folder you chose stays put.
+COMMONGROUND_HOME changes where the ones you did NOT choose live. Folders created before this
+existed keep their old name \u2014 nothing moves on its own.
 Your sign-in is stored separately at ~/.commonground/credentials.json (override with
 COMMONGROUND_CONFIG_HOME) \u2014 moving or deleting your wiki folder never signs you out.
 Talks to the hosted API at https://api.commongroundapp.io by default (override with
@@ -15439,21 +15614,42 @@ function parseInitArgs(rest) {
   let mode = "mcp";
   let team;
   let refresh = false;
+  let path;
   for (let i = 0; i < rest.length; i++) {
     const arg = rest[i];
     const modeVal = arg === "--mode" ? rest[++i] : arg.startsWith("--mode=") ? arg.slice(7) : void 0;
     if (arg === "--mode" || arg.startsWith("--mode=")) {
       if (modeVal !== "mcp" && modeVal !== "local") {
-        throw new AgentError("usage: commonground init [--mode mcp|local] [--refresh] [team]");
+        throw new AgentError(USAGE_INIT);
       }
       mode = modeVal;
+    } else if (arg === "--path" || arg.startsWith("--path=")) {
+      const val = arg === "--path" ? rest[++i] : arg.slice(7);
+      if (!val)
+        throw new AgentError(USAGE_INIT);
+      path = val;
     } else if (arg === "--refresh") {
       refresh = true;
     } else if (!arg.startsWith("-")) {
       team = arg;
     }
   }
-  return { mode, team, refresh };
+  if (path && mode !== "local") {
+    throw new AgentError("--path sets where your wiki FOLDER goes, which only local-clone mode has \u2014 add --mode local, or drop --path");
+  }
+  return { mode, team, refresh, path };
+}
+var USAGE_INIT = "usage: commonground init [--mode mcp|local] [--path <folder>] [--refresh] [team]";
+function announceClone(dir) {
+  process.stdout.write(`Creating your wiki folder at ${dir}
+`);
+}
+function formatRelocate(r) {
+  const router = r.routerUpdated ? `Updated ${r.projectDir}/CLAUDE.md to point at the new location.
+` : "";
+  return `Moved your wiki from ${r.from} to ${r.to}.
+` + router + `Any OTHER project connected to this wiki still names the old folder \u2014 run "commonground init --refresh" in each one to update it.
+`;
 }
 function formatInit(r) {
   const wrote = `Wrote the CommonGround router block into ${r.projectDir}/CLAUDE.md.`;
@@ -15515,7 +15711,14 @@ function legacyCredentialNote(state, deps) {
   }
 }
 function formatStatus(s, deps, mode = null) {
-  return formatSyncState(s, mode) + legacyCredentialNote(s.legacyCredential, deps);
+  return formatSyncState(s, mode) + whereItLives(s, mode) + legacyCredentialNote(s.legacyCredential, deps);
+}
+function whereItLives(s, mode) {
+  if (mode === "mcp")
+    return "";
+  return s.state === "not-cloned" ? `  Your wiki folder would be created at ${s.clonePath}.
+` : `  Your wiki folder: ${s.clonePath}
+`;
 }
 function formatSyncState(s, mode = null) {
   const who = `${s.teamId} (you: ${s.role})`;
@@ -15908,7 +16111,7 @@ Then run "commonground login --wait" (the code is valid for about ${Math.round(p
       return;
     }
     case "init": {
-      const { mode, team, refresh } = parseInitArgs(rest);
+      const { mode, team, refresh, path } = parseInitArgs(rest);
       const deps = await buildDeps();
       let effectiveMode = mode;
       let effectiveTeam = team;
@@ -15928,15 +16131,30 @@ Then run "commonground login --wait" (the code is valid for about ${Math.round(p
       const result = await initProject(deps, {
         mode: effectiveMode,
         teamId: await resolveTeamId(deps, effectiveTeam),
-        projectDir: process.cwd()
+        projectDir: process.cwd(),
+        ...path === void 0 ? {} : { path },
+        onClone: announceClone
       });
       process.stdout.write(formatInit(result));
+      return;
+    }
+    case "relocate": {
+      const deps = await buildDeps();
+      const [to, ...others] = rest.filter((a) => !a.startsWith("-"));
+      if (!to)
+        throw new AgentError("usage: commonground relocate <folder> [team]");
+      const result = await relocateClone(deps, {
+        teamId: await resolveTeamId(deps, others[0]),
+        to,
+        projectDir: process.cwd()
+      });
+      process.stdout.write(formatRelocate(result));
       return;
     }
     case "sync": {
       const deps = await buildDeps();
       const teamId = await resolveTeamId(deps, rest[0]);
-      const result = await sync(deps, teamId);
+      const result = await sync(deps, teamId, { onClone: announceClone });
       process.stdout.write(formatSync(result, await voiceFor(deps, teamId)));
       return;
     }
@@ -15944,7 +16162,7 @@ Then run "commonground login --wait" (the code is valid for about ${Math.round(p
       const deps = await buildDeps();
       const takeRemote = rest.includes("--take-remote");
       const teamId = await resolveTeamId(deps, teamArg(rest));
-      const result = await pull(deps, teamId, { takeRemote });
+      const result = await pull(deps, teamId, { takeRemote, onClone: announceClone });
       process.stdout.write(formatPull(result, await voiceFor(deps, teamId)));
       return;
     }

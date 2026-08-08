@@ -18,8 +18,11 @@ a clash it stops and asks.
 
 Run `commonground pull` and report the outcome in plain language:
 
-- **Cloned** — first time: the wiki now lives at the printed path. Say so and offer to answer a
-  question from it.
+- **Cloned** — first time. The CLI prints `Creating your wiki folder at <path>` *before* it makes
+  anything, so the user is never surprised by a new directory. **Relay that path** — it is where
+  their team's context now lives, and it's the folder they'd open in an editor. Then offer to answer
+  a question from it. If they'd rather it lived somewhere else, that's `commonground relocate
+  <folder>`, which moves the files and updates this project's `./CLAUDE.md`.
 - **Up to date** — nothing incoming. If it also mentions **unpublished changes**, tell the user
   they have local work that hasn't been published and offer `/commonground:push`.
 - **Updated** — it fast-forwarded. Report the pages that came in, by name (the CLI prints the

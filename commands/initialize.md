@@ -31,30 +31,47 @@ The user needs a CommonGround account on a team first.
 
   On success it prints the team and role.
 
-## 3. (Optional) Load an existing wiki from the computer
+## 3. (Optional) Load existing markdown from the computer
 
-If the user already has a folder of wiki/markdown content (e.g. an Obsidian vault or docs folder)
-and wants to seed a *fresh* team from it, you can import it — but the guided **`/commonground:seed`**
+If the user already has a folder of markdown notes or docs and wants to seed a *fresh* team from it,
+you can import it — but the guided **`/commonground:seed`**
 flow (offered in step 6 below) does this better: it triages what to import, normalizes
 frontmatter, and reports coverage. So prefer to just
 mention it here and let step 6 drive. (For a direct import now, `commonground import <folder>` overlays
 and normalizes the folder onto the hosted wiki — admins/curators, confirm the path first.) After an
-import the wiki lives at `~/CommonGround/<team>/`, and **that clone — not the folder you imported —
+import the wiki lives in the wiki folder, and **that clone — not the folder you imported —
 is the copy CommonGround keeps in sync**: the imported folder is left untouched, so anything edited
 there afterwards needs another import to reach the wiki. Skip a manual import for an
 already-populated team or a from-scratch start.
 
-## 4. Choose a mode
+## 4. Choose a mode — and, for local, where the folder goes
 
 Look at `$ARGUMENTS`:
-- `local` → **local-clone mode**: also clone the wiki to `~/CommonGround/<team>/` (Obsidian-compatible;
-  good for offline reading or hands-on curation).
+- `local` → **local-clone mode**: also clone the wiki to a real folder on disk (plain markdown, so it
+  opens in Obsidian or any editor; good for offline reading or hands-on curation).
 - anything else (including empty) → **MCP mode** (default): reach the wiki live through the
   CommonGround MCP connector, no local files. Best for most coding projects.
 
 If it's ambiguous and the user hasn't expressed a preference, offer the choice — with the
 `AskUserQuestion` tool (multiple-choice UI) if it's available in this session, otherwise as a plain
 question: **MCP mode (recommended)** / **Local clone** — defaulting to MCP.
+
+**If they chose local, settle the folder in the same breath — one question, with a real default.**
+The folder is named after the wiki (`~/CommonGround/<wiki-name>/`), so the default is already
+sensible; the point is that the user gets told where their notes will live *before* a directory
+appears, and can say otherwise. Ask it as a confirm-or-override, never as an open-ended "where?":
+
+> *"I'll put your wiki at `~/CommonGround/acme-handbook/` — good, or would you rather it lived
+> somewhere else (say, in your notes folder)?"*
+
+- Accepting the default → run `init` with no `--path`.
+- Naming a folder → pass it: `commonground init --mode local --path "<folder>" [team]`. It must be
+  **empty or not exist yet**; the CLI refuses a folder with files in it and points at
+  `commonground import` instead, which is the right tool for "I already have notes there".
+- **Don't ask this in MCP mode** — there is no folder, and `--path` is rejected there.
+- If the wiki is **already cloned**, `--path` is refused by design (it would strand the old folder,
+  unpublished work and all). Moving an existing folder is `commonground relocate <folder> [team]`,
+  which moves the files, remembers the new spot, and updates this project's `./CLAUDE.md`.
 
 ## 5. Initialize
 
@@ -65,9 +82,11 @@ question: **MCP mode (recommended)** / **Local clone** — defaulting to MCP.
 Don't guess, and don't let the error reach the user as a crash: which wiki a project reads from is
 their decision, not a default.
 
-Run `commonground init --mode <mcp|local> [team]`. This writes an idempotent CommonGround router block
+Run `commonground init --mode <mcp|local> [--path <folder>] [team]`. This writes an idempotent
+CommonGround router block
 into this project's `./CLAUDE.md` (it merges — it never clobbers the user's existing content) so Claude
-consults the wiki before answering team questions. Local mode also clones the wiki.
+consults the wiki before answering team questions. Local mode also clones the wiki, printing the
+folder it is creating before it creates it — relay that path to the user, it's where their notes now live.
 
 The block records the team it's bound to, which is also what lets a multi-team machine resolve *this*
 project's wiki in later sessions — so a project initialized this way keeps working without re-asking.

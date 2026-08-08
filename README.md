@@ -34,7 +34,7 @@ charters the wiki and puts the first pages in.
 | Command | What it does |
 |---|---|
 | `/commonground:initialize` | Connect this project to your wiki (MCP or local-clone mode) |
-| `/commonground:seed` | Bootstrap or top up the wiki — guided interview, or import an existing folder/vault |
+| `/commonground:seed` | Bootstrap or top up the wiki — guided interview, or import an existing markdown folder |
 | `/commonground:ingest` | Capture anything into the wiki: notes, a transcript, a doc or URL, a decision |
 | `/commonground:lint` | Health check — stale/orphan/broken-citation pages, coverage gaps, open suggestions |
 | `/commonground:status` | Where you stand: connection, team, role, and what to do next |
@@ -47,7 +47,8 @@ charters the wiki and puts the first pages in.
 CommonGround connector. No local files. Best for most coding projects. Writes here go live the moment
 they land — on a shared wiki that means everyone, so Claude asks before each one.
 
-**Local-clone mode** — a full copy of the wiki on disk at `~/CommonGround/<teamId>/`, plain markdown
+**Local-clone mode** — a full copy of the wiki on disk in a folder named after it (`~/CommonGround/<wiki-name>/`
+by default; choose your own with `--path`, or move it later with `commonground relocate`), plain markdown
 that opens directly in Obsidian. The clone is your **working copy**: everything you ingest, edit or
 fix lands there first, and nothing is published until you run `/commonground:push`, which
 previews the change and asks. Editing your own copy needs no particular role; publishing is

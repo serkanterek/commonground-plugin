@@ -12,10 +12,14 @@ Run `commonground status`. Report whether the user is signed in, the team, their
 
 **Lead with the mode**, because it decides where this project's work lands:
 
-- **Local-clone mode** — name the clone path and say plainly: curation edits files there, anyone may
-  curate, and nothing is published until `/commonground:push` — that's when a shared wiki reaches
+- **Local-clone mode** — name the clone path (the CLI prints it as `Your wiki folder: …`, or, when
+  nothing is cloned yet, `would be created at …`) and say plainly: curation edits files there, anyone
+  may curate, and nothing is published until `/commonground:push` — that's when a shared wiki reaches
   the team, or a personal one reaches the user's other machines and Chat sessions. If the CLI reports
-  unpublished work, say so — that's the user's own thinking, not yet shared.
+  unpublished work, say so — that's the user's own thinking, not yet shared. If they'd rather the
+  folder lived somewhere else, that's `commonground relocate <folder>` — it moves the files and
+  repoints this project's `./CLAUDE.md`. (Never move the folder for them with `mv`: the recorded
+  location and the router block would both go stale, and the next command would clone a second copy.)
 - **MCP mode** — say there's no local copy, so every write via `save_page` is immediately live — for
   the whole team on a shared wiki, for the user's other Claude sessions on a personal one.
 

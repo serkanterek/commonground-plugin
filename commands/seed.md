@@ -1,5 +1,5 @@
 ---
-description: Bootstrap (or top up) your CommonGround wiki — a guided seeding arc that charters the wiki (who it's for, what it holds), then builds from scratch or imports an existing folder/vault
+description: Bootstrap (or top up) your CommonGround wiki — a guided seeding arc that charters the wiki (who it's for, what it holds), then builds from scratch or imports an existing markdown folder
 argument-hint: "[folder to import]"
 ---
 
@@ -161,7 +161,7 @@ describing your own work and hearing it named back. The order below is the point
    a derived list would miss.
 5. **What does NOT belong.** Ask it plainly — "is there anything that should stay OUT of this wiki,
    and where does it live instead?" Capture their answer in their own words (e.g. "client work
-   stays in the client vault; interview prep lives in Careerhelp"). This is the contract's other
+   stays in Notion; interview prep lives in Careerhelp"). This is the contract's other
    half: without it every surface only ever says *consult this wiki*, so material drifts in and the
    wiki stops being trustworthy. Skip it gracefully if they have nothing to exclude — an absent
    Excludes section renders exactly as before. Also mention what it does: coverage stops chasing an
@@ -208,8 +208,8 @@ the charter up automatically (per session/request) — no extra step there.
 ## 3. Fork: build fresh, or import what you have?
 
 If `$ARGUMENTS` is a folder path, treat that as "import" and skip the question. Otherwise ask
-(AskUserQuestion): **Build from scratch** (I interview you and draft pages) / **Import a folder or
-vault** (Obsidian, a `docs/` tree, a Notion/Confluence export — normalized in) / **Import, then
+(AskUserQuestion): **Build from scratch** (I interview you and draft pages) / **Import an existing
+markdown folder** (a notes folder, a `docs/` tree, a Notion/Confluence export — normalized in) / **Import, then
 top up** (import first, then interview the thin spots). All paths write real pages and end at the
 same gap-fill loop (step 6).
 
@@ -245,7 +245,7 @@ failure the reordering in step 2 exists to prevent. Anything already recorded in
 4. **Show the drafted page and persist only on the user's confirm** — never auto-write. Then
    persist (step 7). Each saved page visibly ticks a section of the checklist.
 
-## 5. Branch B — import an existing folder/vault (triage, then normalize — don't dump)
+## 5. Branch B — import an existing markdown folder (triage, then normalize — don't dump)
 
 The hero path when content already exists. Nothing lands raw — imported content becomes
 schema-valid, retrievable pages, not files that look covered but answer badly.
@@ -264,13 +264,13 @@ apart from trimming blank lines around it; only backfill valid frontmatter) / **
 duplication — **never** on content being "too personal" (the charter's audience decides what
 belongs; for just-me, everything is in-scope). The user's call is final.
 
-**A vault with its own folders keeps them, verbatim.** Import preserves paths exactly — a page's
+**A folder tree with its own subfolders keeps them, verbatim.** Import preserves paths exactly — a page's
 path IS its pageId. Never restructure a tree the user already built. But a folder no longer groups
 anything: **give each page a `tags:` naming the cluster its folder represents**, or the whole import
 lands under `(uncategorised)`. Prefer the charter's own `## Structure` wording where a folder matches
 one — `psychology/` under a charter section "Psychology notes" is `tags: [psychology-notes]`.
 
-**A vault with NO folders: offer sections, don't impose them.** A flat pile imports flat, which is
+**A flat folder with no subfolders: offer sections, don't impose them.** A flat pile imports flat, which is
 honest and perfectly fine for twenty notes — but one unlabelled alphabetical list of two hundred is
 unusable, and that is exactly when help is worth most. You have already clustered these files by
 topic to run the triage above, so the work is done; the only question is whether the user wants it
@@ -296,11 +296,11 @@ a root `index.md`, because the wiki regenerates its own catalog there. Same for 
   stage the kept clusters into a temp folder **preserving relative paths** (or use the folder
   directly when everything is kept as-is); staging never moves a file — when the user chose to
   **file them**, the cluster name goes into each staged file's `tags:`, which is what groups it, so
-  a flat vault stays flat on disk. For clusters marked **Normalize**, do the
+  a flat folder stays flat on disk. For clusters marked **Normalize**, do the
   restructuring/merging yourself in-session first, editing the staged files; then run
   `commonground import <staged folder>`. It overlays the folder onto the clone, **backfills
   missing/invalid frontmatter** (carrying `tags`/`aliases`/`created` onto the schema and preserving
-  any other frontmatter key verbatim — an imported `tags:` is the vault's own **legacy label**, not
+  any other frontmatter key verbatim — an imported `tags:` is the source folder's own **legacy label**, not
   a category, so assign the charter category the cluster belongs to as well), **regenerates
   `index.md`** from the whole wiki — it never imports the source folder's own `index.md`, `log.md`
   or `CLAUDE.md`, and never overwrites anything already under `sources/`. Then it commits and
@@ -312,13 +312,13 @@ a root `index.md`, because the wiki regenerates its own catalog there. Same for 
 - **MCP mode (no local clone):** do the normalize in-session, honoring each cluster's triage
   choice (as-is = body untouched + frontmatter backfill; normalize = restructure/merge). Read the
   folder yourself (your Read / Glob tools — a remote MCP can't reach local files). For each doc:
-  derive a `pageId` that mirrors the source folder's own structure — a flat vault stays flat, since
+  derive a `pageId` that mirrors the source folder's own structure — a flat folder stays flat, since
   the cluster the user agreed to rides in `tags:`, not in the path — and write **valid frontmatter**
   (title from the H1/filename, and `updated` = the doc's own date if it has one,
-  else today — don't restamp real modification dates). Don't add a `scope`: an imported vault never
+  else today — don't restamp real modification dates). Don't add a `scope`: an imported folder never
   declared one, and inventing `company` puts an org word on somebody's own notes. **Carry the source's frontmatter across**: `tags`/`aliases`/`created` are
   first-class fields, and any other key rides along untouched; only a near-miss of a contract key
-  (`Tags`) has to go, and say so when it does. An imported `tags:` is the vault's own **legacy
+  (`Tags`) has to go, and say so when it does. An imported `tags:` is the source folder's own **legacy
   label**, not a category — add the charter category for the cluster this page came from alongside
   it, or the import re-creates a free-form vocabulary on the hero onboarding path.
   Prefer **updating** an existing page over a near-duplicate (`get_index` first). Persist each
@@ -330,15 +330,15 @@ a root `index.md`, because the wiki regenerates its own catalog there. Same for 
 Import **copies**; it never adopts the folder. So, in this order:
 1. Re-read `get_coverage` / the index and report how the import mapped onto the **charter's
    structure** — which sections it filled, which are still thin.
-2. Name the canonical copy: **`~/CommonGround/<team>/` is the wiki** — the copy CommonGround syncs,
+2. Name the canonical copy: **the wiki folder is the wiki** — the copy CommonGround syncs,
    publishes and serves. The folder you imported was left untouched and is now a separate copy that
    will drift.
 3. **Delete the temp staging folder** if this flow created one (it's a scratch copy, not the wiki —
-   the CLI receipt names it as the source). Never delete the user's own vault.
-4. Offer the convergence choice for a real vault: **repoint their editor** at
-   `~/CommonGround/<team>/` (the clone is Obsidian-compatible — see `/commonground:initialize`) so
-   there is one copy again, or **keep working in the vault** and accept that every change needs
-   another `commonground import` to reach the wiki. Their call; just don't leave it unsaid.
+   the CLI receipt names it as the source). Never delete the user's own source folder.
+4. Offer the convergence choice when they imported a folder they actually work in: **repoint their
+   editor** at the wiki folder (plain markdown — it opens in Obsidian or any editor; the path is in
+   this project's `./CLAUDE.md`) so there is one copy again, or **keep working in the original** and
+   accept that every change needs another `commonground import` to reach the wiki. Their call; just don't leave it unsaid.
 
 That leads into step 6.
 

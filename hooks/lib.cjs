@@ -650,11 +650,42 @@ async function fetchJson(pathname, binding, timeoutMs) {
   }
 }
 
+/** The team-profile cache the CLI keeps beside the token — non-secret, and never written here. */
+function profilesPath() {
+  return path.join(configHome(), 'profiles.json');
+}
+
+/** A team's cached profile, or `{}`. Fail-open: this only ever degrades a nudge. */
+function readTeamProfile(teamId) {
+  try {
+    const raw = JSON.parse(fs.readFileSync(profilesPath(), 'utf8'));
+    return (raw && raw.teams && raw.teams[teamId]) || {};
+  } catch {
+    return {};
+  }
+}
+
 /**
- * Where a team's clone lives on this machine — `<dataHome>/<teamId>`, mirroring the sync CLI's
- * `clonePath`. Purely positional: it says nothing about whether a clone is actually there.
+ * Where a team's clone lives on this machine — the READ half of `config.ts`'s `resolveClonePath`
+ * (SER-221), in the same four steps and the same order:
+ *
+ *   1. a folder the user chose (absolute, outranks `COMMONGROUND_HOME`);
+ *   2. else the recorded directory name under the current data home;
+ *   3. else `<dataHome>/<teamId>`, the pre-SER-221 location, if a clone is sitting there;
+ *   4. else that same UUID path as the last word.
+ *
+ * Step 4 differs from the CLI's on purpose: the CLI's fourth step INVENTS a name for a clone it is
+ * about to create, and this file never creates one. A hook that guessed a not-yet-existing default
+ * would report "out of sync" about a directory nobody has cloned yet. Every consumer here treats a
+ * missing directory as "say nothing", so returning the historical path is the quiet answer.
+ *
+ * Drift here is silent, not loud: resolve a different directory than the CLI and the SessionStart
+ * sync nudge simply stops firing. `credential-drift.test.ts` is what stops that happening.
  */
 function clonePath(teamId) {
+  const profile = readTeamProfile(teamId);
+  if (profile.clonePath) return profile.clonePath;
+  if (profile.cloneDir) return path.join(dataHome(), profile.cloneDir);
   return path.join(dataHome(), teamId);
 }
 

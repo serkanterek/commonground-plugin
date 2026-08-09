@@ -11,10 +11,15 @@ a clash it stops and asks.
 > plugin update can drop the connector mid-session), `commonground pull` still works — it
 > authenticates as the signed-in **device**, not through the connector — and gives the user a
 > readable copy of the wiki on disk to keep working from. Ask for an explicit OK first: it writes
-> files into a project that chose not to have any. Write it as `commonground pull <team>` (the team
-> name from `commonground status`) — a bare `commonground pull` fails when more than one team is
-> logged in. If `commonground status` says the project isn't connected or there's no clone, point
-> the user at `/commonground:initialize`.
+> files into a project that chose not to have any. If `commonground status` says the project isn't
+> connected or there's no clone, point the user at `/commonground:initialize`.
+
+> **Which team, on a machine signed in to several.** A bare `commonground pull` resolves the team
+> from this project's own router block, so an initialized project needs no argument even with two
+> teams signed in. It only asks when the project carries no team of theirs — an uninitialized
+> directory, or a block written before the team marker existed — and then it fails with
+> `multiple teams logged in — specify one: …`, which lists the team IDs. Pass one as
+> `commonground pull <team-id>`, and offer `/commonground:initialize` so it stops asking.
 
 Run `commonground pull` and report the outcome in plain language:
 

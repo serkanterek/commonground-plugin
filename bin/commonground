@@ -15447,6 +15447,21 @@ async function pathExists2(path) {
   }
 }
 
+// ../../apps/sync-agent/dist/team-resolve.js
+async function resolveTeamId(deps, arg, projectDir = process.cwd()) {
+  if (arg)
+    return arg;
+  const teams = Object.keys((await readStore(deps.configHome, deps.dataHome)).teams);
+  if (teams.length === 0)
+    throw notLoggedIn(void 0, deps.configHome);
+  if (teams.length === 1)
+    return teams[0];
+  const bound = (await detectRouterBlock(projectDir))?.teamId;
+  if (bound && teams.includes(bound))
+    return bound;
+  throw new AgentError(`multiple teams logged in \u2014 specify one: ${teams.join(", ")}. (This project's ./CLAUDE.md names no team of yours; "commonground init <team>" stamps it, after which these commands resolve on their own.)`);
+}
+
 // ../../apps/sync-agent/dist/cli.js
 var USAGE = `commonground \u2014 CommonGround sync agent
 
@@ -15588,16 +15603,6 @@ Authorize this device in your browser:
   };
 }
 var WAIT_BUDGET_MS = 9e4;
-async function resolveTeamId(deps, arg) {
-  if (arg)
-    return arg;
-  const teams = Object.keys((await readStore(deps.configHome, deps.dataHome)).teams);
-  if (teams.length === 1)
-    return teams[0];
-  if (teams.length === 0)
-    throw notLoggedIn(void 0, deps.configHome);
-  throw new AgentError(`multiple teams logged in \u2014 specify one: ${teams.join(", ")}`);
-}
 var PAGE_SYMBOL = {
   added: "+",
   modified: "~",

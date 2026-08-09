@@ -10,10 +10,14 @@
  * the enforcing layer.
  *
  * It covers BOTH publish points, which is the whole reason it exists:
- *   • local-clone mode — `commonground push` publishes; the write tools are BANNED here (SER-184),
- *     so far only in prose. Verdict: DENY, and say where the write belongs instead.
+ *   • local-clone mode — `commonground push` publishes; the CONTENT write tools are BANNED here
+ *     (SER-184), so far only in prose. Verdict: DENY, and say where the write belongs instead.
  *   • MCP mode — there is no local file, no staging and no push step: `save_page` IS the publish and
  *     is live the instant it lands, for the whole team on a shared wiki. Verdict: ASK.
+ *
+ * "DENY in local mode" is a rule about CONTENT, not about gated tools in general. A deny is only
+ * defensible when it routes the call somewhere better; for a tool with no local equivalent it just
+ * removes the only path to the thing. See OUTWARD_TOOLS.
  *
  * Read-only tools and the read-only CLI forms (`--dry-run`, `lint`, `status`) pass untouched. A
  * guard that blocks the safe preview teaches people to click through every prompt, which destroys
@@ -38,20 +42,73 @@ const {
 } = require(`${__dirname}/lib.cjs`);
 
 /**
- * Tools that publish. Gating is by BARE tool name — an MCP tool arrives as
+ * Tools that write wiki CONTENT — a page, the charter, raw source material.
+ *
+ * Every one of these has a local-clone equivalent: a file in the clone, published later by
+ * `commonground push`. That is what makes DENY the right verdict for them in local mode — the call
+ * is refused *and* redirected, which is a different act from simply blocking it.
+ */
+const CONTENT_WRITE_TOOLS = new Set(['save_page', 'save_charter', 'stage_sources']);
+
+/**
+ * Gated tools that change hosted, team-visible state with NO local equivalent (SER-223).
+ *
+ * An invitation is minted server-side and the suggestion queue only exists server-side; neither is
+ * a file, and no `commonground` verb produces either (check `USAGE` in the sync agent's cli.ts —
+ * there is no `invite`). So the local-mode deny that content writes get was, for these two, not a
+ * redirect but a dead end: a local-clone project could not invite anyone, and the refusal text told
+ * the model to go and "write the page as a FILE in the clone" — advice with no referent, since
+ * there is no page. The invite path was simply unreachable outside MCP mode and the web Team page.
+ *
+ * They stay GATED — both are outward-facing and awkward to walk back — but the verdict is `ask` in
+ * every mode, because in every mode this call IS the act.
+ */
+const OUTWARD_TOOLS = new Set([
+  'invite_teammate', // mints a real invite link that joins someone to the team
+  'resolve_suggestion', // clears an item from the queue the whole team shares
+]);
+
+/**
+ * Everything gated, in either class. Gating is by BARE tool name — an MCP tool arrives as
  * `mcp__<server>__<tool>` and the server segment is a per-user connector id we cannot predict.
  *
  * `save_seeding_progress` is deliberately absent: it fires repeatedly through one seeding arc, and a
  * prompt per progress-save trains the user to approve without reading, which is worse than not
  * gating it. It writes bookkeeping, not wiki content.
  */
-const GATED_TOOLS = new Set([
-  'save_page',
-  'save_charter',
-  'stage_sources',
-  'invite_teammate', // sends a real invite — outward-facing
-  'resolve_suggestion', // mutates state the whole team sees
-]);
+const GATED_TOOLS = new Set([...CONTENT_WRITE_TOOLS, ...OUTWARD_TOOLS]);
+
+/**
+ * The `ask` verdict for a tool in {@link OUTWARD_TOOLS}, worded for what it actually does.
+ *
+ * Reusing the content-write wording here is the bug this replaces: a person approving an invite was
+ * being told about pages and local copies. The reason is plain consequence for a HUMAN; the
+ * instruction is the model's channel (see `noticeFor`).
+ */
+function outwardVerdict(tool) {
+  if (tool === 'invite_teammate') {
+    return {
+      decision: 'ask',
+      reason:
+        'This creates a real invitation to your CommonGround wiki. Whoever holds the resulting ' +
+        'link can join your team and read everything in it, at the role being granted here — and ' +
+        'the link works for anyone it is forwarded to, for the next 7 days.',
+      instruction:
+        'There is no local-clone equivalent of an invite and no CLI verb for it — this tool is the ' +
+        'act itself, in every mode. Confirm the email address and the role with the user before ' +
+        'retrying, and never invite anyone they did not name.',
+    };
+  }
+  return {
+    decision: 'ask',
+    reason:
+      'This resolves an inbound suggestion for everyone who shares your CommonGround wiki, not ' +
+      'just for you — it leaves the queue and stops being something anyone else can act on.',
+    instruction:
+      'The suggestion queue is hosted-only: there is no local copy of it, so this is the act ' +
+      'itself in every mode. Get an explicit go-ahead for THIS specific resolution.',
+  };
+}
 
 /**
  * Shell forms that publish THE WIKI. Matched on what the command does, never on the string `git`.
@@ -113,9 +170,13 @@ function decide(input) {
     return { decision: 'ask', reason: hit.reason, instruction: hit.instruction };
   }
 
-  if (!GATED_TOOLS.has(bareToolName(toolName))) return null;
+  const bare = bareToolName(toolName);
+  if (!GATED_TOOLS.has(bare)) return null;
 
-  // A write tool fired. WHERE it lands depends on this project's mode, and the two answers differ.
+  // Hosted-only, no local equivalent — the mode cannot change the answer, so it is never consulted.
+  if (OUTWARD_TOOLS.has(bare)) return outwardVerdict(bare);
+
+  // A CONTENT write fired. WHERE it lands depends on this project's mode, and the answers differ.
   const mode = routerMode(projectCwd(input));
 
   if (mode === 'local') {
@@ -202,4 +263,13 @@ if (require.main === module) {
   }
 }
 
-module.exports = { main, decide, noticeFor, bareToolName, GATED_TOOLS, GATED_COMMANDS };
+module.exports = {
+  main,
+  decide,
+  noticeFor,
+  bareToolName,
+  GATED_TOOLS,
+  CONTENT_WRITE_TOOLS,
+  OUTWARD_TOOLS,
+  GATED_COMMANDS,
+};

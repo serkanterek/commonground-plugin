@@ -75,12 +75,16 @@ appears, and can say otherwise. Ask it as a confirm-or-override, never as an ope
 
 ## 5. Initialize
 
-**First, if the user is signed in to more than one team**, pick one before running anything. Step 1's
-`commonground status` lists them; `init` with no team argument **fails** when several are signed in
-(`multiple teams logged in — specify one: …`), so ask which team this project belongs to — with the
-`AskUserQuestion` tool if it's available, otherwise as a plain question — and pass it explicitly.
-Don't guess, and don't let the error reach the user as a crash: which wiki a project reads from is
-their decision, not a default.
+**First, if the user is signed in to more than one team**, pick one before running anything. A
+first-time `init` is the one moment nothing can resolve the team for you — the project has no router
+block yet, so there is no marker to read — and `init` with no team argument **fails** there
+(`multiple teams logged in — specify one: …`, which lists the IDs). Ask which team this project
+belongs to — with the `AskUserQuestion` tool if it's available, otherwise as a plain question — and
+pass it explicitly. Don't guess, and don't let the error reach the user as a crash: which wiki a
+project reads from is their decision, not a default.
+
+Only a *first* init needs this. `init --refresh`, and every other verb in an already-initialized
+project, reads the team out of the block that's already there.
 
 Run `commonground init --mode <mcp|local> [--path <folder>] [team]`. This writes an idempotent
 CommonGround router block

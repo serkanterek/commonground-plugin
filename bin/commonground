@@ -7460,6 +7460,51 @@ async function writeTeamProfile(teamId, profile, configHome = agentConfigHome())
   } catch {
   }
 }
+var STATE_FILE = "state.json";
+function statePath(configHome = agentConfigHome()) {
+  return (0, import_node_path.join)(configHome, STATE_FILE);
+}
+async function readActiveWiki(configHome = agentConfigHome()) {
+  try {
+    const raw = JSON.parse(await (0, import_promises.readFile)(statePath(configHome), "utf8"));
+    const id = raw?.activeWiki;
+    return typeof id === "string" && id.trim() ? id.trim() : null;
+  } catch {
+    return null;
+  }
+}
+async function writeActiveWiki(teamId, configHome = agentConfigHome()) {
+  const path = statePath(configHome);
+  let state = {};
+  try {
+    const parsed = JSON.parse(await (0, import_promises.readFile)(path, "utf8"));
+    if (parsed && typeof parsed === "object")
+      state = parsed;
+  } catch {
+  }
+  state.activeWiki = teamId;
+  await (0, import_promises.mkdir)((0, import_node_path.dirname)(path), { recursive: true });
+  await (0, import_promises.writeFile)(path, `${JSON.stringify(state, null, 2)}
+`, "utf8");
+}
+async function listWikis(configHome = agentConfigHome(), dataHome = agentDataHome()) {
+  const store = await readStore(configHome, dataHome);
+  let profiles = {};
+  try {
+    const raw = JSON.parse(await (0, import_promises.readFile)(profilesPath(configHome), "utf8"));
+    profiles = raw?.teams ?? {};
+  } catch {
+  }
+  return Object.values(store.teams).map((binding) => ({
+    ...profiles[binding.teamId],
+    teamId: binding.teamId,
+    role: binding.role
+  }));
+}
+function wikiLabel(listing) {
+  const name = listing.wikiName?.trim();
+  return name ? `${name} (${listing.teamId})` : listing.teamId;
+}
 function uuidClonePath(teamId, dataHome = agentDataHome()) {
   return (0, import_node_path.join)(dataHome, teamId);
 }
@@ -14390,7 +14435,7 @@ ${v.cite}
 - If the connector needs authentication \u2014 or its CommonGround tools stop appearing mid-session,
   which a plugin update can cause \u2014 run \`/mcp\` to (re)connect and complete the browser sign-in, or
   restart the session. Missing tools are a CONNECTION problem, never a permissions one: don't tell
-  the user they lack access. \`commonground pull [team]\` still reads the wiki meanwhile \u2014 it
+  the user they lack access. \`commonground pull [wiki]\` still reads the wiki meanwhile \u2014 it
   authenticates as the signed-in device rather than through the connector \u2014 so offer it (it writes
   a readable copy of the wiki to disk, so ask first).
 - To curate (admins only in v1), use the CommonGround maintainer skill / \`/commonground:*\` commands.
@@ -15448,18 +15493,24 @@ async function pathExists2(path) {
 }
 
 // ../../apps/sync-agent/dist/team-resolve.js
-async function resolveTeamId(deps, arg, projectDir = process.cwd()) {
+async function resolveWiki(deps, arg, projectDir = process.cwd()) {
   if (arg)
-    return arg;
-  const teams = Object.keys((await readStore(deps.configHome, deps.dataHome)).teams);
-  if (teams.length === 0)
+    return { teamId: arg, via: "arg" };
+  const wikis = Object.keys((await readStore(deps.configHome, deps.dataHome)).teams);
+  if (wikis.length === 0)
     throw notLoggedIn(void 0, deps.configHome);
-  if (teams.length === 1)
-    return teams[0];
   const bound = (await detectRouterBlock(projectDir))?.teamId;
-  if (bound && teams.includes(bound))
-    return bound;
-  throw new AgentError(`multiple teams logged in \u2014 specify one: ${teams.join(", ")}. (This project's ./CLAUDE.md names no team of yours; "commonground init <team>" stamps it, after which these commands resolve on their own.)`);
+  if (bound && wikis.includes(bound))
+    return { teamId: bound, via: "project" };
+  const active = await readActiveWiki(deps.configHome);
+  if (active && wikis.includes(active))
+    return { teamId: active, via: "active" };
+  if (wikis.length === 1)
+    return { teamId: wikis[0], via: "sole" };
+  throw new AgentError(`more than one wiki available \u2014 say which: ${wikis.join(", ")}. (Choose one for this machine with "commonground use", or bind THIS project to one with "commonground init <wiki>" \u2014 after either, these commands resolve on their own.)`);
+}
+async function resolveTeamId(deps, arg, projectDir = process.cwd()) {
+  return (await resolveWiki(deps, arg, projectDir)).teamId;
 }
 
 // ../../apps/sync-agent/dist/cli.js
@@ -15470,20 +15521,24 @@ Usage:
   commonground login --wait    poll for approval for ~90s; safe to run again if not yet approved
   commonground login [token]   authorize this device \u2014 opens a browser (hosted mode); or pass a
                                device token for CI/manual binding
-  commonground init [team]     connect THIS project to your wiki: write a router block into
+  commonground use [wiki]      list your wikis and say which is active; with a name or id (a
+                               unique prefix of either will do), make that one active for this
+                               machine. A project that "init" bound to a wiki always keeps its
+                               own \u2014 this decides what everywhere ELSE resolves to
+  commonground init [wiki]     connect THIS project to your wiki: write a router block into
                                ./CLAUDE.md (--mode mcp [default] | local; local also clones).
                                --path <folder> puts the wiki folder where you want it (local mode;
                                the folder must be empty or new). --refresh re-renders the block in
                                the wiki's charter voice
-  commonground relocate <folder> [team]
+  commonground relocate <folder> [wiki]
                                move your wiki folder somewhere else \u2014 moves the files, remembers
                                the new location, and updates THIS project's ./CLAUDE.md. Other
                                projects need "commonground init --refresh"
-  commonground pull [team]     get the published wiki's latest into your local copy (everyone).
+  commonground pull [wiki]     get the published wiki's latest into your local copy (everyone).
                                Never overwrites local work: it stops and reports instead. Add
                                --take-remote to adopt the published version anyway (your work is
                                saved on a draft branch first)
-  commonground push [team]     publish your local changes (admins/curators) \u2014 commits for you.
+  commonground push [wiki]     publish your local changes (admins/curators) \u2014 commits for you.
                                --message "what you did" becomes the commit message (say what
                                changed and why; it is the record that outlives the session).
                                --dry-run previews without publishing. Stops if the published wiki
@@ -15491,16 +15546,16 @@ Usage:
                                never force-pushes), stops if the change REMOVES pages
                                (--allow-deletes confirms those), and stops if a page doesn't parse
                                (--allow-unparseable publishes it as a flagged placeholder)
-  commonground status [team]   show sync state ("N commits behind") + local divergence.
+  commonground status [wiki]   show sync state ("N commits behind") + local divergence.
                                --clear-stale-credential removes a leftover pre-0.4.1 sign-in file
                                from inside your wiki folder \u2014 refused unless that file is provably
                                unused, so it can never sign you out
-  commonground lint [team]     health-check YOUR LOCAL COPY (everyone): stale / orphan / broken
+  commonground lint [wiki]     health-check YOUR LOCAL COPY (everyone): stale / orphan / broken
                                citation / thin + redundant summary / off-vocabulary, near-miss and
                                missing category tags, plus pages referenced but not written yet.
                                Reads the working tree, so unpublished edits count. --json for the
                                machine-readable form. Detection only \u2014 it never edits
-  commonground coverage [team] what the wiki's own checklist still wants (everyone), against your
+  commonground coverage [wiki] what the wiki's own checklist still wants (everyone), against your
                                LOCAL copy: the charter's structure when chartered, else the team
                                shape template. --json for the machine-readable form
   commonground normalize --drop-retired-keys
@@ -15511,8 +15566,8 @@ Usage:
                                own frontmatter stays. Publishing is still "commonground push"
   commonground resolve <how>   low-level divergence escape hatch: keep-local | take-remote |
                                save-as-draft
-  commonground export [team]   write a static tar of the current wiki (HEAD)
-  commonground import <dir> [team]
+  commonground export [wiki]   write a static tar of the current wiki (HEAD)
+  commonground import <dir> [wiki]
                                load an existing local wiki folder into your wiki (admins). The
                                folder is COPIED into your wiki clone and left untouched \u2014 from then
                                on the clone is the copy CommonGround syncs
@@ -15644,7 +15699,7 @@ function parseInitArgs(rest) {
   }
   return { mode, team, refresh, path };
 }
-var USAGE_INIT = "usage: commonground init [--mode mcp|local] [--path <folder>] [--refresh] [team]";
+var USAGE_INIT = "usage: commonground init [--mode mcp|local] [--path <folder>] [--refresh] [wiki]";
 function announceClone(dir) {
   process.stdout.write(`Creating your wiki folder at ${dir}
 `);
@@ -15715,8 +15770,54 @@ function legacyCredentialNote(state, deps) {
 `;
   }
 }
-function formatStatus(s, deps, mode = null) {
-  return formatSyncState(s, mode) + whereItLives(s, mode) + legacyCredentialNote(s.legacyCredential, deps);
+function formatStatus(s, deps, mode = null, choice = null, profile = {}) {
+  return formatSyncState(s, mode, profile) + whichWiki(s, choice, profile) + whereItLives(s, mode) + legacyCredentialNote(s.legacyCredential, deps);
+}
+function whichWiki(s, choice, profile) {
+  if (!choice || choice.via === "sole")
+    return "";
+  const name = wikiLabel({ teamId: s.teamId, ...profile });
+  const why = {
+    arg: "you named it on the command line",
+    project: "this project is bound to it",
+    // One em-dash per line: the label already spends one, and a second reads as a broken sentence.
+    active: "it is your active wiki, and this project is not bound to one"
+  };
+  return `  Wiki: ${name} \u2014 ${why[choice.via]}.
+`;
+}
+function matchWiki(listings, query) {
+  const q = query.trim().toLowerCase();
+  if (!q)
+    return [];
+  const field = (v) => v?.trim().toLowerCase() ?? "";
+  const exact = listings.filter((l) => l.teamId.toLowerCase() === q || field(l.wikiName) === q || field(l.scopeSlug) === q);
+  if (exact.length)
+    return exact;
+  return listings.filter((l) => l.teamId.toLowerCase().startsWith(q) || field(l.wikiName) !== "" && field(l.wikiName).startsWith(q) || field(l.scopeSlug) !== "" && field(l.scopeSlug).startsWith(q));
+}
+function formatWikiList(listings, activeId, boundId) {
+  return listings.map((l) => {
+    const marks = [
+      l.teamId === activeId ? "active" : null,
+      l.teamId === boundId ? "this project" : null
+    ].filter(Boolean);
+    const suffix = marks.length ? ` \u2014 ${marks.join(", ")}` : "";
+    return `  ${l.teamId === activeId ? "*" : " "} ${wikiLabel(l)} [you: ${l.role}]${suffix}
+`;
+  }).join("");
+}
+function formatUse(picked, bound) {
+  const head = `Active wiki is now ${wikiLabel(picked)} (you: ${picked.role}).
+`;
+  const boundId = typeof bound === "string" ? bound : bound?.teamId;
+  if (!boundId || boundId === picked.teamId)
+    return head;
+  const boundName = typeof bound === "string" ? bound : wikiLabel(bound);
+  return head + `  THIS project stays on ${boundName} \u2014 it is bound to that wiki, and a project's own binding
+  always wins, so a switch can never silently retarget a project that named its wiki.
+  To move this project too: commonground init ${picked.teamId}
+`;
 }
 function whereItLives(s, mode) {
   if (mode === "mcp")
@@ -15725,8 +15826,8 @@ function whereItLives(s, mode) {
 ` : `  Your wiki folder: ${s.clonePath}
 `;
 }
-function formatSyncState(s, mode = null) {
-  const who = `${s.teamId} (you: ${s.role})`;
+function formatSyncState(s, mode = null, profile = {}) {
+  const who = `${profile.wikiName?.trim() || s.teamId} (you: ${s.role})`;
   switch (s.state) {
     case "not-cloned":
       return mode === "mcp" ? `${who}: signed in. This project reads the wiki through the CommonGround connector \u2014 no local clone, by design.
@@ -16115,6 +16216,38 @@ Then run "commonground login --wait" (the code is valid for about ${Math.round(p
 `);
       return;
     }
+    case "use": {
+      const deps = await buildDeps();
+      const listings = await listWikis(deps.configHome, deps.dataHome);
+      if (listings.length === 0)
+        throw notLoggedIn(void 0, deps.configHome);
+      const active = await readActiveWiki(deps.configHome);
+      const boundId = (await detectRouterBlock(process.cwd()))?.teamId ?? null;
+      const bound = listings.find((l) => l.teamId === boundId) ?? boundId;
+      const query = rest.find((a) => !a.startsWith("-"));
+      if (!query) {
+        process.stdout.write(`Your wikis:
+${formatWikiList(listings, active, boundId)}
+Switch with "commonground use <wiki>" \u2014 a name or an id, and a unique prefix of
+either is enough.
+`);
+        return;
+      }
+      const hits = matchWiki(listings, query);
+      if (hits.length === 0) {
+        throw new AgentError(`no wiki of yours matches "${query}".
+Your wikis:
+${formatWikiList(listings, active, boundId)}`);
+      }
+      if (hits.length > 1) {
+        throw new AgentError(`"${query}" matches more than one of your wikis:
+${formatWikiList(hits, active, boundId)}Say which one \u2014 the full name, or the id.`);
+      }
+      const picked = hits[0];
+      await writeActiveWiki(picked.teamId, deps.configHome);
+      process.stdout.write(formatUse(picked, bound));
+      return;
+    }
     case "init": {
       const { mode, team, refresh, path } = parseInitArgs(rest);
       const deps = await buildDeps();
@@ -16147,7 +16280,7 @@ Then run "commonground login --wait" (the code is valid for about ${Math.round(p
       const deps = await buildDeps();
       const [to, ...others] = rest.filter((a) => !a.startsWith("-"));
       if (!to)
-        throw new AgentError("usage: commonground relocate <folder> [team]");
+        throw new AgentError("usage: commonground relocate <folder> [wiki]");
       const result = await relocateClone(deps, {
         teamId: await resolveTeamId(deps, others[0]),
         to,
@@ -16195,14 +16328,15 @@ Then run "commonground login --wait" (the code is valid for about ${Math.round(p
         return;
       }
       const deps = await buildDeps();
-      const result = await status(deps, await resolveTeamId(deps, teamArg(rest)));
+      const choice = await resolveWiki(deps, teamArg(rest));
+      const result = await status(deps, choice.teamId);
       const project = await detectRouterBlock(process.cwd());
-      process.stdout.write(formatStatus(result, deps, project?.mode ?? null));
+      process.stdout.write(formatStatus(result, deps, project?.mode ?? null, choice, await readTeamProfile(choice.teamId, deps.configHome)));
       return;
     }
     case "normalize": {
       if (!rest.includes("--drop-retired-keys")) {
-        throw new AgentError(`usage: commonground normalize --drop-retired-keys [--apply] [team]
+        throw new AgentError(`usage: commonground normalize --drop-retired-keys [--apply] [wiki]
   Removes only the keys CommonGround has retired: ${retiredKeyList()}.
   There is no general "normalize" \u2014 every other key in your frontmatter is yours,
   and CommonGround has no way to tell a retired key of ours from one of yours
@@ -16217,7 +16351,7 @@ Then run "commonground login --wait" (the code is valid for about ${Math.round(p
     case "resolve": {
       const choice = rest[0];
       if (choice !== "keep-local" && choice !== "take-remote" && choice !== "save-as-draft") {
-        throw new AgentError("usage: commonground resolve <keep-local|take-remote|save-as-draft> [team]");
+        throw new AgentError("usage: commonground resolve <keep-local|take-remote|save-as-draft> [wiki]");
       }
       const deps = await buildDeps();
       const result = await resolveDivergence(deps, await resolveTeamId(deps, rest[1]), choice);
@@ -16250,7 +16384,7 @@ Then run "commonground login --wait" (the code is valid for about ${Math.round(p
     case "import": {
       const folder = rest[0];
       if (!folder || folder.startsWith("-"))
-        throw new AgentError("usage: commonground import <dir> [team]");
+        throw new AgentError("usage: commonground import <dir> [wiki]");
       const deps = await buildDeps();
       const teamId = await resolveTeamId(deps, rest[1]);
       const result = await importWiki(deps, { sourceDir: (0, import_node_path7.resolve)(folder), teamId });

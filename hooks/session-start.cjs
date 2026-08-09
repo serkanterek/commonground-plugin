@@ -329,8 +329,9 @@ async function main() {
       .filter(Boolean);
     const hint =
       teams.length > 1
-        ? ` You're signed in to more than one CommonGround team (${teams.join(', ')}), so this ` +
-          "session can't auto-select one for live status — run /commonground:status to choose."
+        ? ` You have more than one CommonGround wiki (${teams.join(', ')}) and none is active, so ` +
+          "this session can't auto-select one for live status — run /commonground:switch to choose " +
+          'which wiki to work with, or /commonground:initialize to bind THIS project to one.'
         : " This machine isn't signed in to CommonGround, so live status and sync aren't available " +
           'in this session — run /commonground:status, or /commonground:initialize to sign in.';
     // The caveat matters MOST here (SER-182). This branch has just told Claude to consult a wiki

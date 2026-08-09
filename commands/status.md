@@ -23,6 +23,39 @@ Run `commonground status`. Report whether the user is signed in, the team, their
 - **MCP mode** — say there's no local copy, so every write via `save_page` is immediately live — for
   the whole team on a shared wiki, for the user's other Claude sessions on a personal one.
 
+**Which wiki, and why that one.** When the output carries a `Wiki: … — …` line, relay **both
+halves**. The reason is the useful part: `this project is bound to it` and `it is your active wiki`
+mean different things the next time the user changes something, and every confusion in this area has
+come from not knowing which rule fired. A user signed in to one wiki won't see this line — there is
+nothing to disambiguate — and its absence is not something to remark on.
+
+If they want a different wiki, that's **`/commonground:switch`**.
+
+**Does the connector agree?** In MCP mode, check it — don't assume. The connector authenticates
+independently of the CLI: its access was granted to whichever wiki the user picked when they
+authorised it, and nothing reconciles that with the wiki this project names. So a project can be
+bound to wiki B while every MCP tool quietly answers for wiki A.
+
+**`get_started` reports the wiki the connector is serving** — it names the wiki and, always, its
+`team <id>`. Compare that **id** with the one `commonground status` just reported. Match on the id,
+never the name: two wikis can share a display name, and the id is what every other surface keys on.
+
+If they **differ**, lead with it — it outranks everything else on this screen, because every wiki
+answer in the session is coming from a wiki the user did not choose:
+
+> The CommonGround connector is serving **<wiki A>**, but this project is set up for **<wiki B>**.
+> Anything I read from the wiki in this session comes from <wiki A>, not <wiki B>.
+
+Then give the two real options: re-authorise the connector for the other wiki at
+https://app.commongroundapp.io (one connector per machine, so this moves every project on it), or
+use local-clone mode, which is the path that genuinely supports more than one wiki at a time. **Do
+not paper over it** by picking one of them as the answer, and do not offer `/commonground:switch` as
+the fix — that sets the *CLI's* active wiki and has no effect on the connector.
+
+**If `get_started` reports no team at all, say the check was not possible** — that means an older
+API than this plugin expects. Never report agreement you did not verify; "I couldn't check" and
+"they match" are different answers and only one of them is honest.
+
 **Where the sign-in is stored.** If the output carries a note about it, relay that note in plain
 language — it means a pre-0.4.1 sign-in is still sitting inside the wiki folder, or a leftover copy
 is. Two notes ask for something:
@@ -61,7 +94,7 @@ lead with that — the next step is seeding, not asking questions.
 are missing or a call fails, report that combination plainly: sign-in and the CLI are fine, the
 **connector** is down — a plugin update or a dropped session does this, and it is a connection
 problem, never a permissions one. Give the fixes in order: run `/mcp` to reconnect, restart the
-session, or — asking first, because it writes files — `commonground pull [team]` for a readable
+session, or — asking first, because it writes files — `commonground pull [wiki]` for a readable
 copy of the wiki on disk, which authenticates as the signed-in device rather than the connector.
 
 ## 3. Where they stand — show the whole ladder

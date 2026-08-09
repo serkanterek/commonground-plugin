@@ -15,11 +15,12 @@ a clash it stops and asks.
 > connected or there's no clone, point the user at `/commonground:initialize`.
 
 > **Which team, on a machine signed in to several.** A bare `commonground pull` resolves the team
-> from this project's own router block, so an initialized project needs no argument even with two
-> teams signed in. It only asks when the project carries no team of theirs — an uninitialized
-> directory, or a block written before the team marker existed — and then it fails with
-> `multiple teams logged in — specify one: …`, which lists the team IDs. Pass one as
-> `commonground pull <team-id>`, and offer `/commonground:initialize` so it stops asking.
+> from this project's own router block, so an initialized project needs no argument even when the
+> user has several wikis. Failing that it uses their **active wiki** (`/commonground:switch`). It
+> only asks when neither applies — an uninitialized directory with no active wiki chosen — and then
+> it fails with `more than one wiki available — say which: …`, which lists the ids. Pass one as
+> `commonground pull <wiki>`, and offer `/commonground:switch` (choose one for this machine) or
+> `/commonground:initialize` (bind this project) so it stops asking.
 
 Run `commonground pull` and report the outcome in plain language:
 

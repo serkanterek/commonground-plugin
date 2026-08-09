@@ -65,28 +65,30 @@ appears, and can say otherwise. Ask it as a confirm-or-override, never as an ope
 > somewhere else (say, in your notes folder)?"*
 
 - Accepting the default → run `init` with no `--path`.
-- Naming a folder → pass it: `commonground init --mode local --path "<folder>" [team]`. It must be
+- Naming a folder → pass it: `commonground init --mode local --path "<folder>" [wiki]`. It must be
   **empty or not exist yet**; the CLI refuses a folder with files in it and points at
   `commonground import` instead, which is the right tool for "I already have notes there".
 - **Don't ask this in MCP mode** — there is no folder, and `--path` is rejected there.
 - If the wiki is **already cloned**, `--path` is refused by design (it would strand the old folder,
-  unpublished work and all). Moving an existing folder is `commonground relocate <folder> [team]`,
+  unpublished work and all). Moving an existing folder is `commonground relocate <folder> [wiki]`,
   which moves the files, remembers the new spot, and updates this project's `./CLAUDE.md`.
 
 ## 5. Initialize
 
-**First, if the user is signed in to more than one team**, pick one before running anything. A
-first-time `init` is the one moment nothing can resolve the team for you — the project has no router
-block yet, so there is no marker to read — and `init` with no team argument **fails** there
-(`multiple teams logged in — specify one: …`, which lists the IDs). Ask which team this project
-belongs to — with the `AskUserQuestion` tool if it's available, otherwise as a plain question — and
-pass it explicitly. Don't guess, and don't let the error reach the user as a crash: which wiki a
-project reads from is their decision, not a default.
+**First, if the user has more than one wiki**, pick one before running anything. A first-time `init`
+is the one moment the project cannot answer for itself — it has no router block yet, so there is no
+marker to read. If they have chosen an **active wiki**, `init` uses it; otherwise it **fails** with
+`more than one wiki available — say which: …`, which lists the ids. Either way, ask which wiki this
+project belongs to — with the `AskUserQuestion` tool if it's available, otherwise as a plain
+question — and pass it explicitly. Don't guess, and don't let the error reach the user as a crash:
+which wiki a project reads from is their decision, not a default. `commonground use` lists their
+wikis by name if you need to show the options.
 
 Only a *first* init needs this. `init --refresh`, and every other verb in an already-initialized
-project, reads the team out of the block that's already there.
+project, reads the wiki out of the block that's already there — and that block always outranks the
+active wiki, so binding a project is what makes it stop moving.
 
-Run `commonground init --mode <mcp|local> [--path <folder>] [team]`. This writes an idempotent
+Run `commonground init --mode <mcp|local> [--path <folder>] [wiki]`. This writes an idempotent
 CommonGround router block
 into this project's `./CLAUDE.md` (it merges — it never clobbers the user's existing content) so Claude
 consults the wiki before answering team questions. Local mode also clones the wiki, printing the
@@ -100,7 +102,7 @@ project's wiki in later sessions — so a project initialized this way keeps wor
 Tell the user: the mode chosen, that `./CLAUDE.md` now routes to CommonGround, and the team. For MCP
 mode, mention that if the connector needs authentication — or if its tools stop appearing later,
 which a plugin update can cause — they can run `/mcp` to (re)connect or restart the session; missing
-tools are a connection problem, not a permissions one, and `commonground pull [team]` still reads
+tools are a connection problem, not a permissions one, and `commonground pull [wiki]` still reads
 the wiki without the connector.
 
 Then check the wiki's state so you hand off to the right next step — call `get_awareness` (its

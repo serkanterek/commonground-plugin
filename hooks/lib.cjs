@@ -26,6 +26,7 @@ const path = require('node:path');
 const ROUTER_MARKER = 'commonground:router-rule:start';
 const CONFIG_DIR = '.commonground'; // the legacy in-wiki store's directory (read for migration)
 const CREDENTIALS_FILE = 'credentials.json';
+const STATE_FILE = 'state.json'; // the active-WIKI pointer (SER-224) — non-secret, chosen by the user
 const DEFAULT_API = 'https://api.commongroundapp.io';
 /**
  * Not defined on Windows, where `0` degrades to a plain open. What still guards the adoption there is
@@ -64,6 +65,37 @@ function credentialsPath() {
 /** The pre-SER-165 store inside the wiki folder — read, and moved out of there, but never written. */
 function legacyStorePath() {
   return path.join(dataHome(), CONFIG_DIR, 'config.json');
+}
+
+/** The active-wiki pointer, beside the credential store but deliberately not inside it. */
+function statePath() {
+  return path.join(configHome(), STATE_FILE);
+}
+
+/**
+ * The WIKI the user last chose, held as the team id that identifies it, or null (SER-224).
+ *
+ * Wikis, not teams: one of a user's wikis may be personal, one a team's, one the organization's,
+ * and `team` already names a wiki's SCOPE — so this pointer is about which wiki is active, never
+ * about switching teams.
+ *
+ * READ-ONLY here, and that asymmetry is deliberate: `commonground use` is the only writer. Hooks
+ * run on every session start and every prompt, so a hook that could write this would be a hook that
+ * could change which wiki a later command answers for — without anyone asking it to.
+ *
+ * Mirrors `readActiveWiki` in the agent's `config.ts` exactly, including trimming and treating an
+ * empty string as absent. The two are hand-mirrored (this file ships standalone inside the plugin
+ * bundle and cannot import the agent), which is why `active-wiki-drift.test.ts` compares them
+ * behaviourally rather than trusting that they look alike.
+ */
+function readActiveWiki() {
+  try {
+    const raw = JSON.parse(fs.readFileSync(statePath(), 'utf8'));
+    const id = raw && raw.activeWiki;
+    return typeof id === 'string' && id.trim() ? id.trim() : null;
+  } catch {
+    return null;
+  }
 }
 
 function apiBase() {
@@ -207,23 +239,44 @@ function isSignedIn() {
 }
 
 /**
- * The team binding to act for, or null if it can't be resolved unambiguously. v1 resolves the SOLE
- * binding — the common single-team case; a project isn't yet stamped with its teamId, so with
- * multiple teams we fail open (silent) rather than guess the wrong team's keywords.
+ * The binding for the WIKI to act for, or null if it can't be resolved unambiguously.
+ *
+ * MUST resolve identically to the agent's `resolveWiki` (`team-resolve.ts`): same order, same
+ * refusals. They are hand-mirrored — this file ships standalone inside the plugin bundle and cannot
+ * import the agent — and they have drifted before, so `active-wiki-drift.test.ts` pins them against
+ * each other across the whole matrix rather than trusting these comments.
+ *
+ * Order: this project's marker → the active wiki → the only wiki available → null.
  */
 function activeBinding(cwd) {
   const all = bindings();
   if (all.length === 0) return null;
+
+  // An initialized project already records which wiki it belongs to — `init` stamps the marker
+  // inside its own router block — so ask the project first (SER-176). It outranks the active wiki
+  // for the same reason it outranks everything in the CLI: a project bound to a wiki means it, and a
+  // machine-wide switch must never silently retarget one that named its own.
+  const marked = cwd ? projectTeamId(cwd) : null;
+  const bound = marked ? all.find((b) => b && b.teamId === marked) : null;
+  if (bound) return bound;
+
+  // The user's own choice (SER-224). Before this, someone with several wikis, in a project that was
+  // never initialized, got null — so keyword auto-trigger silently never fired there, in every such
+  // folder, forever. Honoured only for a wiki we still hold a binding for: a pointer at a signed-out
+  // wiki is stale data, not an instruction, which is what makes signing out safe without anything
+  // clearing it. A marker naming a wiki we DON'T hold falls through to here rather than being
+  // repaired —
+  // reading one wiki's state while the router block points at another's is the failure the marker
+  // exists to prevent, and "the user picked this one" is a better answer than a wrong guess.
+  const active = readActiveWiki();
+  const chosen = active ? all.find((b) => b && b.teamId === active) : null;
+  if (chosen) return chosen;
+
   if (all.length === 1) return all[0];
-  // More than one team signed in on this machine. That used to end here, silently: every hook fell
-  // back to the static pointer and a two-team user got no live awareness in ANY project, forever.
-  // But an initialized project already records which team it belongs to — `init` stamps the team
-  // marker inside its own router block — so ask the project rather than guessing (SER-176). Still
-  // null when the project carries no marker (uninitialized, or a pre-marker block): guessing a team
-  // would read one wiki's state while the router block points at another's.
-  const teamId = cwd ? projectTeamId(cwd) : null;
-  if (!teamId) return null;
-  return all.find((b) => b && b.teamId === teamId) || null;
+
+  // Several wikis, no marker, no choice made. Still null, still silent: guessing here is what the
+  // whole resolution order exists to avoid, and a hook has no way to ask.
+  return null;
 }
 
 /**
@@ -806,6 +859,8 @@ module.exports = {
   bindings,
   isSignedIn,
   activeBinding,
+  statePath,
+  readActiveWiki,
   relocateLegacyCredential,
   legacyCredentialClause,
   keywordsCachePath,

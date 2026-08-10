@@ -19,6 +19,21 @@ The plugin is the client; it needs an account to talk to.
 /plugin install commonground@commonground-plugins
 ```
 
+**Turn on auto-update while you're there** — `/plugin` → **Marketplaces** → select
+`commonground-plugins` → **Enable auto-update**. Claude Code leaves this off for third-party
+marketplaces, and nothing anywhere tells you when a new version exists, so without it you will
+quietly stay on whatever version you first installed. With it on, updates arrive within about ten
+minutes of a session starting and Claude Code offers you `/reload-plugins`.
+
+To update by hand instead:
+
+```
+/plugin marketplace update commonground-plugins
+/plugin update commonground@commonground-plugins
+```
+
+Restart Claude Code afterwards — an update stages immediately but only applies on restart.
+
 Then, in a project you want your wiki available in:
 
 ```
@@ -37,7 +52,8 @@ charters the wiki and puts the first pages in.
 | `/commonground:seed` | Bootstrap or top up the wiki — guided interview, or import an existing markdown folder |
 | `/commonground:ingest` | Capture anything into the wiki: notes, a transcript, a doc or URL, a decision |
 | `/commonground:lint` | Health check — stale/orphan/broken-citation pages, coverage gaps, open suggestions |
-| `/commonground:status` | Where you stand: connection, team, role, and what to do next |
+| `/commonground:status` | Where you stand: connection, which wiki and why, role, and what to do next |
+| `/commonground:switch` | Change which wiki is active, when you have more than one |
 | `/commonground:pull` | *(local-clone mode)* Get the latest into your local copy |
 | `/commonground:push` | *(local-clone mode)* Publish your changes |
 

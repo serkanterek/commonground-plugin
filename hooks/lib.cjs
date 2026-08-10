@@ -594,6 +594,44 @@ function markWelcomed(now) {
   }
 }
 
+/** Where the last-announced plugin release is remembered — beside the welcome marker. */
+function updateNoticePath() {
+  return path.join(configHome(), 'update-notice.json');
+}
+
+/** The newest version we have already told this person about, or null (SER-225). */
+function lastAnnouncedRelease() {
+  try {
+    const raw = JSON.parse(fs.readFileSync(updateNoticePath(), 'utf8'));
+    const v = raw && raw.announced;
+    return typeof v === 'string' && v ? v : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Remember that we announced `version`, so the notice fires ONCE PER RELEASE rather than once per
+ * session (SER-225).
+ *
+ * Keyed by the version rather than a timestamp on purpose: a time-based throttle either nags for a
+ * week or goes quiet before the user next opens the project, and neither has anything to do with
+ * the thing being announced. Storing what we said means the next release speaks again immediately
+ * and this one never does.
+ *
+ * Best-effort like `markWelcomed`: if this write fails the worst case is saying it twice, which is
+ * a far better failure than a hook that throws.
+ */
+function markReleaseAnnounced(version) {
+  try {
+    const p = updateNoticePath();
+    fs.mkdirSync(path.dirname(p), { recursive: true, mode: 0o700 });
+    fs.writeFileSync(p, JSON.stringify({ announced: version }), { mode: 0o600 });
+  } catch {
+    /* best-effort */
+  }
+}
+
 /**
  * Wrap text so Claude prints it to the USER verbatim instead of paraphrasing it into the flow.
  *
@@ -629,6 +667,21 @@ function pluginVersion() {
   } catch {
     return null;
   }
+}
+
+/**
+ * The `X-CommonGround-Client` header, or `{}` when this build's version can't be read (SER-226).
+ *
+ * A spread-ready object rather than a string so a caller cannot accidentally send the header with
+ * an empty value — an empty client is indistinguishable from a broken one at the far end, and the
+ * server's charset check would drop it anyway.
+ *
+ * Mirrored by `clientHeader()` in the agent's `backend.ts`; both send the same token for the same
+ * build, which is what makes "plugin/0.6.9" mean one thing regardless of which half sent it.
+ */
+function clientHeader() {
+  const v = pluginVersion();
+  return v ? { 'x-commonground-client': `plugin/${v}` } : {};
 }
 
 /**
@@ -691,7 +744,12 @@ async function fetchJson(pathname, binding, timeoutMs) {
   const timer = setTimeout(() => ac.abort(), timeoutMs);
   try {
     const res = await fetch(`${apiBase()}${pathname}`, {
-      headers: { authorization: `Bearer ${binding.token}` },
+      // Declare which client is calling (SER-226). This hook runs every session, so it is the
+      // highest-frequency place the server learns a person's plugin version — and the value it
+      // records here is what an MCP request later reads back, since those arrive from Claude's own
+      // MCP client with nowhere for us to put a header. Omitted rather than faked when the manifest
+      // cannot be read: unknown is a state the server already handles, a guess is not.
+      headers: { authorization: `Bearer ${binding.token}`, ...clientHeader() },
       signal: ac.signal,
     });
     if (!res || !res.ok) return null;
@@ -867,6 +925,9 @@ module.exports = {
   readKeywordsCache,
   writeKeywordsCache,
   hasWelcomed,
+  lastAnnouncedRelease,
+  markReleaseAnnounced,
+  updateNoticePath,
   markWelcomed,
   verbatimBlock,
   pluginVersion,
@@ -876,6 +937,7 @@ module.exports = {
   readVersionMarker,
   writeVersionMarker,
   fetchJson,
+  clientHeader,
   clonePath,
   localCloneHead,
   cloneHasCommit,

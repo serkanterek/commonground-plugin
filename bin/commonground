@@ -7360,7 +7360,7 @@ var require_dist = __commonJS({
 
 // ../../apps/sync-agent/dist/cli.js
 var import_node_child_process3 = require("node:child_process");
-var import_node_fs2 = require("node:fs");
+var import_node_fs3 = require("node:fs");
 var import_promises6 = require("node:fs/promises");
 var import_node_path7 = require("node:path");
 
@@ -7389,6 +7389,7 @@ function takeFlagValue(rest, flag) {
 
 // ../../apps/sync-agent/dist/backend.js
 var import_node_path3 = require("node:path");
+var import_node_fs2 = require("node:fs");
 
 // ../../apps/sync-agent/dist/config.js
 var import_node_fs = require("node:fs");
@@ -7963,6 +7964,18 @@ var LocalSyncBackend = class {
     return Promise.resolve({ url: (0, import_node_path3.join)(this.cfg.reposDir, `${teamId}.git`), env: {} });
   }
 };
+function clientHeader() {
+  try {
+    const entry = process.argv[1];
+    if (!entry)
+      return {};
+    const manifest = JSON.parse((0, import_node_fs2.readFileSync)((0, import_node_path3.join)((0, import_node_path3.dirname)(entry), "..", ".claude-plugin", "plugin.json"), "utf8"));
+    const v = manifest?.version;
+    return typeof v === "string" && v ? { "x-commonground-client": `plugin/${v}` } : {};
+  } catch {
+    return {};
+  }
+}
 var HttpSyncBackend = class {
   cfg;
   constructor(cfg) {
@@ -7970,7 +7983,7 @@ var HttpSyncBackend = class {
   }
   async resolveIdentity(token) {
     const res = await fetch(this.endpoint("/git/identity"), {
-      headers: { authorization: `Bearer ${token}` }
+      headers: { authorization: `Bearer ${token}`, ...clientHeader() }
     });
     if (!res.ok)
       return null;
@@ -8009,7 +8022,7 @@ var HttpSyncBackend = class {
       if (!binding)
         return null;
       const res = await fetch(this.endpoint("/wiki/charter"), {
-        headers: { authorization: `Bearer ${binding.token}` }
+        headers: { authorization: `Bearer ${binding.token}`, ...clientHeader() }
       });
       if (!res.ok)
         return null;
@@ -16179,7 +16192,7 @@ async function clearStaleCredential() {
   }
   await (0, import_promises6.rmdir)((0, import_node_path7.dirname)(legacy)).catch(() => void 0);
   process.stdout.write(`Removed ${legacy}.
-` + ((0, import_node_fs2.existsSync)(storePath()) ? `  Your sign-in is unaffected \u2014 CommonGround reads it from ${storePath()}.
+` + ((0, import_node_fs3.existsSync)(storePath()) ? `  Your sign-in is unaffected \u2014 CommonGround reads it from ${storePath()}.
 ` : `  It held no sign-in, so nothing changed about how this machine is signed in.
 `));
 }

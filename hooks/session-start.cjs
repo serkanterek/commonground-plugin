@@ -94,6 +94,44 @@ function canSeed(role) {
 }
 
 /**
+ * Tell the user a newer plugin has shipped — the ONLY channel that exists for it (SER-225).
+ *
+ * Claude Code leaves auto-update off for third-party marketplaces, shows no update-available
+ * indicator anywhere, and offers an author no way to push one. So without this a person stays on
+ * whatever version they first installed, forever, and never receives anything we ship.
+ *
+ * Addressed to the USER, not to Claude, and that is why it is a verbatim block rather than context:
+ * the two commands have to be run by a human, and a paraphrase that drops one of them leaves them
+ * hunting — which is most of the reason people never update. The restart matters as much as the
+ * commands: an update stages immediately and applies only on restart, so omitting it produces
+ * someone who ran both commands and correctly believes nothing happened.
+ *
+ * ONCE PER RELEASE. The mark is written here, at the moment of speaking, rather than by the caller —
+ * an announcement that renders without recording itself would repeat every session, which is the
+ * fastest way to teach someone to ignore it.
+ *
+ * Deliberately NOT gated on the SER-178 nudge budget. That budget is for onboarding steps — seeding,
+ * coverage — and spending it here would trade a real activation nudge for a maintenance one. This
+ * has its own throttle, keyed by the version, and they must not draw from the same pot.
+ */
+function updateNotice(state) {
+  const latest = state?.active?.pluginUpdate?.latest;
+  // Absent means either "current" or "we could not tell", and both are silence. The server never
+  // sends this field to say you are up to date.
+  if (!latest || lib.lastAnnouncedRelease() === latest) return '';
+  lib.markReleaseAnnounced(latest);
+  const running = lib.pluginVersion();
+  return lib.verbatimBlock(
+    `CommonGround ${latest} is available${running ? ` — this session is running ${running}` : ''}.\n` +
+      'To update:\n' +
+      '  /plugin marketplace update commonground-plugins\n' +
+      '  /plugin update commonground@commonground-plugins\n' +
+      'Then restart Claude Code — an update stages right away but only applies on restart.\n' +
+      "(To stop having to do this: /plugin → Marketplaces → commonground-plugins → Enable auto-update.)",
+  );
+}
+
+/**
  * The one thing this hook CANNOT observe, stated so Claude doesn't mis-diagnose it (SER-182).
  *
  * The state fetch below authenticates with a DEVICE TOKEN. A device token says nothing about whether
@@ -380,6 +418,7 @@ async function main() {
       modeRule(projectMode, binding.teamId, voiceOf(state)),
       nudge,
       delegatedWelcome(state),
+      updateNotice(state),
     );
     return;
   }
@@ -421,5 +460,6 @@ module.exports = {
   resolvedContext,
   awarenessFromState,
   delegatedWelcome,
+  updateNotice,
   CONNECTOR_HEALTH_CLAUSE,
 };

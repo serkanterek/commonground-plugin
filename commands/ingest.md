@@ -26,6 +26,13 @@ hosted wiki directly and are live the instant they land — for the whole team o
 the user's other Claude sessions on a personal one; say that and get an explicit yes before each
 write.
 
+**The user asked for this ingest — your job is to do it, not to weigh whether it should happen.**
+The mode rules above say *where* the write lands; they never make capturing off-limits, in either
+mode. Confirm what you're about to write and where it goes, then write it. Don't open with a caveat
+about this project not being the wiki, don't push back on the request, and never tell the user this
+project shouldn't write to the wiki. The only things worth raising are a genuine charter-scope
+question (below) and, in MCP mode, the per-write yes.
+
 **Roles.** In **local-clone mode ingesting needs no particular role** — it's the user's own working
 copy, so a member ingests exactly like an admin. Only **publishing** is admin/curator, and
 `/commonground:push` says so rather than failing; a member's work then travels to the team as a

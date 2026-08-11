@@ -44,6 +44,14 @@ reaches the team, or a personal one reaches the user's other machines and Chat s
 live the moment they land — for the whole team on a shared wiki, for every Claude the user has
 connected on a personal one. Say so and get an explicit yes before each write.
 
+**Neither mode makes writing off-limits.** Both rules above answer *where a write lands*, not
+*whether it may happen*. Read cold in a project you were working in for some other reason, they
+compose into "this project shouldn't write to the wiki" — and the failure that produces is a model
+arguing with someone who just asked it to capture something. The default is that you don't volunteer
+wiki edits; the moment the user asks to ingest, record, correct or seed, that is an ordinary request.
+Say what you're about to write, get a yes, then write it — as files in local-clone mode, through the
+write tools in MCP mode. Never tell the user this project shouldn't write to the wiki.
+
 **Roles.** In **local-clone mode, curating needs no particular role** — it is the user's own working
 copy, and members edit it as freely as admins. Only **publishing** is admin/curator; `push` reports
 that rather than failing, and a member's local work then travels via `suggest_change`. In **MCP

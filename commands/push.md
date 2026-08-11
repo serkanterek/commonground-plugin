@@ -53,29 +53,41 @@ pages that *would* be published (including brand-new pages that were never stage
 - Otherwise, show the user the page list in plain language: what's being added, what's being
   updated.
 
-## 2. Confirm
+## 2. Confirm — ONE prompt, and it is the guard's
 
-Ask for an explicit go-ahead before anything is published — with the `AskUserQuestion` tool
-(multiple-choice UI) if it's available in this session, as a plain question otherwise.
+**Do not raise your own yes/no question here.** The `PreToolUse` publish guard intercepts
+`commonground push` and asks the user to approve it, in a dialog that names what the publish does and
+quotes your `--message`. It ships in this same plugin, so it is always present when this command is.
+Asking first and then triggering it gives the user two prompts back to back for one decision — and a
+person who has just clicked through one prompt clicks through the next without reading it, which
+costs more safety than the extra question buys.
 
-**This confirmation is not optional, and it is not satisfied by an earlier one.** Consent is per
-publish: a yes from ten minutes ago authorized *that* publish, not this one. Never infer a standing
-go-ahead from "they asked me to push earlier", from "publishing is how this task finishes", or from
-the wiki being personal rather than shared. If you did not ask for THIS publish, you do not have it.
+So the shape is: **preview as text → run the push → the guard's dialog is the confirmation.**
 
-**Never route around this step.** Running the bundled `bin/commonground push` binary directly, or
-any other path that reaches the same write without asking, is the one thing that recreates the bug
-this section exists to prevent — it is how the guard was defeated on 2026-08-04 (SER-217). A
-`PreToolUse` guard now also refuses the publish, and **that refusal is never to be worked around**:
-do not edit, disable or bypass the hook, and do not look for a command shape that slips past it.
-If it fires, the answer is to ask the user.
+Say what is about to be published, in plain prose, **in the frame from §0** — shared: *"I'll publish
+these 3 pages to the team wiki"*, their teammates' Claude starts answering from it; personal: *"I'll
+publish these 3 pages to your wiki"*, it becomes what every Claude they use starts from, on any
+machine. Never describe a personal wiki in language about teammates. Then run it. If they decline the
+dialog, nothing is published — take that as a no and stop, don't re-ask or reach for another route.
 
-**Word the question in the frame from §0.** Shared: *"Publish these 3 pages to the team wiki?"* —
-their teammates' Claude will start answering from it. Personal: *"Publish these 3 pages to your
-wiki?"* — it becomes what every Claude they use starts from, on any machine. Never offer a personal
-wiki a choice phrased around teammates.
+**Consent is per publish, and an earlier yes never satisfies this one.** A yes from ten minutes ago
+authorized *that* publish, not this one. Never infer a standing go-ahead from "they asked me to push
+earlier", from "publishing is how this task finishes", or from the wiki being personal rather than
+shared. Every publish goes through the dialog, every time.
 
-On confirmation, run `commonground push --message "<what this session did>"` — one session-scale
+**Never route around this step.** Running the bundled `bin/commonground push` binary directly, or any
+other path that reaches the same write unprompted, is the one thing that recreates the bug this
+section exists to prevent — it is how the guard was defeated on 2026-08-04 (SER-217). That includes
+chaining the preview and the publish into a single shell command to make it look read-only. **The
+guard is never to be worked around**: do not edit, disable or bypass the hook, and do not look for a
+command shape that slips past it. If it fires, the answer is to let the dialog reach the user and
+take whatever they say. You will not see their answer, so a publish that simply succeeds means they
+said yes — not that the guard failed to fire.
+
+The one question you DO ask yourself is the deletion one, and §3 says when: ask it **before** you run
+the push, not after, so the user gets one question and one dialog rather than four prompts.
+
+Run `commonground push --message "<what this session did>"` — one session-scale
 sentence saying what changed and why, which becomes the commit message and is the only record of
 your reasoning that outlives the session. Never restate what the diff shows ("updated pages"). It
 publishes and reports the receipt (the pages published) — unless it comes back
@@ -100,20 +112,27 @@ their disk. Don't offer to make them a curator; that's the admin's call, not a s
 ## 3. If it would REMOVE pages (the deletion guardrail)
 
 Deleting a page is the one change that takes something away rather than adding it, so it never rides
-along inside a bigger change set.
-If the preview lists removals — or `push` comes back **needs-delete-confirm** — **nothing was
-published**. Stop and make the removal impossible to miss:
+along inside a bigger change set. This is the one question you ask directly (`AskUserQuestion` when
+it's available), because the publish dialog cannot ask it — it is a decision about *what to publish*,
+not about whether to publish.
+
+**Ask it off the §1 preview, before you run anything.** The dry-run already lists removals, so you
+can settle the deletion and then make a single `--allow-deletes` run: one question, one dialog. The
+`needs-delete-confirm` return exists for when you didn't — it is a backstop, not the route. Either
+way, at that point **nothing was published**. Make the removal impossible to miss:
 
 - Name every page being removed, explicitly and separately from the adds and updates.
 - Say plainly what is lost, in the §0 frame: shared → *the whole team loses access to them*;
   personal → *it's gone from every Claude you use, on every machine*. Either way, past versions
   remain in the wiki's history, but the page itself goes away.
-- Ask for a **separate** yes for the deletion, even if they already approved the push. If they only
-  meant to publish the other changes, the fix is to restore the deleted file(s) in the clone and
+- Ask for a yes on the deletion **specifically**, separately from the rest of the change set. If they
+  only meant to publish the other changes, the fix is to restore the deleted file(s) in the clone and
   push again — don't talk them into it either way.
 
-Only on that explicit yes, run `commonground push --allow-deletes` (add `--mine` too if you're in
-the conflict case below). Report exactly what was removed.
+Only on that explicit yes, run `commonground push --allow-deletes --message "…"` (add `--mine` too if
+you're in the conflict case below). The guard's dialog then names the removal too, because the flag
+is on the command line — that is the confirmation of the publish itself, and it is not a sign your
+question went unheard. Report exactly what was removed.
 
 ## 3b. If a page doesn't parse (the catalog guardrail)
 

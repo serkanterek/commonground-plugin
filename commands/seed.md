@@ -21,7 +21,9 @@ project's `./CLAUDE.md` router block (`<!-- commonground:mode:… -->`) or `comm
 **Local-clone mode:** every page below is a FILE in the clone, and the charter too — do not use
 `save_page` / `save_charter`; nothing is published until `/commonground:push`. **MCP mode:** the
 write tools go straight to the hosted wiki, live the moment they land — for the whole team on a
-shared wiki, and for every other Claude they use on a personal one.
+shared wiki, and for every other Claude they use on a personal one. Both halves answer *where* a
+write lands, never *whether* seeding may happen: the user invoked this arc, so confirm what you're
+writing and write it — never tell them this project shouldn't write to the wiki.
 
 **Roles.** In **local-clone mode** seeding needs no particular role — it builds the user's own
 working copy — but a member can't publish it, so say that when the arc completes and offer

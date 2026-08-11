@@ -140,12 +140,130 @@ const GATED_COMMANDS = [
     // human staring at an approval dialog and were previously shown to them by mistake.
     instruction:
       'Before asking again, show the user `commonground push --dry-run` so they can see exactly ' +
-      'what would be published. Consent is per publish and never carries forward from an earlier one.',
+      'what would be published. Consent is per publish and never carries forward from an earlier one. ' +
+      'THIS DIALOG IS THE CONFIRMATION: do not raise a separate yes/no question of your own before ' +
+      'running the publish — two prompts back to back teach the user to click through both. Print ' +
+      'the preview as text, then run it.',
   },
 ];
 
+/**
+ * What THIS invocation adds to the base reason, read off THE SEGMENT THAT IS BEING GATED.
+ *
+ * This dialog is now the only confirmation on the publish path (SER-229): `/commonground:push` used
+ * to raise its own `AskUserQuestion` first and the user got two prompts back to back, which is how a
+ * guard stops being read. Removing the first one only works if the surviving one carries what the
+ * first one carried — what is being published, and whether this run does anything worse than add.
+ *
+ * Takes the SEGMENT, not the whole command, and that is load-bearing rather than tidy. Reading the
+ * whole string meant the dialog described a different command from the one about to run: for
+ * `push --dry-run --message "preview only" && push --message "drops the poker section"` it quoted
+ * `preview only`, and for `push --allow-deletes --dry-run && push --message "add two pages"` it
+ * announced removals the real publish would not perform. Compound preview-then-publish is not an
+ * exotic input here — it is the shape this file exists to gate.
+ *
+ * Flags are read from {@link unquoted} so a message that NAMES a flag cannot fake it, and their
+ * boundary admits a shell operator (`--allow-deletes;echo done` is still `--allow-deletes`). The
+ * message keeps its quotes, so it is reported as the user's own words. Unknown flags add nothing;
+ * the base reason always stands alone.
+ */
+function publishDetail(segment) {
+  const bits = [];
+  const m = /--message[=\s]+(?:"([^"]*)"|'([^']*)'|(\S+))/.exec(segment);
+  const message = m && (m[1] ?? m[2] ?? m[3]);
+  // A bare `--message --mine` is the CLI's "no message" case (its parser rejects a `--`-leading
+  // value), so quoting it here would attribute a commit message that never gets written.
+  if (message && !message.startsWith('--')) {
+    bits.push(`It goes into the history as: "${message.slice(0, 200)}".`);
+  }
+  const argv = unquoted(segment);
+  const passed = (flag) => new RegExp(`${flag}([\\s;&|)]|$)`).test(argv);
+  if (passed('--allow-deletes')) {
+    bits.push(
+      'This run also REMOVES pages: they stop being readable for anyone, though earlier versions ' +
+        'stay in the history.',
+    );
+  }
+  if (passed('--allow-unparseable')) {
+    bits.push(
+      'It also publishes a page that does not parse — it will appear in the catalog as an ' +
+        'unreadable placeholder rather than as a page.',
+    );
+  }
+  if (passed('--mine')) {
+    bits.push('Where both sides changed the same page, your version is the one that survives.');
+  }
+  return bits.join(' ');
+}
+
 /** Read-only forms that must never be gated. */
 const READ_ONLY_FLAGS = /(--dry-run|--help)(\s|$)/;
+
+/**
+ * One shell command per element, split on the operators that START a new command — QUOTE-AWARE.
+ *
+ * Two distinct bugs live here, and both come from the same root: the guard used to look at raw
+ * command TEXT and treat every occurrence of a flag as if it were argv.
+ *
+ *   1. The read-only escape was tested against the WHOLE command string, and returned before
+ *      GATED_COMMANDS was consulted — so a preview anywhere in a compound command exempted the
+ *      publish beside it, and `commonground push --dry-run && commonground push --message "x"`
+ *      raised no dialog at all.
+ *   2. Once split, the escape was still tested against raw segment text INCLUDING quoted values, so
+ *      an ordinary single publish whose commit message merely mentioned `--dry-run` — the exact
+ *      sentence a session that worked on the preview flag would write — went completely ungated.
+ *      Same root, one level in, and strictly worse: no chaining required.
+ *
+ * Both matter more than they used to. `/commonground:push` no longer raises its own question, so a
+ * missed verdict is now zero confirmations rather than one (SER-229).
+ *
+ * Parsing quotes here rather than stripping them later is what makes the whole chain honest: a
+ * `&&` inside a `--message` no longer splits the command, so a segment is a real command and
+ * {@link publishDetail} can read THIS publish's message and flags off it instead of guessing from
+ * the whole string. An unterminated quote simply runs to the end — the verb stays in that segment,
+ * so it still gates — and a backslash-escaped quote closes early, which over-splits. Both failure
+ * directions are toward MORE segments and more gating, which is the correct direction for a guard.
+ */
+function commandSegments(cmd) {
+  const out = [];
+  let cur = '';
+  let quote = null;
+  for (let i = 0; i < cmd.length; i++) {
+    const c = cmd[i];
+    if (quote) {
+      cur += c;
+      if (c === quote) quote = null;
+      continue;
+    }
+    if (c === '"' || c === "'") {
+      quote = c;
+      cur += c;
+    } else if (c === '&' || c === '|') {
+      if (cmd[i + 1] === c) i++; // `&&` / `||` are one separator; a lone `&` or `|` is also one
+      out.push(cur);
+      cur = '';
+    } else if (c === ';' || c === '\n') {
+      out.push(cur);
+      cur = '';
+    } else {
+      cur += c;
+    }
+  }
+  out.push(cur);
+  return out;
+}
+
+/**
+ * A segment with quoted runs blanked out, for anything that asks "was this flag PASSED?".
+ *
+ * Flag detection must never read argument TEXT as argv. Without this, `push --message "remember
+ * --mine and --allow-deletes exist"` told the user their publish REMOVES pages — crying wolf on the
+ * one warning that has to be believed, in the dialog that is now the only confirmation. Blanking
+ * can only remove matches, never manufacture one.
+ */
+function unquoted(segment) {
+  return segment.replace(/"[^"]*"|'[^']*'/g, ' ');
+}
 
 /** The bare tool name from an MCP-qualified one (`mcp__abc__save_page` → `save_page`). */
 function bareToolName(name) {
@@ -164,10 +282,27 @@ function decide(input) {
 
   if (toolName === 'Bash') {
     const cmd = typeof toolInput.command === 'string' ? toolInput.command : '';
-    if (!cmd || READ_ONLY_FLAGS.test(cmd)) return null;
-    const hit = GATED_COMMANDS.find((g) => g.re.test(cmd));
+    if (!cmd) return null;
+    // Judged PER SEGMENT, and the escape is judged on FLAG POSITIONS: a read-only form only exempts
+    // the command it is actually a flag of, and only when it is a flag rather than message text.
+    // The gated verb itself is matched on the RAW segment — quoted text there can only over-gate.
+    let hit = null;
+    let publishing = '';
+    for (const segment of commandSegments(cmd)) {
+      if (READ_ONLY_FLAGS.test(unquoted(segment))) continue;
+      hit = GATED_COMMANDS.find((g) => g.re.test(segment)) ?? null;
+      if (hit) {
+        publishing = segment;
+        break;
+      }
+    }
     if (!hit) return null;
-    return { decision: 'ask', reason: hit.reason, instruction: hit.instruction };
+    const detail = publishDetail(publishing);
+    return {
+      decision: 'ask',
+      reason: detail ? `${hit.reason} ${detail}` : hit.reason,
+      instruction: hit.instruction,
+    };
   }
 
   const bare = bareToolName(toolName);
@@ -183,13 +318,16 @@ function decide(input) {
     return {
       decision: 'deny',
       reason:
-        'Blocked. This project keeps a local copy of your wiki, and this would write straight to ' +
-        'the hosted one instead — leaving your local copy behind and out of step with it. The page ' +
-        'belongs in your local copy first; publishing it is a separate, deliberate step.',
+        'Sent down the wrong path, not refused. This project keeps a local copy of your wiki, and ' +
+        'this would write straight to the published one instead — leaving your local copy behind ' +
+        'and out of step with it. The same change belongs in your local copy first, and Claude ' +
+        'should now write it there; publishing it is a separate, deliberate step.',
       instruction:
         'This project is in LOCAL-CLONE mode, where the MCP write tools are the wrong path entirely ' +
         '(SER-184). Write the page as a FILE in the clone, then publish with /commonground:push ' +
-        'once the user approves.',
+        'once the user approves. This is a REDIRECT, not a refusal of what the user asked for: ' +
+        'carry on and do the ingest/edit as a file. Do not report back that this project cannot ' +
+        'write to the wiki, and do not ask them whether they still want it.',
     };
   }
 
@@ -267,6 +405,7 @@ module.exports = {
   main,
   decide,
   noticeFor,
+  publishDetail,
   bareToolName,
   GATED_TOOLS,
   CONTENT_WRITE_TOOLS,

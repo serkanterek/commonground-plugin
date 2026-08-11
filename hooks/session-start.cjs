@@ -158,6 +158,20 @@ const CONNECTOR_HEALTH_CLAUSE =
  * `<!-- commonground:mode:… -->`), and this hook already parses it to pick the pull-vs-push nudge.
  * Saying it out loud costs nothing and is the only signal that arrives BEFORE Claude picks a tool.
  */
+/**
+ * The default-off, never-closed posture (SER-229), stated in BOTH modes before the routing rule.
+ *
+ * Kept byte-identical in intent to `CURATION_POSTURE` in the sync agent's injection.ts, which writes
+ * the same two halves into the project's CLAUDE.md. Two channels say it because they fail
+ * independently: the block survives a plugin swap, this line survives a CLAUDE.md the user rewrote.
+ */
+const CURATION_POSTURE =
+  'Curating from this project is not its job and never off-limits: do not volunteer wiki edits ' +
+  'here, but when the user ASKS to ingest, record, correct or seed something, that is an ordinary ' +
+  'request — say what you are about to write, get a yes, then write it. Never tell them this ' +
+  'project should not write to the wiki. The rule above is about WHERE a write lands, not whether ' +
+  'it may happen.';
+
 function modeRule(mode, teamId, voice) {
   const v = voice || NEUTRAL_VOICE;
   // The RULE is frame-independent — where writes land does not depend on who reads the wiki — but
@@ -180,7 +194,8 @@ function modeRule(mode, teamId, voice) {
       'first. Editing locally needs no particular role (it is the user\'s own copy); only ' +
       'publishing is admin/curator. The suggestions queue (`list_suggestions` / `suggest_change` / ' +
       '`resolve_suggestion`) is the one thing that legitimately stays server-side — it cannot live ' +
-      'in git, because it carries messages from people with no write access to the repo.'
+      'in git, because it carries messages from people with no write access to the repo. ' +
+      CURATION_POSTURE
     );
   }
   return (
@@ -189,7 +204,8 @@ function modeRule(mode, teamId, voice) {
     `${published} — the moment one lands it is what ` +
     (v.others ? `${v.others}' Claude reads` : 'every Claude you use reads') +
     '. Show what you intend to write and get an explicit yes before each write; there is no ' +
-    'staging step to undo it in.'
+    'staging step to undo it in. ' +
+    CURATION_POSTURE
   );
 }
 

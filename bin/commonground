@@ -14410,6 +14410,11 @@ function excludesBullet(voice) {
   return capped2 ? `
 - It also states what does NOT belong here: "${capped2}" \u2014 don't file that material here, and don't expect to find it.` : "";
 }
+var CURATION_POSTURE = `- **Curating from here is not this project's job, and never off-limits.** Don't volunteer wiki
+  edits while working on this codebase \u2014 reading is the default. But when the user asks to ingest,
+  record, correct or seed something, that is an ordinary request: say what you're about to write,
+  get a yes, then write it. Never tell them this project shouldn't write to the wiki. The rules
+  below govern WHERE a write lands, not whether it may happen.`;
 function cloneRouterRule(voice) {
   const v = wikiVoice(voice?.audience);
   return `${ROUTER_START}${modeMarker("local")}
@@ -14420,7 +14425,9 @@ what the team shares; \`/commonground:push\` is how work here becomes theirs. ${
 
 - Start at \`index.md\` (the catalog) and open only the pages you need \u2014 load context on demand.${briefBullet(voice)}${excludesBullet(voice)}
 ${v.cite}
-- Raw inputs are under \`sources/\`; change history is in \`log.md\`.
+- Raw inputs are under \`sources/\`; the change history is the wiki's git history. (SER-220 retired
+  \`log.md\`; the maintainer skill in this same folder says never to write it, and this block used to
+  say to read it.)
 - To curate (ingest / edit / lint / seed), use the maintainer skill in \`.commonground/maintainer-skill/\`.
 - **Curation edits the files here \u2014 never the CommonGround MCP write tools.** \`save_page\`,
   \`stage_sources\` and \`save_charter\` write the team's hosted wiki directly, skipping this copy
@@ -14441,6 +14448,7 @@ CommonGround MCP connector. ${v.when}
 - Use the CommonGround tools \u2014 \`get_index\` (the catalog), \`search\` (find pages), \`get_page\`
   (read one in full). Load context on demand; don't read everything.${briefBullet(voice)}${excludesBullet(voice)}
 ${v.cite}
+${CURATION_POSTURE}
 - **There is no local copy in this project, so every write is immediately shared.** \`save_page\`,
   \`stage_sources\` and \`save_charter\` commit straight to the hosted wiki \u2014 the moment one lands,
   it is what everyone else's Claude reads. Show what you intend to write and get an explicit yes
@@ -14451,7 +14459,10 @@ ${v.cite}
   the user they lack access. \`commonground pull [wiki]\` still reads the wiki meanwhile \u2014 it
   authenticates as the signed-in device rather than through the connector \u2014 so offer it (it writes
   a readable copy of the wiki to disk, so ask first).
-- To curate (admins only in v1), use the CommonGround maintainer skill / \`/commonground:*\` commands.
+- To curate, use the CommonGround maintainer skill / \`/commonground:*\` commands. Admins and
+  curators can write; a member's \`tools/list\` simply carries no write tools, and their path is
+  \`suggest_change\`. Don't pre-emptively tell anyone they lack access \u2014 the tools you were given
+  are the answer.
 
 Do not edit inside this block \u2014 CommonGround regenerates it. Put your own notes outside it.
 ${ROUTER_END}`;
@@ -14467,14 +14478,16 @@ ${capitalize(v.possessive)} CommonGround ${v.noun} is cloned at \`${clonePath}\`
 
 - Start at \`${clonePath}/index.md\` (the catalog) and open only the pages you need.${briefBullet(voice)}${excludesBullet(voice)}
 ${v.cite}
+${CURATION_POSTURE}
 - Raw inputs are under \`sources/\`; the change history is the wiki's git history. Use
   \`/commonground:pull\` to get the team's latest and \`/commonground:push\` to publish your changes
   (it commits for you \u2014 pass \`--message\` saying what the session did).
 - **Curation writes FILES in that clone \u2014 never the CommonGround MCP write tools.** Do not call
   \`save_page\`, \`stage_sources\` or \`save_charter\` in this project: they write the team's hosted
   wiki directly, skipping the user's review and the publish step. Ingesting, editing, linting,
-  seeding and chartering all mean editing files under \`${clonePath}\`. Nothing reaches the team
-  until \`/commonground:push\`, which previews and asks first.
+  seeding and chartering all mean editing files under \`${clonePath}\` \u2014 so an ingest asked for here
+  is a file write, never a refusal. Nothing reaches the team until \`/commonground:push\`, which
+  previews and asks first.
 - **Read from the clone too** \u2014 it is current with the user's own unpushed work, which the hosted
   wiki is not. The one thing the clone genuinely cannot hold is the suggestions queue
   (\`list_suggestions\` / \`suggest_change\` / \`resolve_suggestion\`), which lives server-side

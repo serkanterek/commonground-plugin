@@ -14758,14 +14758,35 @@ async function initProject(deps, opts) {
       }
       await setClonePath(teamId, await validateClonePath(opts.path, deps.configHome, deps.dataHome), deps.configHome);
     }
-    const synced = await sync(deps, teamId, { onClone: opts.onClone });
-    const voice2 = await charterVoiceFromWiki(synced.clonePath);
-    await injectRouterRule(projectDir, routerRuleForMode("local", { clonePath: synced.clonePath, voice: voice2, teamId }));
-    return { mode, teamId, projectDir, clonePath: synced.clonePath, synced };
+    const dir = await resolveCloneTarget(deps, teamId, binding.token);
+    const cloned = !await pathExists2(dir);
+    if (cloned) {
+      await cloneFresh(deps, teamId, dir, await deps.backend.remoteAccess(teamId), opts.onClone);
+    } else {
+      await injectAll(dir);
+    }
+    const standing = cloned ? null : await standingAgainstHosted(deps, teamId);
+    const voice2 = await charterVoiceFromWiki(dir);
+    await injectRouterRule(projectDir, routerRuleForMode("local", { clonePath: dir, voice: voice2, teamId }));
+    return {
+      mode,
+      teamId,
+      projectDir,
+      clonePath: dir,
+      cloned,
+      ...cloned ? {} : { standing }
+    };
   }
   const voice = await deps.backend.fetchCharter?.(teamId) ?? null;
   await injectRouterRule(projectDir, routerRuleForMode("mcp", { voice, teamId }));
   return { mode, teamId, projectDir };
+}
+async function standingAgainstHosted(deps, teamId) {
+  try {
+    return await status(deps, teamId);
+  } catch {
+    return null;
+  }
 }
 async function detectRouterBlock(projectDir) {
   try {
@@ -15076,6 +15097,11 @@ async function recordAndAnnounce(deps, teamId, dir, onClone) {
   }
   onClone?.(dir);
 }
+async function cloneFresh(deps, teamId, dir, origin, onClone) {
+  await recordAndAnnounce(deps, teamId, dir, onClone);
+  await cloneRepo(origin.url, dir, origin.env);
+  await injectAll(dir);
+}
 async function sync(deps, teamId, opts = {}) {
   const binding = await readBinding(teamId, deps.configHome, deps.dataHome);
   if (!binding)
@@ -15083,9 +15109,7 @@ async function sync(deps, teamId, opts = {}) {
   const dir = await resolveCloneTarget(deps, teamId, binding.token);
   const origin = await deps.backend.remoteAccess(teamId);
   if (!await pathExists2(dir)) {
-    await recordAndAnnounce(deps, teamId, dir, opts.onClone);
-    await cloneRepo(origin.url, dir, origin.env);
-    await injectAll(dir);
+    await cloneFresh(deps, teamId, dir, origin, opts.onClone);
     return { teamId, clonePath: dir, action: "cloned", ahead: 0, behind: 0 };
   }
   await refreshRemote(dir, origin);
@@ -15194,9 +15218,7 @@ async function pull(deps, teamId, opts = {}) {
   await refreshTeamProfile(deps, teamId, binding.token);
   const dir = await resolveClonePath(teamId, deps.configHome, deps.dataHome);
   if (!await pathExists2(dir)) {
-    await recordAndAnnounce(deps, teamId, dir, opts.onClone);
-    await cloneRepo(origin.url, dir, origin.env);
-    await injectAll(dir);
+    await cloneFresh(deps, teamId, dir, origin, opts.onClone);
     return { teamId, clonePath: dir, action: "cloned", ahead: 0, behind: 0, dirty: false };
   }
   await refreshRemote(dir, origin);
@@ -15739,11 +15761,47 @@ function formatRelocate(r) {
 }
 function formatInit(r) {
   const wrote = `Wrote the CommonGround router block into ${r.projectDir}/CLAUDE.md.`;
-  return r.mode === "local" ? `Initialized ${r.teamId} (local-clone mode). ${wrote}
-Wiki cloned at ${r.clonePath} \u2014 run "commonground pull" to refresh.
-` : `Initialized ${r.teamId} (MCP mode). ${wrote}
+  if (r.mode !== "local")
+    return `Initialized ${r.teamId} (MCP mode). ${wrote}
 The wiki is reached via the CommonGround MCP connector \u2014 if it needs auth, run /mcp.
 `;
+  const head = `Initialized ${r.teamId} (local-clone mode). ${wrote}
+`;
+  if (r.cloned)
+    return head + `Cloned your wiki to ${r.clonePath}.
+`;
+  return head + `Your wiki folder was already at ${r.clonePath} \u2014 left exactly as it was.
+` + formatInitStanding(r.standing);
+}
+function formatInitStanding(s) {
+  if (!s)
+    return `  Couldn't reach the hosted wiki to compare \u2014 nothing was changed either way.
+  Run "commonground status" when you're back online.
+`;
+  const dirty = s.dirty ? ", plus uncommitted edits" : "";
+  const incoming = s.changedPages.length ? `
+  Incoming: ${formatReceipt(s.changedPages)}` : "";
+  switch (s.state) {
+    case "up-to-date":
+      return `  It matches the hosted wiki \u2014 nothing to pull, nothing to publish.
+`;
+    case "behind":
+      return `  The hosted wiki is ${s.behind} commit(s) ahead of your folder.${incoming}
+  Run "commonground pull" when you want them \u2014 this init did not.
+`;
+    case "ahead":
+      return `  Your folder is ${s.ahead} commit(s) ahead of the hosted wiki${dirty} \u2014 unpublished work.
+  Publish it with "commonground push" when you're ready \u2014 this init did not.
+`;
+    case "diverged":
+      return `  You and the hosted wiki have both moved: ${s.ahead} local commit(s) ahead, ${s.behind} behind${dirty}.${incoming}
+  Nothing was reconciled. "commonground status" shows the options.
+`;
+    // A clone we just found on disk cannot report itself uncloned; a future state would rather say
+    // nothing here than have this formatter invent a reassurance for a case it doesn't know.
+    default:
+      return "";
+  }
 }
 function importCaveats(r) {
   const notImported = (r.notImported ?? []).map((s) => `    ${s.relPath} \u2014 ${s.reason}

@@ -72,6 +72,8 @@ appears, and can say otherwise. Ask it as a confirm-or-override, never as an ope
 - If the wiki is **already cloned**, `--path` is refused by design (it would strand the old folder,
   unpublished work and all). Moving an existing folder is `commonground relocate <folder> [wiki]`,
   which moves the files, remembers the new spot, and updates this project's `./CLAUDE.md`.
+- An existing folder is **connected, not refreshed** — see step 5. Local mode is safe to pick for a
+  user who already has a clone: nothing in it moves.
 
 ## 5. Initialize
 
@@ -93,6 +95,16 @@ CommonGround router block
 into this project's `./CLAUDE.md` (it merges — it never clobbers the user's existing content) so Claude
 consults the wiki before answering team questions. Local mode also clones the wiki, printing the
 folder it is creating before it creates it — relay that path to the user, it's where their notes now live.
+
+**If a wiki folder already exists, `init` leaves it exactly as it is.** It clones only when there is
+nothing on disk yet; it will not fast-forward an existing folder onto the hosted version, and it will
+not publish local commits — even for an admin. Instead it reports where the folder stands (ahead,
+behind, diverged, or matching) and names the verb that would act. **Relay that standing to the user
+and stop there.** Do not follow it with `commonground pull`, `push`, `sync` or `resolve` to "finish
+the setup": someone connecting a project has not asked you to reconcile their work, and a folder that
+is ahead of the server holds the only copy of whatever is in it. Reconciling is its own decision, made
+later, by them — offer `/commonground:pull` or `/commonground:push` as a next step if it's relevant
+and let them choose.
 
 The block records the team it's bound to, which is also what lets a multi-team machine resolve *this*
 project's wiki in later sessions — so a project initialized this way keeps working without re-asking.

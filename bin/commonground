@@ -15029,7 +15029,7 @@ ${lines}
   return { normalized, skipped: result.skipped.length, lossy };
 }
 function catalogEntries(tree) {
-  const entries = tree.pages.map(toIndexEntry);
+  const entries = tree.pages.filter((p) => p.frontmatter.status === "active").map(toIndexEntry);
   for (const u of tree.unparseable)
     entries.push(placeholderEntry(pageIdFromPath(u.relPath)));
   return entries;

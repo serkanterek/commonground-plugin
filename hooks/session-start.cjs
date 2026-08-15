@@ -372,6 +372,9 @@ function stepProse(step, state) {
   switch (step.id) {
     case 'initialize-project':
       return 'This project is not connected to the wiki yet — suggest /commonground:initialize.';
+    case 'point-surface':
+      // Connected-elsewhere (SER-245): a Claude is signed in, but nothing points at this wiki.
+      return 'A Claude is already connected to CommonGround, but nothing points at this wiki yet — suggest /commonground:switch (or /commonground:initialize in this project) to point one here.';
     case 'catch-up':
       return "The team's wiki has moved on since this user last looked. Offer to summarize what changed (get_history), before anything else.";
     case 'repair-charter':

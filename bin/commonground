@@ -7908,10 +7908,6 @@ async function isWorkingTreeClean(dir) {
   const out = await runGit(dir, ["status", "--porcelain", "--untracked-files=no"]);
   return out.trim().length === 0;
 }
-async function hasWorkToCommit(dir) {
-  const out = await runGit(dir, ["status", "--porcelain"]);
-  return out.trim().length > 0;
-}
 async function aheadBehind(dir, local, remote) {
   const out = (await runGit(dir, ["rev-list", "--left-right", "--count", `${local}...${remote}`])).trim();
   const [ahead, behind] = out.split(/\s+/).map((n) => Number.parseInt(n, 10));
@@ -8096,29 +8092,53 @@ var HttpSyncBackend = class {
     const url = this.endpoint(`/git/${teamId}`).toString();
     return { url, env: authHeaderEnv(url, binding.token) };
   }
-  /** `GET /wiki/charter` with the stored device token. Fail-open: any failure → `null`. */
+  /**
+   * `GET /git/charter` with the stored device token (SER-244) — the DEVICE-reachable door.
+   *
+   * Not `/wiki/charter`, and that is the whole fix: that route is mounted on the Clerk-session
+   * resolver, so a device token has 401'd against it since SER-158 — silently, because the old
+   * fail-open `null` also meant "not chartered". No fallback to the old route either: a fallback
+   * that can never succeed is the SER-216 pattern, a safety net in appearance only.
+   *
+   * Same status mapping as {@link listWikis}, same three worlds — a 404 additionally means "this
+   * server predates the door", which the caller renders as a receipt note rather than pretending
+   * the wiki is voiceless.
+   */
   async fetchCharter(teamId) {
+    let binding;
     try {
-      const binding = await crossWikiBinding(this, teamId, this.cfg.configHome, this.cfg.dataHome);
-      const res = await fetch(this.endpoint("/wiki/charter"), {
+      binding = await crossWikiBinding(this, teamId, this.cfg.configHome, this.cfg.dataHome);
+    } catch {
+      return { fail: "unreachable" };
+    }
+    try {
+      const res = await fetch(this.endpoint("/git/charter"), {
         headers: {
           authorization: `Bearer ${binding.token}`,
           "x-cg-wiki": teamId,
           ...clientHeader()
         }
       });
+      if (res.status === 404)
+        return { fail: "unsupported" };
+      if (res.status === 401 || res.status === 403)
+        return { fail: "stale-signin" };
       if (!res.ok)
-        return null;
+        return { fail: "unreachable" };
       const body = await res.json();
+      if (typeof body.chartered !== "boolean")
+        return { fail: "unreachable" };
       if (!body.chartered)
-        return null;
+        return { charter: null };
       return {
-        audience: body.audience ?? null,
-        retrievalBrief: body.retrievalBrief ?? null,
-        excludes: body.excludes ?? null
+        charter: {
+          audience: body.audience ?? null,
+          retrievalBrief: body.retrievalBrief ?? null,
+          excludes: body.excludes ?? null
+        }
       };
     } catch {
-      return null;
+      return { fail: "unreachable" };
     }
   }
 };
@@ -14949,9 +14969,16 @@ async function initProject(deps, opts) {
       ...cloned ? {} : { standing }
     };
   }
-  const voice = await deps.backend.fetchCharter?.(teamId) ?? null;
+  const read = deps.backend.fetchCharter ? await deps.backend.fetchCharter(teamId) : { fail: "unsupported" };
+  const voice = "charter" in read ? read.charter : null;
   await injectRouterRule(projectDir, routerRuleForMode("mcp", { voice, teamId }));
-  return { mode, teamId, projectDir, wikiEnv: await writeProjectWikiEnv(projectDir, teamId) };
+  return {
+    mode,
+    teamId,
+    projectDir,
+    wikiEnv: await writeProjectWikiEnv(projectDir, teamId),
+    ..."fail" in read ? { voiceFail: read.fail } : {}
+  };
 }
 async function standingAgainstHosted(deps, teamId) {
   try {
@@ -15203,9 +15230,16 @@ function catalogEntries(tree) {
     entries.push(placeholderEntry(pageIdFromPath(u.relPath)));
   return entries;
 }
+function renderIndex(tree) {
+  return regenerateIndex(catalogEntries(tree), {
+    categoryOrder: categoryOrderFromPages(tree.pages)
+  });
+}
+async function currentIndex(dir) {
+  return (0, import_promises5.readFile)((0, import_node_path6.join)(dir, WIKI_LAYOUT.indexFile), "utf8").catch(() => "");
+}
 async function writeIndex(dir, tree) {
-  const categoryOrder = categoryOrderFromPages(tree.pages);
-  await (0, import_promises5.writeFile)((0, import_node_path6.join)(dir, WIKI_LAYOUT.indexFile), regenerateIndex(catalogEntries(tree), { categoryOrder }), "utf8");
+  await (0, import_promises5.writeFile)((0, import_node_path6.join)(dir, WIKI_LAYOUT.indexFile), renderIndex(tree), "utf8");
 }
 async function rebuildIndex(dir) {
   const tree = await readWorkingTree(dir);
@@ -15458,7 +15492,8 @@ async function push(deps, teamId, opts = {}) {
     const snapshot = await snapshotWorkingTree(dir, "commonground preview", agentAuthor(binding));
     const pending = toPageChanges(await diffNameStatus(dir, base, snapshot));
     const wouldDelete = pending.filter((p) => p.kind === "deleted");
-    const { unparseable: unparseable2 } = await readWorkingTree(dir);
+    const previewTree = await readWorkingTree(dir);
+    const catalogRefresh2 = renderIndex(previewTree) !== await currentIndex(dir);
     return {
       teamId,
       clonePath: dir,
@@ -15467,8 +15502,9 @@ async function push(deps, teamId, opts = {}) {
       behind: b,
       pages: pending,
       deletions: wouldDelete.length ? wouldDelete : void 0,
-      unparseable: unparseable2.length ? unparseable2 : void 0,
-      incoming: b > 0 ? toPageChanges(await diffNameStatus(dir, base, remoteRef)) : []
+      unparseable: previewTree.unparseable.length ? previewTree.unparseable : void 0,
+      incoming: b > 0 ? toPageChanges(await diffNameStatus(dir, base, remoteRef)) : [],
+      ...catalogRefresh2 ? { catalogRefresh: catalogRefresh2 } : {}
     };
   }
   const tree = await readWorkingTree(dir);
@@ -15483,7 +15519,8 @@ async function push(deps, teamId, opts = {}) {
     };
   }
   let unparseable = tree.unparseable;
-  if (tree.unparseable.length > 0 || await hasWorkToCommit(dir))
+  const catalogRefresh = renderIndex(tree) !== await currentIndex(dir);
+  if (catalogRefresh)
     await writeIndex(dir, tree);
   await commitAllIfAny(dir, binding, `curate: ${opts.message?.trim() || "wiki"}`);
   await refreshRemote(dir, origin);
@@ -15549,6 +15586,7 @@ async function push(deps, teamId, opts = {}) {
     // the receipt describes what this push published, not what the caller asked for.
     unparseable: unparseable.length ? unparseable : void 0,
     draftBranch,
+    ...catalogRefresh ? { catalogRefresh } : {},
     // Read AFTER the push so it names the commit the team actually received.
     commitId: await headOid(dir)
   };
@@ -15954,11 +15992,31 @@ var COMMITTED_DISCLOSURE = `Both files are normally committed, so what they cont
 CLAUDE.md carries the wiki's id and quotes your charter's brief and anti-scope; settings.json
 carries the id. No file paths and nothing secret \u2014 your sign-in lives elsewhere.
 `;
+function formatVoiceFail(r) {
+  switch (r.voiceFail) {
+    case "unreachable":
+      return `The block was written WITHOUT your wiki's charter voice \u2014 CommonGround could not be
+reached to fetch it. Everything works; run "commonground init --refresh" when you're
+online to re-render it in the charter's own voice.
+`;
+    case "unsupported":
+      return `The block was written WITHOUT your wiki's charter voice \u2014 this CommonGround server does
+not serve the charter to the CLI yet. Everything works; once the server updates,
+"commonground init --refresh" re-renders it in the charter's own voice.
+`;
+    case "stale-signin":
+      return `The block was written WITHOUT your wiki's charter voice \u2014 the sign-in used was not
+accepted. "commonground login", then "commonground init --refresh" re-renders it.
+`;
+    default:
+      return "";
+  }
+}
 function formatInit(r) {
   const wrote = `Wrote the CommonGround router block into ${r.projectDir}/CLAUDE.md.`;
   if (r.mode !== "local")
     return `Initialized ${r.teamId} (MCP mode). ${wrote}
-` + formatWikiEnv(r) + COMMITTED_DISCLOSURE + `The wiki is reached via the CommonGround MCP connector \u2014 if it needs auth, run /mcp.
+` + formatWikiEnv(r) + formatVoiceFail(r) + COMMITTED_DISCLOSURE + `The wiki is reached via the CommonGround MCP connector \u2014 if it needs auth, run /mcp.
 `;
   const head = `Initialized ${r.teamId} (local-clone mode). ${wrote}
 ` + formatWikiEnv(r) + COMMITTED_DISCLOSURE;
@@ -16374,13 +16432,18 @@ function formatPush(r, v) {
       const broken = r.unparseable?.length ? `  \u26A0 ${r.unparseable.length} page(s) don't parse, so the catalog can't describe them:
 ` + unparseableLines(r.unparseable, "    ") + `    Publishing stops until they're fixed (or "commonground push --allow-unparseable").
 ` : "";
+      const catalog = r.catalogRefresh ? `  The wiki catalog (index.md) is out of date with this clone's pages \u2014 publishing
+  refreshes it. (It is machine-owned; a plugin update can correct its format.)
+` : "";
       if (!pages.length)
-        return `${r.teamId}: nothing to publish.
+        return r.catalogRefresh ? `${r.teamId}: no page changes, but the catalog needs a refresh.
+${catalog}${broken}  Nothing published yet \u2014 run "commonground push" to publish the corrected catalog.
+` : `${r.teamId}: nothing to publish.
 ${broken}`;
       const conflict = r.behind ? `  Heads up: ${v.wiki} moved (${r.behind} change(s)): ${formatReceipt(r.incoming ?? []) || "(none)"}
 ` : "";
       return `${r.teamId}: would publish ${pageCount(pages.length)}: ${formatReceipt(pages)}
-` + conflict + broken + deleteWarning(r.deletions, v) + `  Nothing published yet \u2014 run "commonground push" to confirm.
+` + catalog + conflict + broken + deleteWarning(r.deletions, v) + `  Nothing published yet \u2014 run "commonground push" to confirm.
 `;
     }
     case "needs-delete-confirm":
@@ -16411,6 +16474,12 @@ ${broken}`;
 `;
     case "pushed": {
       const pages = r.pages ?? [];
+      const contentPages = pages.filter((p) => p.path !== "index.md");
+      if (r.catalogRefresh && contentPages.length === 0 && !r.deletions?.length) {
+        return `Refreshed the wiki catalog for ${r.teamId} \u2014 no page content changed.
+  (A plugin update corrected the catalog format; index.md now matches this clone's pages.)
+` + placeholderNote(r.unparseable);
+      }
       const removed = r.deletions?.length ? `  Removed from ${v.wiki}: ${r.deletions.map((p) => p.page).join(", ")}
 ` : "";
       return pages.length ? `Published ${pageCount(pages.length)} to ${r.teamId}: ${formatReceipt(pages)}

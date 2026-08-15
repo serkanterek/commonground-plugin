@@ -31,10 +31,11 @@ nothing to disambiguate — and its absence is not something to remark on.
 
 If they want a different wiki, that's **`/commonground:switch`**.
 
-**Does the connector agree?** In MCP mode, check it — don't assume. The connector authenticates
-independently of the CLI: its access was granted to whichever wiki the user picked when they
-authorised it, and nothing reconciles that with the wiki this project names. So a project can be
-bound to wiki B while every MCP tool quietly answers for wiki A.
+**Does the connector agree?** In MCP mode, check it — don't assume. A bound project tells the
+connector which wiki to answer for, so the two normally match; but that instruction is read when the
+session **starts**, and a project that has never been bound sends nothing at all. Both cases end the
+same way — the connector answers for whichever wiki it was authorised for — so this is a check, not
+a formality.
 
 **`get_started` reports the wiki the connector is serving** — it names the wiki and, always, its
 `team <id>`. Compare that **id** with the one `commonground status` just reported. Match on the id,
@@ -46,11 +47,17 @@ answer in the session is coming from a wiki the user did not choose:
 > The CommonGround connector is serving **<wiki A>**, but this project is set up for **<wiki B>**.
 > Anything I read from the wiki in this session comes from <wiki A>, not <wiki B>.
 
-Then give the two real options: re-authorise the connector for the other wiki at
-https://app.commongroundapp.io (one connector per machine, so this moves every project on it), or
-use local-clone mode, which is the path that genuinely supports more than one wiki at a time. **Do
-not paper over it** by picking one of them as the answer, and do not offer `/commonground:switch` as
-the fix — that sets the *CLI's* active wiki and has no effect on the connector.
+Then say which of the two causes it is, because they have different fixes:
+
+- **This project was bound in this session** (or its settings changed since it started) — the
+  connector has not re-read them yet. **Restart the session.** Nothing else is wrong.
+- **This project isn't bound to a wiki**, or was bound by a plugin older than 0.7.4 — nothing tells
+  the connector which wiki this is. Run **`commonground init <wiki>`** here, then restart.
+
+**Do not paper over it** by picking one wiki as the answer, and do not offer `/commonground:switch`
+as the fix — that sets the *CLI's* active wiki, which the connector deliberately does not follow.
+Re-authorising the connector is not the fix either: it changes the fallback, not what this project
+asks for.
 
 **If `get_started` reports no team at all, say the check was not possible** — that means an older
 API than this plugin expects. Never report agreement you did not verify; "I couldn't check" and

@@ -210,6 +210,35 @@ function modeRule(mode, teamId, voice) {
 }
 
 /**
+ * The one wrong-wiki case the PreToolUse guard deliberately cannot block (SER-234).
+ *
+ * That guard fires only on a CONFIRMED mismatch — this project's team marker versus the
+ * `COMMONGROUND_WIKI` the connector was told to serve. A project bound by a plugin older than 0.7.4
+ * has the marker and no variable, because nothing wrote one until `init` started to. From the guard's
+ * side that is indistinguishable from a project on a single-wiki machine, where everything is fine,
+ * so denying would break far more than it protects.
+ *
+ * What it is NOT is invisible. Such a project looks completely set up — router block, working
+ * commands — while the connector quietly answers for whichever wiki it was authorised for. So it is
+ * said once per session, here, where a nudge costs nothing and the fix is one command.
+ *
+ * MCP mode only: a local-clone project reads from its folder, and the CLI already resolves that per
+ * project. Silent when the variable is present (the normal case) so this never becomes noise.
+ */
+function unrecordedWikiClause(cwd, mode) {
+  if (mode === 'local') return '';
+  const bound = lib.projectTeamId(cwd);
+  if (!bound || (process.env.COMMONGROUND_WIKI || '').trim()) return '';
+  return (
+    `This project is bound to CommonGround wiki ${bound}, but nothing records that for the MCP ` +
+    'connector — it was connected by a plugin older than 0.7.4, so the connector will answer for ' +
+    'whichever wiki it was authorised for instead, which may not be this one. If wiki answers here ' +
+    `look like they are about something else, that is why: "commonground init ${bound}" in this ` +
+    'project records it, and a session restart applies it. Mention this only if it becomes relevant.'
+  );
+}
+
+/**
  * Turn the shared resolver's answer into one Claude-facing sentence (SER-178).
  *
  * The RULE lives server-side in `@commonground/shared`; this only renders it, exactly as the web
@@ -368,6 +397,7 @@ async function main() {
   // about it is how an ingest ends up on the hosted wiki instead of in the user's clone.
   const projectMode = lib.routerMode(cwd);
   const binding = lib.activeBinding(cwd);
+  const unrecordedWiki = unrecordedWikiClause(cwd, projectMode);
   if (!binding) {
     // Initialized, but no single resolvable binding — either signed out on THIS machine (0 tokens)
     // or signed in to several teams (>1, ambiguous). We can't fetch LIVE awareness for one team
@@ -394,7 +424,7 @@ async function main() {
     // pageIds" followed by every tool call failing reads to the user as a permissions problem.
     // The mode rule still applies with no binding: which surface may be written is a property of
     // the PROJECT, not of whether this machine can currently resolve a device token.
-    emit(`${awarenessContext(null)}${hint}`, modeRule(projectMode, null), CONNECTOR_HEALTH_CLAUSE);
+    emit(`${awarenessContext(null)}${hint}`, modeRule(projectMode, null), unrecordedWiki, CONNECTOR_HEALTH_CLAUSE);
     return;
   }
 
@@ -432,6 +462,7 @@ async function main() {
     emit(
       resolvedContext(state),
       modeRule(projectMode, binding.teamId, voiceOf(state)),
+      unrecordedWiki,
       nudge,
       delegatedWelcome(state),
       updateNotice(state),
@@ -455,6 +486,7 @@ async function main() {
     `${awarenessContext(null)} CommonGround could not be reached this session, so the figures above ` +
       'are unavailable — the wiki itself is fine; run /commonground:status to check.',
     modeRule(projectMode, binding.teamId),
+    unrecordedWiki,
     localHead ? 'This project has a local wiki clone; /commonground:pull and /commonground:push still work offline-first.' : '',
     CONNECTOR_HEALTH_CLAUSE,
   );

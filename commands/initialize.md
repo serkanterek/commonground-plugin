@@ -96,6 +96,12 @@ into this project's `./CLAUDE.md` (it merges — it never clobbers the user's ex
 consults the wiki before answering team questions. Local mode also clones the wiki, printing the
 folder it is creating before it creates it — relay that path to the user, it's where their notes now live.
 
+It also records this project's wiki in `./.claude/settings.json` (merged, never clobbered — their
+own permissions and hooks are untouched), which is what makes the MCP connector answer **for this
+project's wiki** rather than for whichever one it was authorised for. If the CLI reports it could
+not write that file, say so: it means the file isn't valid JSON, it was left alone rather than
+overwritten, and until they fix it the connector will keep answering for the wrong wiki here.
+
 **If a wiki folder already exists, `init` leaves it exactly as it is.** It clones only when there is
 nothing on disk yet; it will not fast-forward an existing folder onto the hosted version, and it will
 not publish local commits — even for an admin. Instead it reports where the folder stands (ahead,
@@ -111,7 +117,11 @@ project's wiki in later sessions — so a project initialized this way keeps wor
 
 ## 6. Confirm, then seed (don't dead-end at an empty wiki)
 
-Tell the user: the mode chosen, that `./CLAUDE.md` now routes to CommonGround, and the team. For MCP
+Tell the user: the mode chosen, that `./CLAUDE.md` now routes to CommonGround, and the team. **For
+MCP mode, tell them to restart the session** — the wiki this project is bound to is read at session
+start, so until they do, the connector is still answering for whichever wiki it was authorised for.
+Do not skip this because everything looks connected: that is exactly the state in which a wrong-wiki
+answer is indistinguishable from a right one. For MCP
 mode, mention that if the connector needs authentication — or if its tools stop appearing later,
 which a plugin update can cause — they can run `/mcp` to (re)connect or restart the session; missing
 tools are a connection problem, not a permissions one, and `commonground pull [wiki]` still reads

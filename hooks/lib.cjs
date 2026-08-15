@@ -911,6 +911,7 @@ module.exports = {
   apiBase,
   readStdinInput,
   projectCwd,
+  projectTeamId, // the wrong-wiki guard reads it directly (SER-234), not only via activeBinding
   isInitialized,
   routerMode,
   readStore,

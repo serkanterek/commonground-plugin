@@ -14563,6 +14563,35 @@ ${rule}
 `;
   await (0, import_promises4.writeFile)(path, next, "utf8");
 }
+var PROJECT_SETTINGS = [".claude", "settings.json"];
+var WIKI_ENV_KEY = "COMMONGROUND_WIKI";
+async function writeProjectWikiEnv(dir, teamId) {
+  const path = (0, import_node_path5.join)(dir, ...PROJECT_SETTINGS);
+  const existing = await readFileOr(path, "");
+  let settings = {};
+  if (existing.trim()) {
+    try {
+      const parsed = JSON.parse(existing);
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed))
+        return "unreadable";
+      settings = parsed;
+    } catch {
+      return "unreadable";
+    }
+  }
+  const current = settings.env;
+  if (current !== void 0 && (typeof current !== "object" || current === null || Array.isArray(current))) {
+    return "unreadable";
+  }
+  const env = { ...current ?? {} };
+  if (env[WIKI_ENV_KEY] === teamId)
+    return "unchanged";
+  env[WIKI_ENV_KEY] = teamId;
+  await (0, import_promises4.mkdir)((0, import_node_path5.dirname)(path), { recursive: true });
+  await (0, import_promises4.writeFile)(path, `${JSON.stringify({ ...settings, env }, null, 2)}
+`, "utf8");
+  return "written";
+}
 async function injectSkill(dir, payload) {
   const resolved = payload === void 0 ? await resolveMaintainerSkillPayload() : payload;
   if (!resolved)
@@ -14774,12 +14803,15 @@ async function initProject(deps, opts) {
       projectDir,
       clonePath: dir,
       cloned,
+      // Recorded in local mode too: the connector is registered machine-wide whatever mode this
+      // project chose, so the only question is whether it agrees with the clone (SER-237).
+      wikiEnv: await writeProjectWikiEnv(projectDir, teamId),
       ...cloned ? {} : { standing }
     };
   }
   const voice = await deps.backend.fetchCharter?.(teamId) ?? null;
   await injectRouterRule(projectDir, routerRuleForMode("mcp", { voice, teamId }));
-  return { mode, teamId, projectDir };
+  return { mode, teamId, projectDir, wikiEnv: await writeProjectWikiEnv(projectDir, teamId) };
 }
 async function standingAgainstHosted(deps, teamId) {
   try {
@@ -15759,14 +15791,30 @@ function formatRelocate(r) {
 ` + router + `Any OTHER project connected to this wiki still names the old folder \u2014 run "commonground init --refresh" in each one to update it.
 `;
 }
+function formatWikiEnv(r) {
+  switch (r.wikiEnv) {
+    case "written":
+      return `Recorded this project's wiki in ${r.projectDir}/.claude/settings.json, so the MCP
+connector answers for it here. Claude Code reads that file at startup \u2014 restart this
+session for it to take effect.
+`;
+    case "unreadable":
+      return `Could NOT record the wiki in ${r.projectDir}/.claude/settings.json \u2014 it isn't valid
+JSON, and it was left untouched rather than overwritten. Until it parses, the MCP
+connector will answer here for whichever wiki it was authorised for, not this one.
+`;
+    default:
+      return "";
+  }
+}
 function formatInit(r) {
   const wrote = `Wrote the CommonGround router block into ${r.projectDir}/CLAUDE.md.`;
   if (r.mode !== "local")
     return `Initialized ${r.teamId} (MCP mode). ${wrote}
-The wiki is reached via the CommonGround MCP connector \u2014 if it needs auth, run /mcp.
+` + formatWikiEnv(r) + `The wiki is reached via the CommonGround MCP connector \u2014 if it needs auth, run /mcp.
 `;
   const head = `Initialized ${r.teamId} (local-clone mode). ${wrote}
-`;
+` + formatWikiEnv(r);
   if (r.cloned)
     return head + `Cloned your wiki to ${r.clonePath}.
 `;

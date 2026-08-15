@@ -47,19 +47,29 @@ Be concrete, because "active" has a narrow meaning:
   `push`, `lint`, `coverage`.
 - Projects **bound** by `initialize` are unaffected. That's every project the user set up
   deliberately.
-- **In MCP mode, the connector does not follow this switch.** Its access was granted to one wiki at
-  the moment the user authorised it, and it keeps serving that wiki until it is authorised again. So
-  a switch can leave the connector reading wiki A while the CLI answers for wiki B.
+- **The MCP connector follows the PROJECT, not this switch.** In a project bound by
+  `/commonground:initialize`, the connector answers for that project's wiki — `initialize` records
+  it, and the connector reads it on every session. A machine-wide switch doesn't move that, and
+  isn't meant to.
 
-That last point is a real limitation, not a bug to work around — say so if it applies. Today the
-honest answer is: **local-clone mode is the multi-wiki path**; in MCP mode a machine effectively
-reads one wiki, and changing it means re-authorising the connector from
-https://app.commongroundapp.io. If the user needs both wikis live at once, local-clone mode is what
-does that.
+A project only tells the connector anything if `init` **recorded** its wiki, which plugin 0.7.4 was
+the first to do. So there are two cases where the connector still falls back to whichever wiki it was
+authorised for — and in both the user can be reading the wrong wiki without any sign of it:
 
-It is at least **detectable**: `/commonground:status` compares the wiki `get_started` reports
-against the one the CLI resolved, and says so when they differ. Point them there if they want to
-know which wiki the connector is actually on.
+- **The project was never bound** — nothing names a wiki here at all.
+- **The project was bound by 0.7.3 or earlier.** It has a router block and looks fully set up, and
+  that is the trap: nothing about it announces that the connector part is missing. Re-running
+  `commonground init <wiki>` in that project is what records it.
+
+Both are fixed the same way — bind (or re-bind) the project. Re-authorising the connector is not the
+fix; it only changes the fallback.
+
+Two things to know if it comes up:
+
+- The wiki is read when the session **starts**, so a project bound or re-bound during this session
+  needs a restart before the connector follows it.
+- `/commonground:status` compares the wiki `get_started` reports against the one the CLI resolved.
+  Send them there rather than asserting agreement you have not checked.
 
 ## Related
 

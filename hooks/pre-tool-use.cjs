@@ -38,8 +38,72 @@
 const {
   readStdinInput,
   projectCwd,
+  projectTeamId,
   routerMode,
 } = require(`${__dirname}/lib.cjs`);
+
+/**
+ * Every tool the CommonGround connector exposes (SER-234).
+ *
+ * Used ONLY by the wrong-wiki guard below, which — unlike the publish gate — has to cover READS.
+ * A wrong-wiki `search` is the whole defect; a wrong-wiki `save_page` is the rarer half.
+ *
+ * KNOWN IMPRECISION, stated rather than hidden: `search`, `get_page`, `get_index` and `lint` are
+ * names another MCP server could plausibly use, and the hook cannot tell whose server it is — the
+ * matcher is a broad `mcp__` because the server segment is a per-user connector id (see below). So
+ * during a confirmed wiki mismatch, a foreign server's `search` could be denied too. That is
+ * accepted because the guard fires only in a state that is already broken and that the user must
+ * fix anyway, and because narrowing to CommonGround-only names would drop exactly the read tools
+ * this exists to cover. The deny text names CommonGround explicitly so the message still points at
+ * the real cause.
+ */
+const COMMONGROUND_TOOLS = new Set([
+  'search', 'get_page', 'get_index', 'get_started', 'get_awareness', 'get_coverage', 'get_history',
+  'lint', 'list_suggestions', 'resolve_suggestion', 'save_charter', 'save_page',
+  'save_seeding_progress', 'stage_sources', 'suggest_change', 'invite_teammate',
+]);
+
+/**
+ * Refuse a CommonGround call when this project and the connector name DIFFERENT wikis (SER-234).
+ *
+ * The invariant: a session reads the wiki its project is bound to, or it refuses. It never silently
+ * reads another. Before SER-236/237 that could only be *detected*, and only if the user happened to
+ * run `/commonground:status` — every answer in between came from the wrong wiki and looked normal.
+ *
+ * Both sides are readable right here, which is what makes a block possible at all:
+ *   - what the PROJECT is bound to — the team marker in its own `CLAUDE.md` router block;
+ *   - what the CONNECTOR was told to serve — `COMMONGROUND_WIKI`, which `init` writes into the
+ *     project's `.claude/settings.json` and which reaches this process as an ordinary env var
+ *     (verified: a hook spawned in a project sees that file's `env`).
+ *
+ * **Fires only on a CONFIRMED mismatch — never on an unknown.** No env var means the project
+ * predates 0.7.4 or was never bound, and the connector will fall back to whatever it was authorised
+ * for: possibly wrong, but *unknowable* from here, and denying on it would break every working
+ * single-wiki setup on the machine. That case is a SessionStart nudge, not a block.
+ *
+ * Case-insensitive: the server canonicalises the wiki id, and a difference of casing is the same
+ * wiki, not a mismatch.
+ */
+function wrongWikiVerdict(cwd) {
+  const bound = projectTeamId(cwd);
+  const serving = (process.env.COMMONGROUND_WIKI || '').trim();
+  if (!bound || !serving) return null; // unknown — say nothing, block nothing
+  if (bound.toLowerCase() === serving.toLowerCase()) return null;
+  return {
+    decision: 'deny',
+    reason:
+      `Refused: this project is set up for CommonGround wiki ${bound}, but the connector has been ` +
+      `told to serve ${serving}. Reading would answer from a wiki this project isn't about, which ` +
+      `is worse than not answering — it looks like it worked. Re-run "commonground init ${bound}" ` +
+      `here (it rewrites both), then restart the session.`,
+    instruction:
+      'This project and the CommonGround connector name different wikis, so every wiki answer here ' +
+      'would come from the wrong one. Do NOT retry the tool and do not work around it with another ' +
+      'source. Tell the user plainly which two wikis disagree, and that "commonground init ' +
+      `${bound}" in this project followed by a session restart fixes it. Answer the rest of their ` +
+      'question from what you already have, saying the wiki was not consulted.',
+  };
+}
 
 /**
  * Tools that write wiki CONTENT — a page, the charter, raw source material.
@@ -306,6 +370,15 @@ function decide(input) {
   }
 
   const bare = bareToolName(toolName);
+
+  // WHICH WIKI, before WHETHER TO PUBLISH (SER-234). Checked ahead of the publish gate and ahead of
+  // the GATED_TOOLS early return, because it is the only guard that has to cover READS — and
+  // because asking someone to approve a write to the wrong wiki is the wrong question entirely.
+  if (toolName.startsWith('mcp__') && COMMONGROUND_TOOLS.has(bare)) {
+    const wrongWiki = wrongWikiVerdict(projectCwd(input));
+    if (wrongWiki) return wrongWiki;
+  }
+
   if (!GATED_TOOLS.has(bare)) return null;
 
   // Hosted-only, no local equivalent — the mode cannot change the answer, so it is never consulted.
@@ -410,5 +483,6 @@ module.exports = {
   GATED_TOOLS,
   CONTENT_WRITE_TOOLS,
   OUTWARD_TOOLS,
+  COMMONGROUND_TOOLS,
   GATED_COMMANDS,
 };

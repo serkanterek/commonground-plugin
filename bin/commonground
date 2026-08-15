@@ -7805,11 +7805,27 @@ async function legacyCredentialState(configHome = agentConfigHome(), dataHome = 
     return "live";
   return legacy.adoptable && coveredBy(legacy.store, live.store) ? "redundant" : "divergent";
 }
+function heldWikis(configHome) {
+  try {
+    const parsed = JSON.parse((0, import_node_fs.readFileSync)(storePath(configHome), "utf8"));
+    const teams = parsed?.teams;
+    return teams && typeof teams === "object" && !Array.isArray(teams) ? Object.keys(teams) : [];
+  } catch {
+    return [];
+  }
+}
 function notLoggedIn(teamId, configHome) {
   const home = configHome ?? agentConfigHome();
-  const at = ` (no credentials at ${storePath(home)})`;
+  const store = storePath(home);
   const elsewhere = envDir("COMMONGROUND_CONFIG_HOME", "") && (0, import_node_path.resolve)(home) !== (0, import_node_path.resolve)(defaultConfigHome()) && (0, import_node_fs.existsSync)(storePath(defaultConfigHome())) ? ` (a sign-in also exists at ${storePath(defaultConfigHome())}, but COMMONGROUND_CONFIG_HOME points at ${home})` : "";
-  return teamId ? new AgentError(`not logged in for team "${teamId}" \u2014 run "commonground login"${at}${elsewhere}`) : new AgentError(`no team logged in \u2014 run "commonground login" first${at}${elsewhere}`);
+  const empty = ` (no credentials at ${store})`;
+  if (!teamId)
+    return new AgentError(`no team logged in \u2014 run "commonground login" first${empty}${elsewhere}`);
+  const others = heldWikis(home).filter((id) => id !== teamId);
+  if (others.length === 0) {
+    return new AgentError(`not logged in for team "${teamId}" \u2014 run "commonground login"${empty}${elsewhere}`);
+  }
+  return new AgentError(`not logged in to wiki "${teamId}" \u2014 this machine IS signed in to CommonGround, just not to that wiki (it holds: ${others.join(", ")}). If you are a member of it, "commonground login" adds it; if you are not, an admin of that wiki has to invite you \u2014 logging in again cannot grant membership. (sign-ins are stored at ${store})${elsewhere}`);
 }
 
 // ../../apps/sync-agent/dist/transport.js
@@ -7976,6 +7992,47 @@ function clientHeader() {
     return {};
   }
 }
+async function probeWikis(backend, held) {
+  if (!backend.listWikis)
+    return { fail: "unsupported" };
+  let sawStale = false;
+  for (const binding of [...held].sort((a, b) => a.teamId.localeCompare(b.teamId))) {
+    const result = await backend.listWikis(binding.token);
+    if ("wikis" in result)
+      return { ...result, binding };
+    if (result.fail !== "stale-signin")
+      return result;
+    sawStale = true;
+  }
+  return { fail: sawStale ? "stale-signin" : "unreachable" };
+}
+async function crossWikiBinding(backend, teamId, configHome, dataHome) {
+  const exact = await readBinding(teamId, configHome, dataHome);
+  if (exact)
+    return exact;
+  const store = await readStore(configHome, dataHome);
+  const held = Object.values(store.teams);
+  if (held.length === 0)
+    throw notLoggedIn(teamId, configHome);
+  const probe = await probeWikis(backend, held);
+  if ("fail" in probe)
+    throw probeError(teamId, probe.fail);
+  const target = probe.wikis.find((w) => w.teamId === teamId);
+  if (!target) {
+    throw new AgentError(`you are not a member of wiki "${teamId}" \u2014 this machine is signed in to CommonGround, and the server lists your wikis as: ${probe.wikis.map((w) => w.teamId).join(", ") || "(none)"}. Logging in again cannot grant membership; an admin of that wiki has to invite you.`);
+  }
+  return { token: probe.binding.token, userId: probe.binding.userId, teamId, role: target.role };
+}
+function probeError(teamId, fail) {
+  switch (fail) {
+    case "unsupported":
+      return new AgentError(`this machine has no sign-in for wiki "${teamId}", and this CommonGround server predates one sign-in reaching every wiki \u2014 asked anyway, it would quietly answer for a different wiki, which is worse than this error. Run "commonground login" to sign in for ${teamId} directly.`);
+    case "stale-signin":
+      return new AgentError(`this machine has no sign-in for wiki "${teamId}", and every sign-in it does hold is no longer valid \u2014 you may have left those wikis, or the device was revoked. Run "commonground login" to sign in again.`);
+    case "unreachable":
+      return new AgentError(`this machine has no sign-in for wiki "${teamId}", and CommonGround could not be reached to confirm your membership there. Try again when you are online, or run "commonground login" to sign in for ${teamId} directly.`);
+  }
+}
 var HttpSyncBackend = class {
   cfg;
   constructor(cfg) {
@@ -8008,21 +8065,47 @@ var HttpSyncBackend = class {
     url.pathname = `${url.pathname.replace(/\/$/, "")}${path}`;
     return url;
   }
+  /**
+   * Every wiki the presented token's owner belongs to, or WHICH world prevented an answer
+   * (SER-241, failures named in SER-243). Never throws — the caller's job is to render each
+   * failure as itself, and a throw here would collapse them all over again one layer up.
+   *
+   * The server already distinguishes these; the first shipped version of this method collapsed
+   * them (`if (!res.ok) return null`) and the comment above the 404 branch even called it "the
+   * SIGNAL" while discarding the distinction that made it one. Only the client ever needed fixing.
+   */
+  async listWikis(token) {
+    try {
+      const res = await fetch(this.endpoint("/git/wikis"), {
+        headers: { authorization: `Bearer ${token}`, ...clientHeader() }
+      });
+      if (res.status === 404)
+        return { fail: "unsupported" };
+      if (res.status === 401 || res.status === 403)
+        return { fail: "stale-signin" };
+      if (!res.ok)
+        return { fail: "unreachable" };
+      const body = await res.json();
+      return Array.isArray(body.wikis) ? { wikis: body.wikis } : { fail: "unreachable" };
+    } catch {
+      return { fail: "unreachable" };
+    }
+  }
   async remoteAccess(teamId) {
-    const binding = await readBinding(teamId, this.cfg.configHome, this.cfg.dataHome);
-    if (!binding)
-      throw notLoggedIn(teamId, this.cfg.configHome);
+    const binding = await crossWikiBinding(this, teamId, this.cfg.configHome, this.cfg.dataHome);
     const url = this.endpoint(`/git/${teamId}`).toString();
     return { url, env: authHeaderEnv(url, binding.token) };
   }
   /** `GET /wiki/charter` with the stored device token. Fail-open: any failure → `null`. */
   async fetchCharter(teamId) {
     try {
-      const binding = await readBinding(teamId, this.cfg.configHome, this.cfg.dataHome);
-      if (!binding)
-        return null;
+      const binding = await crossWikiBinding(this, teamId, this.cfg.configHome, this.cfg.dataHome);
       const res = await fetch(this.endpoint("/wiki/charter"), {
-        headers: { authorization: `Bearer ${binding.token}`, ...clientHeader() }
+        headers: {
+          authorization: `Bearer ${binding.token}`,
+          "x-cg-wiki": teamId,
+          ...clientHeader()
+        }
       });
       if (!res.ok)
         return null;
@@ -14415,6 +14498,17 @@ var CURATION_POSTURE = `- **Curating from here is not this project's job, and ne
   record, correct or seed something, that is an ordinary request: say what you're about to write,
   get a yes, then write it. Never tell them this project shouldn't write to the wiki. The rules
   below govern WHERE a write lands, not whether it may happen.`;
+var CONNECTOR_HEALTH_RULE = `Missing tools are USUALLY a connection problem \u2014 a plugin
+  update or a dropped session \u2014 so \`/mcp\` or a restart is the first thing to try. Not always: if
+  this project names a wiki the user is NOT A MEMBER of, every CommonGround call fails in exactly
+  the same way, and re-authorising cannot fix that \u2014 \`/mcp\` does not grant membership; an admin of
+  that wiki has to invite them. So check which wiki this project names before asserting either
+  diagnosis (\`commonground status\` says, and says whether this machine can reach it). Never tell
+  someone they lack access on a guess \u2014 and never rule it out on one either.`;
+var STRANGER_ESCAPE = `
+> **Not set up with CommonGround?** Ignore this section entirely \u2014 it belongs to this project's
+> maintainers, the tools it names will not exist for you, and nothing else here depends on it.
+`;
 function cloneRouterRule(voice) {
   const v = wikiVoice(voice?.audience);
   return `${ROUTER_START}${modeMarker("local")}
@@ -14441,7 +14535,7 @@ function mcpRouterRule(voice) {
   const v = wikiVoice(voice?.audience);
   return `${ROUTER_START}
 ## CommonGround \u2014 context wiki (via the CommonGround plugin)
-
+${STRANGER_ESCAPE}
 ${capitalize(v.possessive)} CommonGround ${v.noun} is available in this session through the
 CommonGround MCP connector. ${v.when}
 
@@ -14455,10 +14549,9 @@ ${CURATION_POSTURE}
   before each write; there is no staging step to undo it in.
 - If the connector needs authentication \u2014 or its CommonGround tools stop appearing mid-session,
   which a plugin update can cause \u2014 run \`/mcp\` to (re)connect and complete the browser sign-in, or
-  restart the session. Missing tools are a CONNECTION problem, never a permissions one: don't tell
-  the user they lack access. \`commonground pull [wiki]\` still reads the wiki meanwhile \u2014 it
-  authenticates as the signed-in device rather than through the connector \u2014 so offer it (it writes
-  a readable copy of the wiki to disk, so ask first).
+  restart the session. ${CONNECTOR_HEALTH_RULE} \`commonground pull [wiki]\` still reads the wiki
+  meanwhile \u2014 it authenticates as the signed-in device rather than through the connector \u2014 so offer
+  it (it writes a readable copy of the wiki to disk, so ask first).
 - To curate, use the CommonGround maintainer skill / \`/commonground:*\` commands. Admins and
   curators can write; a member's \`tools/list\` simply carries no write tools, and their path is
   \`suggest_change\`. Don't pre-emptively tell anyone they lack access \u2014 the tools you were given
@@ -14467,16 +14560,19 @@ ${CURATION_POSTURE}
 Do not edit inside this block \u2014 CommonGround regenerates it. Put your own notes outside it.
 ${ROUTER_END}`;
 }
-function localRouterRule(clonePath, voice) {
+function localRouterRule(voice) {
   const v = wikiVoice(voice?.audience);
   return `${ROUTER_START}
 ## CommonGround \u2014 context wiki (local clone)
-
-${capitalize(v.possessive)} CommonGround ${v.noun} is cloned at \`${clonePath}\`. That clone is
+${STRANGER_ESCAPE}
+${capitalize(v.possessive)} CommonGround ${v.noun} is cloned on this machine. That clone is
 **the working copy for this project** \u2014 the hosted repo is what the team shares, and
 \`/commonground:push\` is how work here becomes theirs. ${v.when}
 
-- Start at \`${clonePath}/index.md\` (the catalog) and open only the pages you need.${briefBullet(voice)}${excludesBullet(voice)}
+- **Where the clone is depends on the machine, so ask rather than assume:**
+  \`commonground status\` prints \`Your wiki folder: \u2026\`. It is deliberately not written here \u2014
+  this file is committed, and everyone who clones this repo keeps their wiki somewhere different.
+  Start at \`index.md\` in that folder (the catalog) and open only the pages you need.${briefBullet(voice)}${excludesBullet(voice)}
 ${v.cite}
 ${CURATION_POSTURE}
 - Raw inputs are under \`sources/\`; the change history is the wiki's git history. Use
@@ -14485,7 +14581,7 @@ ${CURATION_POSTURE}
 - **Curation writes FILES in that clone \u2014 never the CommonGround MCP write tools.** Do not call
   \`save_page\`, \`stage_sources\` or \`save_charter\` in this project: they write the team's hosted
   wiki directly, skipping the user's review and the publish step. Ingesting, editing, linting,
-  seeding and chartering all mean editing files under \`${clonePath}\` \u2014 so an ingest asked for here
+  seeding and chartering all mean editing files in the wiki folder \u2014 so an ingest asked for here
   is a file write, never a refusal. Nothing reaches the team until \`/commonground:push\`, which
   previews and asks first.
 - **Read from the clone too** \u2014 it is current with the user's own unpushed work, which the hosted
@@ -14507,11 +14603,7 @@ function teamMarker(teamId) {
 <!-- commonground:team:${teamId} -->` : "";
 }
 function routerRuleForMode(mode, opts = {}) {
-  const rule = mode === "local" ? (() => {
-    if (!opts.clonePath)
-      throw new Error("local router mode requires a clonePath");
-    return localRouterRule(opts.clonePath, opts.voice);
-  })() : mcpRouterRule(opts.voice);
+  const rule = mode === "local" ? localRouterRule(opts.voice) : mcpRouterRule(opts.voice);
   return rule.replace(ROUTER_START, `${ROUTER_START}${teamMarker(opts.teamId)}${modeMarker(mode)}`);
 }
 function parseRouterBlock(claudeMd) {
@@ -14641,6 +14733,56 @@ async function login(deps, token) {
   };
   await writeBinding(binding, deps.configHome, deps.dataHome);
   return binding;
+}
+async function bindingFor(deps, teamId) {
+  return crossWikiBinding(deps.backend, teamId, deps.configHome, deps.dataHome);
+}
+async function availableWikis(deps) {
+  const cached = await listWikis(deps.configHome, deps.dataHome);
+  const bindings = (await Promise.all(cached.map((l) => readBinding(l.teamId, deps.configHome, deps.dataHome)))).filter((b) => b !== null);
+  if (bindings.length === 0)
+    return { listings: cached, source: "unreachable" };
+  const probe = await probeWikis(deps.backend, bindings);
+  if ("fail" in probe)
+    return { listings: cached, source: probe.fail };
+  const held = new Map(cached.map((l) => [l.teamId, l]));
+  return {
+    source: "server",
+    listings: probe.wikis.map((w) => {
+      const local = held.get(w.teamId);
+      return {
+        teamId: w.teamId,
+        // The server's names win: they are current, while `profiles.json` is as old as the last
+        // pull, and a renamed wiki listed under its old name is the same "confidently stale" failure
+        // in miniature.
+        teamName: w.teamName,
+        wikiName: w.wikiName,
+        scopeSlug: w.scopeSlug,
+        ...w.shape ? { shape: w.shape } : {},
+        ..."audience" in w ? { audience: w.audience ?? null } : {},
+        role: local?.role ?? w.role,
+        ...local ? {} : { viaOtherSignIn: true }
+      };
+    })
+  };
+}
+function sourceNote(source) {
+  switch (source) {
+    case "server":
+      return "";
+    case "stale-signin":
+      return `  (Listed from this machine's sign-ins, which are NO LONGER VALID \u2014 you may have left those wikis,
+  or the device was revoked. A wiki you joined recently may be missing; "commonground login" refreshes it.)
+`;
+    case "unsupported":
+      return `  (Listed from this machine's sign-ins \u2014 this CommonGround server cannot list your memberships, so a
+  wiki you joined recently may be missing until the server is updated.)
+`;
+    case "unreachable":
+      return `  (Listed from this machine's sign-ins \u2014 CommonGround could not be reached, so a wiki you
+  joined recently may be missing. "commonground use" again when you're online.)
+`;
+  }
 }
 function apiUrl(apiBaseUrl, path) {
   const url = new URL(apiBaseUrl);
@@ -14776,9 +14918,7 @@ async function browserLogin(deps) {
 }
 async function initProject(deps, opts) {
   const { mode, teamId, projectDir } = opts;
-  const binding = await readBinding(teamId, deps.configHome, deps.dataHome);
-  if (!binding)
-    throw notLoggedIn(teamId, deps.configHome);
+  const binding = await bindingFor(deps, teamId);
   if (mode === "local") {
     if (opts.path) {
       const existing = await resolveClonePath(teamId, deps.configHome, deps.dataHome);
@@ -14796,7 +14936,7 @@ async function initProject(deps, opts) {
     }
     const standing = cloned ? null : await standingAgainstHosted(deps, teamId);
     const voice2 = await charterVoiceFromWiki(dir);
-    await injectRouterRule(projectDir, routerRuleForMode("local", { clonePath: dir, voice: voice2, teamId }));
+    await injectRouterRule(projectDir, routerRuleForMode("local", { voice: voice2, teamId }));
     return {
       mode,
       teamId,
@@ -14827,11 +14967,15 @@ async function detectRouterBlock(projectDir) {
     return null;
   }
 }
+async function recordProjectWiki(projectDir) {
+  const wiki = (await detectRouterBlock(projectDir))?.teamId ?? null;
+  if (!wiki)
+    return { outcome: "no-marker", wiki: null };
+  return { outcome: await writeProjectWikiEnv(projectDir, wiki), wiki };
+}
 async function relocateClone(deps, opts) {
   const { teamId, projectDir } = opts;
-  const binding = await readBinding(teamId, deps.configHome, deps.dataHome);
-  if (!binding)
-    throw notLoggedIn(teamId, deps.configHome);
+  const binding = await bindingFor(deps, teamId);
   const from = await resolveClonePath(teamId, deps.configHome, deps.dataHome);
   if (!await pathExists2(from)) {
     throw new AgentError(`there is no wiki folder to move \u2014 nothing is cloned for this team yet. Run "commonground init --mode local --path <folder> ${teamId}" to clone it where you want it.`);
@@ -14854,12 +14998,7 @@ async function relocateClone(deps, opts) {
     await setClonePath(teamId, from, deps.configHome).catch(() => void 0);
     throw new AgentError(`could not move ${from} to ${to} (${e.message}) \u2014 nothing changed`);
   }
-  const block = await detectRouterBlock(projectDir);
-  const routerUpdated = block?.mode === "local" && block.teamId === teamId;
-  if (routerUpdated) {
-    await injectRouterRule(projectDir, routerRuleForMode("local", { clonePath: to, voice: await charterVoiceFromWiki(to), teamId }));
-  }
-  return { teamId, from, to, routerUpdated, projectDir };
+  return { teamId, from, to, projectDir };
 }
 var isReservedImportPath = isReservedPath;
 function isInside2(parent, child) {
@@ -14868,9 +15007,7 @@ function isInside2(parent, child) {
 }
 async function importWiki(deps, opts) {
   const { sourceDir, teamId } = opts;
-  const binding = await readBinding(teamId, deps.configHome, deps.dataHome);
-  if (!binding)
-    throw notLoggedIn(teamId, deps.configHome);
+  const binding = await bindingFor(deps, teamId);
   if (!can(binding.role, "wiki:edit")) {
     throw new AgentError(`role "${binding.role}" can't import \u2014 only admins/curators may write the wiki`);
   }
@@ -15135,9 +15272,7 @@ async function cloneFresh(deps, teamId, dir, origin, onClone) {
   await injectAll(dir);
 }
 async function sync(deps, teamId, opts = {}) {
-  const binding = await readBinding(teamId, deps.configHome, deps.dataHome);
-  if (!binding)
-    throw notLoggedIn(teamId, deps.configHome);
+  const binding = await bindingFor(deps, teamId);
   const dir = await resolveCloneTarget(deps, teamId, binding.token);
   const origin = await deps.backend.remoteAccess(teamId);
   if (!await pathExists2(dir)) {
@@ -15243,9 +15378,7 @@ async function refreshTeamProfile(deps, teamId, token) {
   }
 }
 async function pull(deps, teamId, opts = {}) {
-  const binding = await readBinding(teamId, deps.configHome, deps.dataHome);
-  if (!binding)
-    throw notLoggedIn(teamId, deps.configHome);
+  const binding = await bindingFor(deps, teamId);
   const origin = await deps.backend.remoteAccess(teamId);
   await refreshTeamProfile(deps, teamId, binding.token);
   const dir = await resolveClonePath(teamId, deps.configHome, deps.dataHome);
@@ -15299,9 +15432,7 @@ async function pull(deps, teamId, opts = {}) {
   };
 }
 async function push(deps, teamId, opts = {}) {
-  const binding = await readBinding(teamId, deps.configHome, deps.dataHome);
-  if (!binding)
-    throw notLoggedIn(teamId, deps.configHome);
+  const binding = await bindingFor(deps, teamId);
   const dir = await resolveClonePath(teamId, deps.configHome, deps.dataHome);
   if (!await pathExists2(dir))
     throw new AgentError(`no local clone for "${teamId}" \u2014 run "commonground pull" first`);
@@ -15423,9 +15554,7 @@ async function push(deps, teamId, opts = {}) {
   };
 }
 async function exportWiki(deps, teamId, opts = {}) {
-  const binding = await readBinding(teamId, deps.configHome, deps.dataHome);
-  if (!binding)
-    throw notLoggedIn(teamId, deps.configHome);
+  const binding = await bindingFor(deps, teamId);
   const dir = await resolveClonePath(teamId, deps.configHome, deps.dataHome);
   if (!await pathExists2(dir))
     throw new AgentError(`no local clone for "${teamId}" \u2014 run "commonground pull" first`);
@@ -15434,9 +15563,7 @@ async function exportWiki(deps, teamId, opts = {}) {
   return { path: out };
 }
 async function status(deps, teamId) {
-  const binding = await readBinding(teamId, deps.configHome, deps.dataHome);
-  if (!binding)
-    throw notLoggedIn(teamId, deps.configHome);
+  const binding = await bindingFor(deps, teamId);
   const legacy = await legacyCredentialState(deps.configHome, deps.dataHome);
   const legacyCredential = legacy ? { legacyCredential: legacy } : {};
   const dir = await resolveCloneTarget(deps, teamId, binding.token);
@@ -15476,9 +15603,7 @@ async function status(deps, teamId) {
   };
 }
 async function resolveDivergence(deps, teamId, choice, opts = {}) {
-  const binding = await readBinding(teamId, deps.configHome, deps.dataHome);
-  if (!binding)
-    throw notLoggedIn(teamId, deps.configHome);
+  const binding = await bindingFor(deps, teamId);
   const dir = await resolveClonePath(teamId, deps.configHome, deps.dataHome);
   if (!await pathExists2(dir))
     throw new AgentError(`no local clone for "${teamId}" \u2014 run "commonground pull" first`);
@@ -15495,18 +15620,14 @@ async function resolveDivergence(deps, teamId, choice, opts = {}) {
   return { teamId, choice, draftBranch };
 }
 async function lint(deps, teamId) {
-  const binding = await readBinding(teamId, deps.configHome, deps.dataHome);
-  if (!binding)
-    throw notLoggedIn(teamId, deps.configHome);
+  const binding = await bindingFor(deps, teamId);
   const dir = await resolveClonePath(teamId, deps.configHome, deps.dataHome);
   if (!await pathExists2(dir))
     throw new AgentError(`no local clone for "${teamId}" \u2014 run "commonground pull" first`);
   return { ...await localLint(dir), clonePath: dir };
 }
 async function coverage(deps, teamId) {
-  const binding = await readBinding(teamId, deps.configHome, deps.dataHome);
-  if (!binding)
-    throw notLoggedIn(teamId, deps.configHome);
+  const binding = await bindingFor(deps, teamId);
   const dir = await resolveClonePath(teamId, deps.configHome, deps.dataHome);
   if (!await pathExists2(dir))
     throw new AgentError(`no local clone for "${teamId}" \u2014 run "commonground pull" first`);
@@ -15517,9 +15638,7 @@ async function coverage(deps, teamId) {
   };
 }
 async function normalizeRetiredKeys(deps, teamId, opts = {}) {
-  const binding = await readBinding(teamId, deps.configHome, deps.dataHome);
-  if (!binding)
-    throw notLoggedIn(teamId, deps.configHome);
+  const binding = await bindingFor(deps, teamId);
   const dir = await resolveClonePath(teamId, deps.configHome, deps.dataHome);
   if (!await pathExists2(dir))
     throw new AgentError(`no local clone for "${teamId}" \u2014 run "commonground pull" first`);
@@ -15582,15 +15701,40 @@ async function resolveWiki(deps, arg, projectDir = process.cwd()) {
   const bound = (await detectRouterBlock(projectDir))?.teamId;
   if (bound && wikis.includes(bound))
     return { teamId: bound, via: "project" };
+  const unreachable = bound ? { unreachable: bound } : {};
   const active = await readActiveWiki(deps.configHome);
   if (active && wikis.includes(active))
-    return { teamId: active, via: "active" };
+    return { teamId: active, via: "active", ...unreachable };
   if (wikis.length === 1)
-    return { teamId: wikis[0], via: "sole" };
-  throw new AgentError(`more than one wiki available \u2014 say which: ${wikis.join(", ")}. (Choose one for this machine with "commonground use", or bind THIS project to one with "commonground init <wiki>" \u2014 after either, these commands resolve on their own.)`);
+    return { teamId: wikis[0], via: "sole", ...unreachable };
+  throw new AgentError(`more than one wiki available \u2014 say which: ${wikis.join(", ")}. (Choose one for this machine with "commonground use", or bind THIS project to one with "commonground init <wiki>" \u2014 after either, these commands resolve on their own.)` + (bound ? ` This project IS bound to ${bound}, but this machine has no sign-in for that wiki, so it is not one of the choices above \u2014 that is a membership question, not a login one: if you should have access, its admin has to invite you.` : ""));
 }
 async function resolveTeamId(deps, arg, projectDir = process.cwd()) {
   return (await resolveWiki(deps, arg, projectDir)).teamId;
+}
+function why(choice) {
+  switch (choice.via) {
+    case "arg":
+      return "you named it on the command line";
+    case "project":
+      return "this project is bound to it";
+    case "active":
+      return choice.unreachable ? "it is your active wiki" : "it is your active wiki, and this project is not bound to one";
+    case "sole":
+      return "it is the only wiki this machine is signed in to";
+  }
+}
+function describeWikiChoice(choice, label) {
+  const bound = choice.unreachable;
+  const head = !bound && choice.via === "sole" ? "" : `  Wiki: ${label} \u2014 ${why(choice)}.
+`;
+  if (!bound)
+    return head;
+  return head + `  This project is bound to ${bound}, which this machine has no sign-in for \u2014 so the wiki
+  above is what answers here, not the one the project names. That is a MEMBERSHIP question,
+  not a login one: if you should have access, an admin of ${bound} has to invite you.
+  To point this project at a wiki you do hold instead: commonground init ${choice.teamId}
+`;
 }
 
 // ../../apps/sync-agent/dist/cli.js
@@ -15785,10 +15929,9 @@ function announceClone(dir) {
 `);
 }
 function formatRelocate(r) {
-  const router = r.routerUpdated ? `Updated ${r.projectDir}/CLAUDE.md to point at the new location.
-` : "";
   return `Moved your wiki from ${r.from} to ${r.to}.
-` + router + `Any OTHER project connected to this wiki still names the old folder \u2014 run "commonground init --refresh" in each one to update it.
+Every project connected to this wiki follows automatically \u2014 no router block names the
+folder, so there is nothing to update anywhere else.
 `;
 }
 function formatWikiEnv(r) {
@@ -15807,14 +15950,18 @@ connector will answer here for whichever wiki it was authorised for, not this on
       return "";
   }
 }
+var COMMITTED_DISCLOSURE = `Both files are normally committed, so what they contain reaches anyone who clones this repo:
+CLAUDE.md carries the wiki's id and quotes your charter's brief and anti-scope; settings.json
+carries the id. No file paths and nothing secret \u2014 your sign-in lives elsewhere.
+`;
 function formatInit(r) {
   const wrote = `Wrote the CommonGround router block into ${r.projectDir}/CLAUDE.md.`;
   if (r.mode !== "local")
     return `Initialized ${r.teamId} (MCP mode). ${wrote}
-` + formatWikiEnv(r) + `The wiki is reached via the CommonGround MCP connector \u2014 if it needs auth, run /mcp.
+` + formatWikiEnv(r) + COMMITTED_DISCLOSURE + `The wiki is reached via the CommonGround MCP connector \u2014 if it needs auth, run /mcp.
 `;
   const head = `Initialized ${r.teamId} (local-clone mode). ${wrote}
-` + formatWikiEnv(r);
+` + formatWikiEnv(r) + COMMITTED_DISCLOSURE;
   if (r.cloned)
     return head + `Cloned your wiki to ${r.clonePath}.
 `;
@@ -15906,17 +16053,9 @@ function formatStatus(s, deps, mode = null, choice = null, profile = {}) {
   return formatSyncState(s, mode, profile) + whichWiki(s, choice, profile) + whereItLives(s, mode) + legacyCredentialNote(s.legacyCredential, deps);
 }
 function whichWiki(s, choice, profile) {
-  if (!choice || choice.via === "sole")
+  if (!choice)
     return "";
-  const name = wikiLabel({ teamId: s.teamId, ...profile });
-  const why = {
-    arg: "you named it on the command line",
-    project: "this project is bound to it",
-    // One em-dash per line: the label already spends one, and a second reads as a broken sentence.
-    active: "it is your active wiki, and this project is not bound to one"
-  };
-  return `  Wiki: ${name} \u2014 ${why[choice.via]}.
-`;
+  return describeWikiChoice(choice, wikiLabel({ teamId: s.teamId, ...profile }));
 }
 function matchWiki(listings, query) {
   const q = query.trim().toLowerCase();
@@ -15932,7 +16071,10 @@ function formatWikiList(listings, activeId, boundId) {
   return listings.map((l) => {
     const marks = [
       l.teamId === activeId ? "active" : null,
-      l.teamId === boundId ? "this project" : null
+      l.teamId === boundId ? "this project" : null,
+      // SER-241. Reachable through another wiki's sign-in rather than one minted here — invisible
+      // when everything works, and the entire explanation when this one alone fails offline.
+      l.viaOtherSignIn ? "via your other sign-in" : null
     ].filter(Boolean);
     const suffix = marks.length ? ` \u2014 ${marks.join(", ")}` : "";
     return `  ${l.teamId === activeId ? "*" : " "} ${wikiLabel(l)} [you: ${l.role}]${suffix}
@@ -16350,7 +16492,7 @@ Then run "commonground login --wait" (the code is valid for about ${Math.round(p
     }
     case "use": {
       const deps = await buildDeps();
-      const listings = await listWikis(deps.configHome, deps.dataHome);
+      const { listings, source } = await availableWikis(deps);
       if (listings.length === 0)
         throw notLoggedIn(void 0, deps.configHome);
       const active = await readActiveWiki(deps.configHome);
@@ -16362,14 +16504,14 @@ Then run "commonground login --wait" (the code is valid for about ${Math.round(p
 ${formatWikiList(listings, active, boundId)}
 Switch with "commonground use <wiki>" \u2014 a name or an id, and a unique prefix of
 either is enough.
-`);
+${sourceNote(source)}`);
         return;
       }
       const hits = matchWiki(listings, query);
       if (hits.length === 0) {
         throw new AgentError(`no wiki of yours matches "${query}".
 Your wikis:
-${formatWikiList(listings, active, boundId)}`);
+${formatWikiList(listings, active, boundId)}` + sourceNote(source));
       }
       if (hits.length > 1) {
         throw new AgentError(`"${query}" matches more than one of your wikis:
@@ -16406,6 +16548,29 @@ ${formatWikiList(hits, active, boundId)}Say which one \u2014 the full name, or t
         onClone: announceClone
       });
       process.stdout.write(formatInit(result));
+      return;
+    }
+    /*
+     * PLUMBING, not a user verb — deliberately absent from USAGE, like `sync` (SER-240).
+     *
+     * The plugin's SessionStart hook shells this to rebuild `COMMONGROUND_WIKI` from the project's
+     * own marker. It exists so there is ONE implementation of that write: the hook is dependency-free
+     * CommonJS and cannot import the agent, and this codebase has been burned twice by hand-mirrors
+     * (the fold, the client header). Re-implementing `writeProjectWikiEnv` in `lib.cjs` would be a
+     * third.
+     *
+     * Needs no login, no network and no deps — it reads this project's CLAUDE.md and writes this
+     * project's settings, nothing else. Any argument is ignored on purpose: the marker is the only
+     * authority, and a verb that accepted a wiki id would let a caller bind a project to a wiki the
+     * project never named.
+     *
+     * Prints ONE LINE OF JSON because its only consumer is a program. `record-wiki.contract.test.ts`
+     * in the plugin round-trips this exact serialization through the hook's parser, which is what
+     * stops the two drifting without a bundle to run.
+     */
+    case "record-wiki": {
+      process.stdout.write(`${JSON.stringify(await recordProjectWiki(process.cwd()))}
+`);
       return;
     }
     case "relocate": {

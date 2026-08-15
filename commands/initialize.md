@@ -16,9 +16,10 @@ Run `commonground status`.
 
 ## 2. Sign in (device-code login)
 
-The user needs a CommonGround account on a team first.
-- **No account/team yet?** Point them to https://app.commongroundapp.io/sign-up to create an account
-  and a team. (Admins invite teammates there; a member can instead accept an invite link.)
+The user needs a CommonGround account **with at least one wiki** first — the authorize screen has
+nothing to approve without one, and its button is hidden rather than left dead.
+- **No account/wiki yet?** Point them to https://app.commongroundapp.io/sign-up to create an account
+  and a wiki. (Admins invite teammates there; a member can instead accept an invite link.)
 - Then sign the device in. Use the **split** form, not the one-shot `commonground login`: the
   one-shot blocks until the grant expires (~10 minutes), which is far longer than a tool call gets,
   so it is killed and looks like a failure when it was only waiting.
@@ -27,9 +28,17 @@ The user needs a CommonGround account on a team first.
   2. Relay both to the user: *"Open app.commongroundapp.io/activate and enter ABCD-2345. Tell me
      when you've approved it."*
   3. `commonground login --wait` — polls for about 90 seconds. If it reports **still waiting**, that
-     is not an error: the user hasn't clicked Approve yet. Just run it again.
+     is not an error: the user hasn't clicked Approve yet. Run it again.
 
-  On success it prints the team and role.
+  **Stop after the second "still waiting" and say why, instead of polling a third time.** A poll
+  that never lands almost always means the user cannot press the button, not that they are slow —
+  and the loop hides that completely. The two causes, in order of likelihood: they have **no wiki
+  yet** (the authorize screen offers no button at all in that state, and tells them to create one),
+  or the code expired and needs a fresh `commonground login --start`. Ask which they are seeing on
+  the screen rather than guessing, and never keep polling while telling them nothing is wrong.
+
+  On success it prints the wiki and role. **One sign-in is all they need** — it reaches every wiki
+  they are a member of, now and later, so a wiki created or joined afterwards needs no second login.
 
 ## 3. (Optional) Load existing markdown from the computer
 
@@ -102,6 +111,13 @@ project's wiki** rather than for whichever one it was authorised for. If the CLI
 not write that file, say so: it means the file isn't valid JSON, it was left alone rather than
 overwritten, and until they fix it the connector will keep answering for the wrong wiki here.
 
+**Relay the CLI's line about what gets committed — don't drop it as boilerplate.** Both files it
+writes are normally tracked by git, so `CLAUDE.md`'s quoted charter brief and anti-scope, and the
+wiki id in both, reach anyone who clones this repo. That is usually fine and occasionally not: a
+charter's anti-scope is a statement of what the team does and does not keep, and in a public repo it
+is on GitHub. Say it once, plainly, and move on — this is a heads-up, not a confirmation to collect.
+Neither file gets a filesystem path and neither holds a secret; the sign-in lives elsewhere.
+
 **If a wiki folder already exists, `init` leaves it exactly as it is.** It clones only when there is
 nothing on disk yet; it will not fast-forward an existing folder onto the hosted version, and it will
 not publish local commits — even for an admin. Instead it reports where the folder stands (ahead,
@@ -124,8 +140,10 @@ Do not skip this because everything looks connected: that is exactly the state i
 answer is indistinguishable from a right one. For MCP
 mode, mention that if the connector needs authentication — or if its tools stop appearing later,
 which a plugin update can cause — they can run `/mcp` to (re)connect or restart the session; missing
-tools are a connection problem, not a permissions one, and `commonground pull [wiki]` still reads
-the wiki without the connector.
+tools are **usually** a connection problem, and `commonground pull [wiki]` still reads the wiki
+without the connector. The exception worth knowing: if this project names a wiki they are not a
+member of, every call fails identically and `/mcp` cannot fix it — that one needs an invite from
+that wiki's admin, and `/commonground:status` is what tells the two apart.
 
 Then check the wiki's state so you hand off to the right next step — call `get_awareness` (its
 `pageCount`) or `get_coverage`:

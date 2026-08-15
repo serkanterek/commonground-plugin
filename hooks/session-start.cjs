@@ -28,8 +28,19 @@
  *   • every path also completes the SER-165 credential move for anyone who hasn't logged in since
  *     (SER-175): silent when it works, and a one-sentence heads-up appended to whatever context we
  *     were already emitting when the sign-in is still stuck inside the wiki folder.
+ *   • every INITIALIZED path also REBUILDS the connector's copy of this project's wiki binding when
+ *     it is missing or stale (SER-240) — by shelling the bundled CLI, never by a second
+ *     implementation — and says what it did and that it applies next session. No prompt (the marker
+ *     is the authority and the env var is its cache), but never silent: the file it writes is often
+ *     committed, and the repair cannot help the session that performed it.
  *
  * Self-contained CommonJS over ./lib.cjs (no deps). Emits SessionStart hook JSON on stdout.
+ *
+ * ONE THING THIS FILE WRITES OUTSIDE THE CONFIG HOME. Everything else it persists is a cache or a
+ * marker in `~/.commonground`; the SER-240 repair reaches into the PROJECT. That is deliberate and
+ * bounded — one key, in one file, merged, byte-idempotent, refused rather than repaired when the
+ * file will not parse — and it goes through the agent's own writer so those five properties have
+ * exactly one implementation.
  */
 const lib = require('./lib.cjs');
 
@@ -139,11 +150,22 @@ function updateNotice(state) {
  * report "14 pages, ask it something" while Claude holds no CommonGround tools at all. That is a
  * more convincing wrong signal than the silence it replaced, and it reads to a user like a
  * permissions problem. It cannot come from the server; it has to be said here, every time.
+ *
+ * SER-239 made the second half CONDITIONAL. "Never a permissions one" was true while a connector
+ * could only serve the wiki it was consented for; since SER-236 a project may name a wiki its owner
+ * is not a member of, which 401s every call and looks identical from here — and the flat claim then
+ * routes Claude into an `/mcp` loop that cannot mint a membership. Hand-mirrored from
+ * `CONNECTOR_HEALTH_RULE` in the agent's `injection.ts` (this file is dependency-free CJS and cannot
+ * import it); the membership clause is pinned on both sides by tests rather than byte-compared, so
+ * each can keep its own register.
  */
 const CONNECTOR_HEALTH_CLAUSE =
   'If the CommonGround tools are not actually available in this session, say so plainly rather ' +
-  'than answering from assumption — that is a CONNECTION problem, never a permissions one, and ' +
-  '`/mcp` or a session restart fixes it.';
+  'than answering from assumption. That is usually a CONNECTION problem, which `/mcp` or a session ' +
+  'restart fixes — but not always: if this project names a wiki the user is not a member of, every ' +
+  'call fails the same way and re-authorising cannot fix it, because `/mcp` does not grant ' +
+  'membership. Check which wiki this project names before asserting either diagnosis; never tell ' +
+  'them they lack access on a guess, and never rule it out on one either.';
 
 /**
  * WHERE THIS PROJECT'S WRITES LAND — the one thing the connector cannot tell Claude (SER-184).
@@ -210,31 +232,127 @@ function modeRule(mode, teamId, voice) {
 }
 
 /**
- * The one wrong-wiki case the PreToolUse guard deliberately cannot block (SER-234).
+ * REBUILD the connector's copy of this project's binding, and say so (SER-239 then SER-240).
  *
- * That guard fires only on a CONFIRMED mismatch — this project's team marker versus the
- * `COMMONGROUND_WIKI` the connector was told to serve. A project bound by a plugin older than 0.7.4
- * has the marker and no variable, because nothing wrote one until `init` started to. From the guard's
- * side that is indistinguishable from a project on a single-wiki machine, where everything is fine,
- * so denying would break far more than it protects.
+ * ── What was wrong ────────────────────────────────────────────────────────────────────────────
+ * The binding is stored twice with different git semantics: the CLAUDE.md marker (tracked, travels
+ * with the repo) and `COMMONGROUND_WIKI` in `.claude/settings.json` (conventionally gitignored). The
+ * connector reads only the copy that does not travel, and only `init` ever wrote it — so an entire
+ * population is bound and silently wrong: every project initialized before that write existed, every
+ * repo that gitignores the file, every teammate's clone, every copied folder.
  *
- * What it is NOT is invisible. Such a project looks completely set up — router block, working
- * commands — while the connector quietly answers for whichever wiki it was authorised for. So it is
- * said once per session, here, where a nudge costs nothing and the fix is one command.
+ * The PreToolUse guard is structurally blind exactly there (`if (!bound || !serving) return null`),
+ * and correctly so — with no recorded wiki, a broken project and a healthy single-wiki machine are
+ * indistinguishable from the client, so denying would break far more than it protects (SER-234).
+ * That left this clause as the entire signal, and it undercut itself twice: it asserted a CAUSE it
+ * cannot observe ("a plugin older than 0.7.4" — equally consistent with a gitignored settings file,
+ * a teammate's clone, or a copied folder), and it ended "Mention this only if it becomes relevant",
+ * handing the judgement to the one party with no way to tell. A wrong-wiki answer is fluent, sourced
+ * and indistinguishable from a right one.
  *
- * MCP mode only: a local-clone project reads from its folder, and the CLI already resolves that per
- * project. Silent when the variable is present (the normal case) so this never becomes noise.
+ * ── Why it HEALS rather than nags ─────────────────────────────────────────────────────────────
+ * The marker is the declared authority everywhere else — `team-resolve.ts`, the wrong-wiki guard,
+ * `lib.cjs`'s own `activeBinding` — and none of them consult the env var. That makes the env var a
+ * CACHE of the marker, and rebuilding a cache from its source needs no permission (the SER-231
+ * catalog precedent). It is NOT the SER-230 "init must not reconcile unasked" case: that was about
+ * moving CONTENT. Decided explicitly, 2026-08-15.
+ *
+ * ── Silent means NO PROMPT, not no receipt ────────────────────────────────────────────────────
+ * `.claude/settings.json` is frequently committed, so an unannounced write would show up in someone's
+ * `git status` with nothing anywhere explaining it. And the repair cannot help THIS session — Claude
+ * Code read the environment at startup — so a silent heal would leave the user with wrong answers
+ * and a mysterious diff. Both are said, every time we write.
+ *
+ * ── Both modes, identically ───────────────────────────────────────────────────────────────────
+ * `init` records the wiki in local mode too (the "one invariant, both modes" choice, FR-04-13), so a
+ * repair that healed only MCP projects would reintroduce the same disagreement pointing the other
+ * way. What differs is only the CONSEQUENCE: a local-clone project reads its folder, so a
+ * mis-pointed connector reaches only the server-side suggestions queue.
+ *
+ * ── The one thing it will not do ──────────────────────────────────────────────────────────────
+ * An unparseable `settings.json` is reported and never rewritten — the same refusal `init` already
+ * ships, for the same reason: destroying a working configuration to fix a header is no trade.
  */
-function unrecordedWikiClause(cwd, mode) {
-  if (mode === 'local') return '';
+function bindingRepairClause(cwd, mode) {
   const bound = lib.projectTeamId(cwd);
-  if (!bound || (process.env.COMMONGROUND_WIKI || '').trim()) return '';
+  if (!bound) return ''; // this project declares no wiki — nothing to rebuild from
+  const serving = (process.env.COMMONGROUND_WIKI || '').trim();
+  // Case-insensitive, like the guard: the server canonicalises the id, so casing is not a mismatch.
+  // This is also the cheap path — a healthy project never spawns the CLI.
+  if (serving.toLowerCase() === bound.toLowerCase()) return '';
+
+  // What THIS session is serving and what the FILE says are different questions, and only the file
+  // is ours to fix. `unchanged` below is exactly the case where they disagree: someone bound this
+  // project after the session started.
+  const done = lib.recordProjectWiki(cwd);
+  const consequence =
+    mode === 'local'
+      ? 'Reads here come from the local clone, so this affects the server-side suggestions queue ' +
+        'rather than page answers'
+      : 'Until then, wiki answers here may come from another wiki entirely — and such an answer is ' +
+        'fluent, sourced and indistinguishable from a right one, so do not wait to see whether it ' +
+        'matters';
+  const head = `This project names CommonGround wiki ${bound}, but this session's connector was ` +
+    (serving ? `told to serve ${serving} instead. ` : 'never told which wiki to serve. ');
+
+  if (done && done.outcome === 'unreadable') {
+    return (
+      head +
+      `It could NOT be recorded: this project's .claude/settings.json isn't valid JSON, so it was ` +
+      'left untouched rather than overwritten. Nothing will fix this on its own — TELL THE USER, ' +
+      `and that repairing that file (or running "commonground init ${bound}" after) is what ends ` +
+      `it. ${consequence}.`
+    );
+  }
+  if (done && (done.outcome === 'written' || done.outcome === 'unchanged')) {
+    return (
+      head +
+      (done.outcome === 'written'
+        ? `It has now been recorded in this project's .claude/settings.json — that file may be ` +
+          'tracked by git, so mention the change if the user is about to commit. '
+        : 'It is already recorded correctly; this session simply started before that. ') +
+      'Claude Code reads that file at session START, so the fix applies to the NEXT session, not ' +
+      `this one: TELL THE USER to restart when convenient. ${consequence}.`
+    );
+  }
+  // No CLI, a crash, a timeout, an outcome we do not recognise. Say the state; claim no repair.
   return (
-    `This project is bound to CommonGround wiki ${bound}, but nothing records that for the MCP ` +
-    'connector — it was connected by a plugin older than 0.7.4, so the connector will answer for ' +
-    'whichever wiki it was authorised for instead, which may not be this one. If wiki answers here ' +
-    `look like they are about something else, that is why: "commonground init ${bound}" in this ` +
-    'project records it, and a session restart applies it. Mention this only if it becomes relevant.'
+    head +
+    'It could not be recorded automatically this session, so nothing has changed yet. TELL THE ' +
+    `USER, and that "commonground init ${bound}" in this project followed by a restart fixes it. ` +
+    `${consequence}.`
+  );
+}
+
+/**
+ * A committed router block naming a folder that is not on THIS machine (SER-242).
+ *
+ * Blocks written before SER-242 interpolated the author's resolved clone path into a TRACKED
+ * CLAUDE.md. Clone that repo and your Claude is instructed, by the project's own file, to read a
+ * catalog at `/Users/<someone else>/CommonGround/…`, treat it as "the working copy for this
+ * project", and write ingests under it. Nothing noticed: mode detection reads the marker, not the
+ * path, and the wrong-wiki guard is about wiki ids.
+ *
+ * New blocks name no folder, so `legacyClonePath` returns null and this is silent. It exists for the
+ * population already committed — those keep their path until someone re-runs `init --refresh`, which
+ * is exactly why the check is not optional garnish.
+ *
+ * EXISTENCE IS THE WHOLE TEST, and it is the right one. A path that IS present is either this
+ * machine's own folder (fine, nothing to say) or a coincidence so unlikely it does not merit
+ * complexity; a path that is absent cannot be read no matter who wrote it, so the advice is the same
+ * either way. Fail-open like everything here: an unreadable CLAUDE.md says nothing.
+ */
+function foreignClonePathClause(cwd, mode) {
+  if (mode !== 'local') return '';
+  const stated = lib.legacyClonePath(cwd);
+  if (!stated || lib.pathExists(stated)) return '';
+  return (
+    `This project's CLAUDE.md names a wiki folder at ${stated}, and there is nothing there on this ` +
+    'machine — that block was written on someone else\'s, and committed with their path in it. Do ' +
+    'NOT try to read or create that folder: it is not this machine\'s wiki, and creating it would ' +
+    'make an empty directory look like a wiki. TELL THE USER, and that "commonground init --mode ' +
+    'local" here gives this machine its own clone and rewrites the block to stop naming a path at ' +
+    'all. Until then, answer from what you have and say the wiki was not consulted.'
   );
 }
 
@@ -397,7 +515,8 @@ async function main() {
   // about it is how an ingest ends up on the hosted wiki instead of in the user's clone.
   const projectMode = lib.routerMode(cwd);
   const binding = lib.activeBinding(cwd);
-  const unrecordedWiki = unrecordedWikiClause(cwd, projectMode);
+  const bindingRepair = bindingRepairClause(cwd, projectMode);
+  const foreignClone = foreignClonePathClause(cwd, projectMode);
   if (!binding) {
     // Initialized, but no single resolvable binding — either signed out on THIS machine (0 tokens)
     // or signed in to several teams (>1, ambiguous). We can't fetch LIVE awareness for one team
@@ -424,7 +543,7 @@ async function main() {
     // pageIds" followed by every tool call failing reads to the user as a permissions problem.
     // The mode rule still applies with no binding: which surface may be written is a property of
     // the PROJECT, not of whether this machine can currently resolve a device token.
-    emit(`${awarenessContext(null)}${hint}`, modeRule(projectMode, null), unrecordedWiki, CONNECTOR_HEALTH_CLAUSE);
+    emit(`${awarenessContext(null)}${hint}`, modeRule(projectMode, null), bindingRepair, foreignClone, CONNECTOR_HEALTH_CLAUSE);
     return;
   }
 
@@ -462,7 +581,8 @@ async function main() {
     emit(
       resolvedContext(state),
       modeRule(projectMode, binding.teamId, voiceOf(state)),
-      unrecordedWiki,
+      bindingRepair,
+      foreignClone,
       nudge,
       delegatedWelcome(state),
       updateNotice(state),
@@ -486,7 +606,8 @@ async function main() {
     `${awarenessContext(null)} CommonGround could not be reached this session, so the figures above ` +
       'are unavailable — the wiki itself is fine; run /commonground:status to check.',
     modeRule(projectMode, binding.teamId),
-    unrecordedWiki,
+    bindingRepair,
+    foreignClone,
     localHead ? 'This project has a local wiki clone; /commonground:pull and /commonground:push still work offline-first.' : '',
     CONNECTOR_HEALTH_CLAUSE,
   );
@@ -509,5 +630,7 @@ module.exports = {
   awarenessFromState,
   delegatedWelcome,
   updateNotice,
+  bindingRepairClause,
+  foreignClonePathClause,
   CONNECTOR_HEALTH_CLAUSE,
 };

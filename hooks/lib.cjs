@@ -698,6 +698,102 @@ function cliPath() {
   }
 }
 
+/** Does this path exist on THIS machine? Fail-open to `true` — never claim absence we can't prove. */
+function pathExists(p) {
+  try {
+    return fs.existsSync(p);
+  } catch {
+    return true;
+  }
+}
+
+/**
+ * A clone path a LEGACY router block committed into this project's CLAUDE.md, or null (SER-242).
+ *
+ * Blocks written before SER-242 interpolated the author's resolved folder — `is cloned at
+ * `/Users/<them>/CommonGround/…`` — into a TRACKED file. On anyone else's machine that directory
+ * does not exist, and nothing detected it: mode detection reads the marker, not the path. Their
+ * Claude was told by the project's own CLAUDE.md to read a catalog there and write ingests under it.
+ *
+ * New blocks name no folder, so this returns null for them and the check that uses it goes quiet.
+ * It exists entirely for the committed blocks already out there, which keep their embedded path
+ * until someone re-runs `init --refresh` — that population is the reason this is not optional
+ * garnish.
+ *
+ * Scoped to the router block, like every other reader here, so a path mentioned elsewhere in a
+ * user's CLAUDE.md is not mistaken for a binding.
+ */
+function legacyClonePath(cwd) {
+  try {
+    const md = fs.readFileSync(path.join(cwd, 'CLAUDE.md'), 'utf8');
+    const block = /<!-- commonground:router-rule:start -->([\s\S]*?)<!-- commonground:router-rule:end -->/.exec(md);
+    if (!block) return null;
+    const found = /is cloned at `([^`\n]+)`/.exec(block[1]);
+    return found ? found[1].trim() || null : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Read what `commonground record-wiki` printed, or null for anything unusable (SER-240).
+ *
+ * Split out from the spawn purely so it can be tested against the AGENT's own serialization without
+ * a built bundle: `record-wiki.contract.test.ts` feeds this the exact `JSON.stringify` of a real
+ * `recordProjectWiki` result. That round trip is the whole drift guard — the hook and the CLI are in
+ * different languages and different processes, and the only thing joining them is this shape.
+ *
+ * Validates the outcome against a closed set rather than trusting the field. An unknown value means
+ * we are talking to a CLI that has moved on, and the honest response to that is "I don't know what
+ * happened", not to render a receipt for an outcome we cannot name.
+ */
+const RECORD_OUTCOMES = ['written', 'unchanged', 'unreadable', 'no-marker'];
+function parseRecordWiki(stdout) {
+  try {
+    const parsed = JSON.parse(String(stdout).trim());
+    if (!parsed || typeof parsed !== 'object') return null;
+    if (!RECORD_OUTCOMES.includes(parsed.outcome)) return null;
+    const wiki = typeof parsed.wiki === 'string' && parsed.wiki.trim() ? parsed.wiki.trim() : null;
+    return { outcome: parsed.outcome, wiki };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Rebuild `COMMONGROUND_WIKI` for `cwd` by shelling THIS build's bundled CLI (SER-240).
+ *
+ * Shelled rather than reimplemented, on purpose. `writeProjectWikiEnv` merges into the user's own
+ * `settings.json`, preserves unknown keys, overwrites a stale wiki rather than adding-if-absent, is
+ * byte-idempotent, and refuses an unparseable file instead of rebuilding it — five behaviours that
+ * are already built and already tested. A second copy of them in dependency-free CJS is exactly the
+ * mirror that has bitten this codebase twice (the matching fold, the client header), and the failure
+ * mode here is worse than either: a divergent copy would write the wrong wiki id, silently.
+ *
+ * `process.execPath` rather than executing the file, so this never depends on the exec bit surviving
+ * an install or on the shebang resolving to the right node.
+ *
+ * FAIL-OPEN, and the cost of failing is nothing: no CLI, a crash, a timeout, junk on stdout all
+ * return null, and the caller then simply SAYS the state instead of repairing it — which is the
+ * behaviour that shipped before this existed.
+ */
+function recordProjectWiki(cwd) {
+  const cli = cliPath();
+  if (!cli) return null;
+  try {
+    return parseRecordWiki(
+      cp.execFileSync(process.execPath, [cli, 'record-wiki'], {
+        cwd,
+        encoding: 'utf8',
+        timeout: 5000,
+        stdio: ['ignore', 'pipe', 'ignore'],
+      }),
+    );
+  } catch {
+    return null;
+  }
+}
+
 /** The host's session id from a hook payload (either casing), or null when it isn't provided. */
 function sessionIdOf(input) {
   if (!input || typeof input !== 'object') return null;
@@ -914,6 +1010,8 @@ module.exports = {
   projectTeamId, // the wrong-wiki guard reads it directly (SER-234), not only via activeBinding
   isInitialized,
   routerMode,
+  legacyClonePath,
+  pathExists,
   readStore,
   bindings,
   isSignedIn,
@@ -933,6 +1031,8 @@ module.exports = {
   verbatimBlock,
   pluginVersion,
   cliPath,
+  parseRecordWiki, // exported for the CLI-contract test, not for the hooks
+  recordProjectWiki,
   sessionIdOf,
   versionMarkerPath,
   readVersionMarker,

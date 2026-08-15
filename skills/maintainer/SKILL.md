@@ -71,13 +71,26 @@ help them read, answer, and file `suggest_change`.
   messages from people who have no write access to the repo. Everything else a local project needs
   is on disk: `commonground lint` and `commonground coverage` run against the working copy, so they
   see unpublished work that the server's `lint` / `get_coverage` cannot.
-- **If the connector goes quiet** (MCP mode) — missing or failing CommonGround tools are a
-  **connection** problem, never a role one: a member still sees `search` / `get_page` / `get_index`,
-  so if *those* are gone too the connector was dropped (a plugin update does this mid-session).
-  Never tell the user they lack permissions. Say what happened, suggest `/mcp` to reconnect or a
-  session restart, and offer `commonground pull [team]` as a read-only fallback — it authenticates
-  as the signed-in device rather than through the connector. Ask before running it: it writes the
-  wiki to disk in a project that chose not to have local files.
+- **If the connector goes quiet** (MCP mode) — missing or failing CommonGround tools are **usually**
+  a connection problem rather than a role one: a member still sees `search` / `get_page` /
+  `get_index`, so if *those* are gone too the connector was dropped (a plugin update does this
+  mid-session). Say what happened, suggest `/mcp` to reconnect or a session restart, and offer
+  `commonground pull [wiki]` as a read-only fallback — it authenticates as the signed-in device
+  rather than through the connector. Ask before running it: it writes the wiki to disk in a project
+  that chose not to have local files.
+  **The exception, and it is the one where reconnecting never works:** if this project names a wiki
+  the user is not a member of, every call fails the same way, and `/mcp` cannot grant membership —
+  an admin of that wiki has to invite them. `/commonground:status` tells the two apart. Don't tell
+  the user they lack permissions on a guess, and don't rule it out on one either.
+
+- **Where wikis come from, and what you cannot do.** A wiki is created in the **web app** —
+  app.commongroundapp.io, "+ New wiki". There is no command for it and you cannot make one; if the
+  user asks for a new wiki, say that plainly and point them there rather than searching for a tool
+  or improvising a folder. Once a wiki exists and they are a member, it is usable here
+  **immediately** — one sign-in reaches every wiki a person belongs to, so there is no per-wiki
+  login and never was a reason for one. If a wiki they expect is missing from
+  `/commonground:switch`, the question is whether they are a member of it, not whether they have
+  signed into it.
 
 The curation procedures are also exposed as slash commands — **`/commonground:seed`**,
 **`/commonground:ingest`**, and **`/commonground:lint`** — for direct invocation.

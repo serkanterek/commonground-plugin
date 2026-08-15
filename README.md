@@ -106,11 +106,15 @@ slash commands drive it for you; you can also run it directly (`commonground sta
 
 ## Troubleshooting
 
-**The CommonGround tools disappeared mid-session.** That's a *connection* problem, never a
-permissions one — Claude Code re-registers a plugin's MCP server whenever the plugin version
-changes, which tears down the live connector. Run `/mcp` to reconnect, or restart the session.
-Meanwhile `commonground pull <team>` still reads the wiki: it authenticates as the signed-in device
-rather than through the connector.
+**The CommonGround tools disappeared mid-session.** Usually a *connection* problem — Claude Code
+re-registers a plugin's MCP server whenever the plugin version changes, which tears down the live
+connector. Run `/mcp` to reconnect, or restart the session. Meanwhile `commonground pull <team>`
+still reads the wiki: it authenticates as the signed-in device rather than through the connector.
+
+**…but reconnecting keeps not helping.** There is one other way to lose every tool at once: this
+project names a wiki you are not a member of. Reconnecting can't fix that, because signing in again
+doesn't grant membership — an admin of that wiki has to invite you. `/commonground:status` tells the
+two apart: it says which wiki this project is bound to, and whether this machine can reach it.
 
 **Upgrading.** Reinstall between sessions rather than mid-task, for the same reason.
 

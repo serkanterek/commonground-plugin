@@ -29,7 +29,20 @@ mean different things the next time the user changes something, and every confus
 come from not knowing which rule fired. A user signed in to one wiki won't see this line — there is
 nothing to disambiguate — and its absence is not something to remark on.
 
-If they want a different wiki, that's **`/commonground:switch`**.
+**Bound to a wiki this machine can't reach.** If the output says `This project is bound to <id>,
+which this machine has no sign-in for`, that outranks the line above it — lead with it. Say the two
+facts plainly and in this order: this project asks for `<id>`, and answers here are coming from a
+different wiki instead. Then the fix, which is **not** a login: `commonground login` cannot add a
+wiki nobody has invited them to, so if they should have access, an **admin of `<id>` has to invite
+them**. Offer `commonground init <the reachable wiki>` only as the other choice — repointing the
+project — and say that is what it means. Never present this as a credential problem they can solve
+alone, and never quietly treat the wiki that did answer as the one they asked for.
+
+If they want a different wiki, that's **`/commonground:switch`**. If they want a **new** one, wikis
+are created in the web app — **app.commongroundapp.io**, "+ New wiki". You cannot create one from
+here; say so plainly and point them there rather than hunting for a command. Once it exists and
+they're a member, it is usable here immediately — one sign-in reaches every wiki you belong to, so
+there is no separate login for it.
 
 **Does the connector agree?** In MCP mode, check it — don't assume. A bound project tells the
 connector which wiki to answer for, so the two normally match; but that instruction is read when the
@@ -98,11 +111,20 @@ recent changes. Optionally add coverage progress from `get_coverage`. If the wik
 lead with that — the next step is seeding, not asking questions.
 
 **Connector health.** If step 1's `commonground status` reports a team but the CommonGround tools
-are missing or a call fails, report that combination plainly: sign-in and the CLI are fine, the
-**connector** is down — a plugin update or a dropped session does this, and it is a connection
-problem, never a permissions one. Give the fixes in order: run `/mcp` to reconnect, restart the
-session, or — asking first, because it writes files — `commonground pull [wiki]` for a readable
-copy of the wiki on disk, which authenticates as the signed-in device rather than the connector.
+are missing or a call fails, report that combination plainly: sign-in and the CLI are fine, and
+something between this session and the wiki is not. It is **usually** a connection problem — a
+plugin update or a dropped session does this — so give those fixes first: run `/mcp` to reconnect,
+restart the session, or — asking first, because it writes files — `commonground pull [wiki]` for a
+readable copy of the wiki on disk, which authenticates as the signed-in device rather than the
+connector.
+
+**But not always, and this is the one case where the usual advice is a dead end.** If this project
+names a wiki the user is **not a member of**, every connector call 401s in exactly the same way, and
+`/mcp` will never fix it — re-authorising cannot grant membership, so that loop has no exit. Step 1
+is what tells the two apart: a `This project is bound to <id>, which this machine has no sign-in
+for` line, or a `commonground status` that itself fails naming a wiki, means **membership**, and the
+fix is an invite from an admin of that wiki. Don't assert either diagnosis without having looked —
+and don't tell someone they lack access on a guess.
 
 ## 3. Where they stand — show the whole ladder
 

@@ -10,14 +10,43 @@ organization's. This command switches between *wikis*; it never changes anyone's
 
 ## 1. Show them what they have
 
-Run `commonground use` with no argument. It lists every wiki this machine is signed in to, marks the
-**active** one with `*`, and marks the one **this project** is bound to.
+Run `commonground use` with no argument. It lists every wiki the user is a **member** of — asked of
+the server, not of this machine's sign-ins — marks the **active** one with `*`, marks the one **this
+project** is bound to, and marks any reached `via your other sign-in` (see below).
 
 Relay it in plain language — wiki names, never bare UUIDs. If the CLI reports `no team logged in`,
 stop and point at **`/commonground:initialize`**; there is nothing to switch between.
 
 If there's only one wiki, say so and stop. There is no choice to make, and running the switch would
 imply there was.
+
+**One caveat, and it is the reason this step changed.** If the output ends with a parenthetical note
+that it was *"listed from this machine's sign-ins"*, the list may be **incomplete** — a wiki joined
+recently will be missing from it. Say so rather than concluding a wiki does not exist. That
+conclusion was the bug: the CLI used to list its own login cache and present it as the universe, so a
+user who created a second wiki in the web app came back here and was told, as a fact, that it wasn't
+there.
+
+The note says **why** it fell back, and the three reasons have three different fixes — relay the one
+the note names, never a generic "try later":
+
+- **"no longer valid"** — the sign-ins themselves are dead (they left those wikis, or the device was
+  revoked). `commonground login` is the fix, and waiting is not.
+- **"could not be reached"** — offline or an outage. Waiting is the fix, and logging in again is not.
+- **"cannot list your memberships"** — the server is older than this plugin. Neither waiting nor
+  logging in changes it; the list works again when the server updates.
+
+## 1b. If a wiki they expect is missing
+
+Two different situations, and only one is a problem:
+
+- **They just created it, or were just invited.** Being a member is all it takes now — one sign-in
+  reaches every wiki you belong to, so it should appear as soon as the server can be reached. There
+  is nothing to log into. If it still isn't listed, they aren't a member yet (an invite not accepted,
+  or a wiki created under a different account).
+- **They want a NEW wiki.** Wikis are created in the web app — **app.commongroundapp.io**, "+ New
+  wiki". You cannot create one from here; say that plainly and point them there rather than looking
+  for a command. Once it exists and they're a member, it is usable here immediately.
 
 ## 2. Ask which one
 
@@ -44,7 +73,10 @@ works). Then relay what the CLI reports:
 Be concrete, because "active" has a narrow meaning:
 
 - Commands in projects **not** bound to a wiki now resolve to the new one — `status`, `pull`,
-  `push`, `lint`, `coverage`.
+  `push`, `lint`, `coverage`. This works for a wiki marked `via your other sign-in` too: the
+  credential authenticates the person and membership authorizes the wiki, so there is no separate
+  login step. The mark matters in one case only — offline, that wiki is the one that can't be
+  reached, because the credential being presented was minted for a different one.
 - Projects **bound** by `initialize` are unaffected. That's every project the user set up
   deliberately.
 - **The MCP connector follows the PROJECT, not this switch.** In a project bound by

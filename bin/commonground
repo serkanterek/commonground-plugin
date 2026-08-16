@@ -8015,7 +8015,7 @@ async function crossWikiBinding(backend, teamId, configHome, dataHome) {
     throw probeError(teamId, probe.fail);
   const target = probe.wikis.find((w) => w.teamId === teamId);
   if (!target) {
-    throw new AgentError(`you are not a member of wiki "${teamId}" \u2014 this machine is signed in to CommonGround, and the server lists your wikis as: ${probe.wikis.map((w) => w.teamId).join(", ") || "(none)"}. Logging in again cannot grant membership; an admin of that wiki has to invite you.`);
+    throw new AgentError(`you are not a member of wiki "${teamId}" \u2014 this machine is signed in to CommonGround, and the server lists your wikis as: ${probe.wikis.map((w) => wikiLabel(w)).join(", ") || "(none)"}. Logging in again cannot grant membership; an admin of that wiki has to invite you.`);
   }
   return { token: probe.binding.token, userId: probe.binding.userId, teamId, role: target.role };
 }
@@ -14804,6 +14804,16 @@ function sourceNote(source) {
 `;
   }
 }
+function matchWiki(listings, query) {
+  const q = query.trim().toLowerCase();
+  if (!q)
+    return [];
+  const field = (v) => v?.trim().toLowerCase() ?? "";
+  const exact = listings.filter((l) => l.teamId.toLowerCase() === q || field(l.wikiName) === q || field(l.scopeSlug) === q);
+  if (exact.length)
+    return exact;
+  return listings.filter((l) => l.teamId.toLowerCase().startsWith(q) || field(l.wikiName) !== "" && field(l.wikiName).startsWith(q) || field(l.scopeSlug) !== "" && field(l.scopeSlug).startsWith(q));
+}
 function apiUrl(apiBaseUrl, path) {
   const url = new URL(apiBaseUrl);
   url.pathname = `${url.pathname.replace(/\/$/, "")}${path}`;
@@ -15730,9 +15740,10 @@ async function pathExists2(path) {
 }
 
 // ../../apps/sync-agent/dist/team-resolve.js
+var FULL_WIKI_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 async function resolveWiki(deps, arg, projectDir = process.cwd()) {
   if (arg)
-    return { teamId: arg, via: "arg" };
+    return { teamId: await resolveWikiArg(deps, arg), via: "arg" };
   const wikis = Object.keys((await readStore(deps.configHome, deps.dataHome)).teams);
   if (wikis.length === 0)
     throw notLoggedIn(void 0, deps.configHome);
@@ -15745,7 +15756,32 @@ async function resolveWiki(deps, arg, projectDir = process.cwd()) {
     return { teamId: active, via: "active", ...unreachable };
   if (wikis.length === 1)
     return { teamId: wikis[0], via: "sole", ...unreachable };
-  throw new AgentError(`more than one wiki available \u2014 say which: ${wikis.join(", ")}. (Choose one for this machine with "commonground use", or bind THIS project to one with "commonground init <wiki>" \u2014 after either, these commands resolve on their own.)` + (bound ? ` This project IS bound to ${bound}, but this machine has no sign-in for that wiki, so it is not one of the choices above \u2014 that is a membership question, not a login one: if you should have access, its admin has to invite you.` : ""));
+  const cached = await listWikis(deps.configHome, deps.dataHome);
+  const label = (id) => wikiLabel(cached.find((l) => l.teamId === id) ?? { teamId: id });
+  throw new AgentError(`more than one wiki available \u2014 say which: ${wikis.map(label).join(", ")}. (Choose one for this machine with "commonground use", or bind THIS project to one with "commonground init <wiki>" \u2014 after either, these commands resolve on their own.)` + (bound ? ` This project IS bound to ${bound}, but this machine has no sign-in for that wiki, so it is not one of the choices above \u2014 that is a membership question, not a login one: if you should have access, its admin has to invite you.` : ""));
+}
+async function resolveWikiArg(deps, arg) {
+  const raw = arg.trim();
+  const stored = Object.keys((await readStore(deps.configHome, deps.dataHome)).teams);
+  if (stored.includes(raw) || !deps.backend)
+    return raw;
+  if (stored.length === 0)
+    throw notLoggedIn(raw, deps.configHome);
+  const { listings, source } = await availableWikis({
+    backend: deps.backend,
+    configHome: deps.configHome,
+    dataHome: deps.dataHome
+  });
+  const hits = matchWiki(listings, raw);
+  if (hits.length === 1)
+    return hits[0].teamId;
+  if (hits.length > 1) {
+    throw new AgentError(`"${raw}" matches more than one of your wikis: ${hits.map((l) => wikiLabel(l)).join(" \xB7 ")}. Say more of the name, or use the id.`);
+  }
+  if (FULL_WIKI_ID.test(raw))
+    return raw;
+  throw new AgentError(`no wiki of yours matches "${raw}" \u2014 your wikis: ${listings.map((l) => wikiLabel(l)).join(", ") || "(none)"}.` + (source === "server" ? "" : `
+${sourceNote(source)}`));
 }
 async function resolveTeamId(deps, arg, projectDir = process.cwd()) {
   return (await resolveWiki(deps, arg, projectDir)).teamId;
@@ -15833,6 +15869,8 @@ Usage:
                                load an existing local wiki folder into your wiki (admins). The
                                folder is COPIED into your wiki clone and left untouched \u2014 from then
                                on the clone is the copy CommonGround syncs
+
+Every [wiki] takes a name or an id \u2014 a unique prefix of either is enough (same as "use").
 
 Your wiki folder is named after the wiki (e.g. ~/CommonGround/acme-handbook/). Choose your own with
 "init --path <folder>", or move it later with "relocate <folder>"; a folder you chose stays put.
@@ -16115,24 +16153,16 @@ function whichWiki(s, choice, profile) {
     return "";
   return describeWikiChoice(choice, wikiLabel({ teamId: s.teamId, ...profile }));
 }
-function matchWiki(listings, query) {
-  const q = query.trim().toLowerCase();
-  if (!q)
-    return [];
-  const field = (v) => v?.trim().toLowerCase() ?? "";
-  const exact = listings.filter((l) => l.teamId.toLowerCase() === q || field(l.wikiName) === q || field(l.scopeSlug) === q);
-  if (exact.length)
-    return exact;
-  return listings.filter((l) => l.teamId.toLowerCase().startsWith(q) || field(l.wikiName) !== "" && field(l.wikiName).startsWith(q) || field(l.scopeSlug) !== "" && field(l.scopeSlug).startsWith(q));
-}
 function formatWikiList(listings, activeId, boundId) {
   return listings.map((l) => {
     const marks = [
       l.teamId === activeId ? "active" : null,
       l.teamId === boundId ? "this project" : null,
-      // SER-241. Reachable through another wiki's sign-in rather than one minted here — invisible
-      // when everything works, and the entire explanation when this one alone fails offline.
-      l.viaOtherSignIn ? "via your other sign-in" : null
+      // SER-241. Reachable through a sign-in minted for another of YOUR wikis — same account,
+      // nothing separate to log into. Invisible when everything works, and the entire explanation
+      // when this one alone fails offline. Worded so it cannot read as a second account: "via
+      // your other sign-in" sent a whole session hunting for one that did not exist (SER-254).
+      l.viaOtherSignIn ? "covered by your existing sign-in" : null
     ].filter(Boolean);
     const suffix = marks.length ? ` \u2014 ${marks.join(", ")}` : "";
     return `  ${l.teamId === activeId ? "*" : " "} ${wikiLabel(l)} [you: ${l.role}]${suffix}

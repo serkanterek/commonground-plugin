@@ -50,7 +50,8 @@ If `$ARGUMENTS` names a wiki, that wins — use it and skip the listing.
 
 Otherwise run `commonground use` with no argument. It lists every wiki the user is a **member** of —
 asked of the server, not of this machine's sign-ins — marks the currently-active one with `*`, marks
-the one **this project** is bound to, and marks any reached `via your other sign-in`.
+the one **this project** is bound to, and marks any it reaches without a sign-in of its own as
+`covered by your existing sign-in` — same account, nothing separate to log into.
 
 Relay it in plain language — wiki names, never bare UUIDs.
 

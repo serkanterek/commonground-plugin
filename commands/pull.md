@@ -18,7 +18,7 @@ a clash it stops and asks.
 > from this project's own router block, so a project that has been pointed at a wiki needs no
 > argument even when the user has several. Failing that it uses the wiki they most recently pointed
 > at. It only asks when neither applies — a folder nobody has pointed anywhere — and then it fails
-> with `more than one wiki available — say which: …`, which lists the ids. Pass one as
+> with `more than one wiki available — say which: …`, which lists your wikis by name and id. Pass one as
 > `commonground pull <wiki>`, and offer **`/commonground:point`** so it stops asking.
 
 Run `commonground pull` and report the outcome in plain language:

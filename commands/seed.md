@@ -16,10 +16,10 @@ continues filling gaps.
 options per question (an "Other" is built in). Fall back to a plain conversational question when
 the tool isn't available or the answer is open-ended. Either way, ask one thing at a time.
 
-**Establish the project's mode before any write** — the SessionStart hook states it, else this
-project's `./CLAUDE.md` router block (`<!-- commonground:mode:… -->`) or `commonground status`.
-(When step 0 settles on a wiki this project is NOT pointed at, mode is decided there instead — the
-router block describes this project, and this project is not the target.)
+**The mode — where pages land — is settled by ASKING, in step 0.3; never by detection alone.**
+The SessionStart hook, this project's `./CLAUDE.md` router block (`<!-- commonground:mode:… -->`)
+and `commonground status` tell you the CURRENT setup — use them to mark the default option in the
+question, not to skip it (SER-256).
 **Local-clone mode:** every page below is a FILE in the clone, and the charter too — do not use
 `save_page` / `save_charter`; nothing is published until `/commonground:push`. **MCP mode:** the
 write tools go straight to the hosted wiki, live the moment they land — for the whole team on a
@@ -83,19 +83,42 @@ reports "not logged in" / "no team logged in", sign in **here**, inline:
 write is the defect class this whole area exists to close, and seeding is the one arc that writes
 dozens of pages before anyone would notice.
 
-**3. Mode, per target.**
+**3. Mode — ask WHERE PAGES LAND, before anything is read or written (SER-256).**
 
-- **Target is this project's wiki** → today's mode logic above, unchanged.
-- **Target is a DIFFERENT wiki, MCP path** → pass **`wiki: <teamId>`** on every seed-path tool call:
+Where a page lands is never a silent default. The first live run presumed MCP because the
+connector happened to work, and every drafted page would have gone live on a shared hosted wiki
+with no review step — so the mode is a QUESTION now, and it comes before the recon in step 1
+because the answer decides which sign-in must work (local → the CLI's membership of the target;
+MCP → the connector's).
+
+**In Claude Code, always ask** (AskUserQuestion). When the project already has an established
+mode for this target, list that option first, marked "current setup", so the question has an
+obvious default instead of a fork:
+
+- **Local clone** — pages are files on this machine first; you review everything, and nothing
+  reaches the hosted wiki until `/commonground:push`. Needs the CLI signed in as a member of the
+  target wiki.
+- **Hosted directly (MCP)** — every saved page is immediately live on the hosted wiki — for the
+  whole team, on a shared one. No staging step.
+
+**In claude.ai Chat, state rather than ask** — there is no filesystem, so don't stage a fake
+choice: say plainly that pages go live on the hosted wiki as they are saved, and that running
+`/commonground:seed` in Claude Code instead is the way to stage and review first.
+
+Then wire the answer up:
+
+- **Local, target is this project's wiki** → the local-clone rules above, unchanged.
+- **Local, target not pointed or not cloned here** → run the point flow for it now —
+  `commonground init --mode local [--path <folder>] <wiki>`, with point.md's confirm-or-override
+  on the folder — then seed into the files.
+- **MCP, target is the session's wiki** → the write tools as-is.
+- **MCP, target is a DIFFERENT wiki** → pass **`wiki: <teamId>`** on every seed-path tool call:
   `get_coverage`, `get_awareness`, `get_index`, `get_page`, `stage_sources`, `save_page`,
   `save_charter`, `save_seeding_progress`. The connector resolves its own wiki once per session, so
   this argument is the only thing that moves a write — there is no re-binding and no restart. The
   server authorizes it against the TARGET (membership and your role *there*); **relay its refusals
   as it words them** rather than pre-judging. A refusal is never a reason to retry without the
   argument — that writes into the wrong wiki.
-- **Target is a DIFFERENT wiki, local path** → seeding another wiki's clone would need that clone.
-  Use the MCP argument path instead, and offer `/commonground:point <wiki> local` if they actually
-  want the files on disk.
 
 **4. Verify the argument took effect — before writing anything.** Every tool response ends with
 `[commonground] answered from wiki <id>`. After your FIRST `wiki:`-carrying call, read it:
@@ -115,15 +138,30 @@ failure that produces no error and looks like a working session. Do not re-ask t
 not at a branch, not at a gap, and not on re-entry: the beats in 1a resume a *wiki*, and the target
 was settled here.
 
-## 1. Read the current state (and the lenses)
+## 1. Read the current state — one call, then talk
 
-Call `get_coverage` (or `GET /wiki/coverage`). It returns, for the team's org shape: overall
-`progress` (`done`/`total`/`pct`), one row per section (`status` done/partial/empty, its `prompt`,
-`scope`, `havePageIds`), and **`callerDiscipline`** — the user's own discipline (pm/dev/design/qa/
-exec/other), the seeding lens. Also glance at `get_awareness` (`pageCount`) to tell **empty** (0)
-from **already-populated**. And check `get_index` for a **charter page** (`wiki-charter`, or `company/wiki-charter` on an older wiki) — the wiki's
-charter page. If it exists, read it (`get_page`): its Audience / Structure / Retrieval brief govern
-everything below, so skip step 2.
+Call `get_coverage` (or `GET /wiki/coverage`), with the `wiki:` argument whenever step 0 targeted
+another wiki. It answers everything the arc needs to open: overall `progress`
+(`done`/`total`/`pct`), one row per section (`status` done/partial/empty, its `prompt`, `scope`,
+`havePageIds`, and per-section counts), **`callerDiscipline`** — the user's own discipline
+(pm/dev/design/qa/exec/other), the seeding lens — plus `chartered`, `audience`, and the `seeding`
+re-entry cursor (step 1a). Empty-vs-populated falls out of the counts: every section at zero is a
+first run; anything else is a top-up.
+
+**That one call is the whole opening scan (SER-257).** Don't front-load `get_awareness`,
+`get_index`, or a charter `get_page` here — read the charter page (`wiki-charter`, or
+`company/wiki-charter` on an older wiki) at the step that actually needs its prose (the retrieval
+brief and excludes), and the index when import triage calls for it (step 5). The person who
+invoked seeding is holding the answers; the first minute of the arc belongs to their words, not
+to a tool feed.
+
+**Read ONLY the wiki being seeded.** The connector's own instructions push toward consulting the
+session's wiki whenever its keywords come up — that reflex belongs to ANSWERING questions, not to
+seeding a different wiki, and it is how a seeding session quietly reads a personal wiki to ground
+a shared one. Grounding from any other wiki — especially personal → shared, the
+privacy-sensitive direction — is offer-and-consent, never silent: *"Your personal wiki has three
+Hipo pages — want me to draw on them here?"* No consent, no read; and never quote another wiki's
+content into this one without it.
 
 `get_coverage` is **charter-aware**: once a charter exists it reports `chartered: true` plus the
 charter's `audience`, and its rows ARE the charter's Structure list — the wiki's own definition
@@ -132,9 +170,9 @@ The charter page itself is meta: the server excludes it from section counts and 
 
 - If `callerDiscipline` is present, use it — **don't re-ask** their discipline.
 - If it's `null` (unknown), briefly ask which of pm / dev / design / qa / exec / other fits them.
-- **Empty wiki** → frame this as first-run seeding. **Populated** → frame it as "let's fill what's
-  still thin," resuming from the charter/coverage above (skip the from-scratch interview unless
-  they want it).
+- **Empty** (all counts zero) → frame this as first-run seeding. **Populated** → frame it as
+  "let's fill what's still thin," resuming from the coverage above (skip the from-scratch
+  interview unless they want it).
 
 ### 1a. Re-entry — open on the RIGHT beat
 
@@ -160,7 +198,7 @@ finishes, which clears the cursor. It stores POSITION ONLY — never answers, wh
 Be honest about the limit if it comes up: an answer given but not yet written to a page is still
 lost. What resuming guarantees is that you won't be asked the same question twice.
 
-## 2. Charter the wiki (first run — skip when a charter page exists)
+## 2. Charter the wiki (first run — skip when coverage reports `chartered: true`)
 
 A few quick questions, then one small page. Keep it to ~3 minutes — it's a conversation opener,
 not a ceremony.

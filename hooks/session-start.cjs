@@ -5,7 +5,7 @@
  * Step-4 onboarding three-way state — SER-150).
  *
  * Outcomes, all fail-open (a detection/network hiccup never breaks the session):
- *   • signed in, project NOT initialized → nudge the user to /commonground:initialize.
+ *   • signed in, project NOT pointed at a wiki → nudge the user to /commonground:point.
  *   • initialized + wiki EMPTY (pageCount === 0):
  *       – admin/curator (can curate) → nudge /commonground:seed to bootstrap it.
  *       – member (read-only)         → a gentle "empty, ask an admin to seed" note.
@@ -371,10 +371,10 @@ function stepProse(step, state) {
   const reason = active.charter && active.charter.inactiveReason;
   switch (step.id) {
     case 'initialize-project':
-      return 'This project is not connected to the wiki yet — suggest /commonground:initialize.';
+      return 'This project is not pointed at a wiki yet — suggest /commonground:point.';
     case 'point-surface':
       // Connected-elsewhere (SER-245): a Claude is signed in, but nothing points at this wiki.
-      return 'A Claude is already connected to CommonGround, but nothing points at this wiki yet — suggest /commonground:switch (or /commonground:initialize in this project) to point one here.';
+      return 'A Claude is already connected to CommonGround, but nothing points at this wiki yet — suggest /commonground:point to aim this project at it.';
     case 'catch-up':
       return "The team's wiki has moved on since this user last looked. Offer to summarize what changed (get_history), before anything else.";
     case 'repair-charter':
@@ -491,7 +491,7 @@ async function main() {
       // so it cannot know whether the wiki is personal or shared and must not guess.
       const claudeFacing =
         "You're signed in to CommonGround, but this project isn't connected to a wiki yet. " +
-        'If the user wants their curated context available here, suggest running /commonground:initialize.';
+        'If the user wants their curated context available here, suggest running /commonground:point.';
       // The FIRST time this user sees the plugin anywhere, say it to THEM rather than only to
       // Claude — otherwise beat zero of the whole product is silence, and the person who just
       // installed it has no idea anything happened. Once ever, per user (see `hasWelcomed`).
@@ -501,7 +501,7 @@ async function main() {
           claudeFacing,
           lib.verbatimBlock(
             'CommonGround is connected to your account, but not to this project yet.\n' +
-              'Run /commonground:initialize here and I\'ll wire this folder to your wiki — ' +
+              'Run /commonground:point here and I\'ll aim this folder at your wiki — ' +
               'after that I can answer from it, and cite what I used.',
           ),
         );
@@ -536,10 +536,10 @@ async function main() {
     const hint =
       teams.length > 1
         ? ` You have more than one CommonGround wiki (${teams.join(', ')}) and none is active, so ` +
-          "this session can't auto-select one for live status — run /commonground:switch to choose " +
-          'which wiki to work with, or /commonground:initialize to bind THIS project to one.'
+          "this session can't auto-select one for live status — run /commonground:point to aim " +
+          'THIS project at the one it should read.'
         : " This machine isn't signed in to CommonGround, so live status and sync aren't available " +
-          'in this session — run /commonground:status, or /commonground:initialize to sign in.';
+          'in this session — run /commonground:status, or /commonground:point to sign in.';
     // The caveat matters MOST here (SER-182). This branch has just told Claude to consult a wiki
     // using tools it cannot verify are present — and with no device binding, a live connector is
     // precisely the thing that might still be serving content. Without it, "consult it and cite

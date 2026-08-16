@@ -88,9 +88,9 @@ help them read, answer, and file `suggest_change`.
   user asks for a new wiki, say that plainly and point them there rather than searching for a tool
   or improvising a folder. Once a wiki exists and they are a member, it is usable here
   **immediately** — one sign-in reaches every wiki a person belongs to, so there is no per-wiki
-  login and never was a reason for one. If a wiki they expect is missing from
-  `/commonground:switch`, the question is whether they are a member of it, not whether they have
-  signed into it.
+  login and never was a reason for one. If a wiki they expect is missing from the list
+  `/commonground:point` shows, the question is whether they are a member of it, not whether they
+  have signed into it.
 
 The curation procedures are also exposed as slash commands — **`/commonground:seed`**,
 **`/commonground:ingest`**, and **`/commonground:lint`** — for direct invocation.
@@ -396,7 +396,7 @@ already makes Claude consult the wiki and cite. When the user wants a written sy
 
 ## Bridge to claude.ai Chat (when asked)
 
-Offered at the end of `/commonground:initialize` and `/commonground:seed`: print a copy-paste
+Offered at the end of `/commonground:point` and `/commonground:seed`: print a copy-paste
 instruction that makes plain **claude.ai Chat** reflexively consult the wiki (a different surface
 from Claude Code's `CLAUDE.md` router). The user pastes it into **Settings → Profile preferences**
 (every chat) or a **Project's custom instructions**.

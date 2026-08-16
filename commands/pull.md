@@ -12,15 +12,14 @@ a clash it stops and asks.
 > authenticates as the signed-in **device**, not through the connector — and gives the user a
 > readable copy of the wiki on disk to keep working from. Ask for an explicit OK first: it writes
 > files into a project that chose not to have any. If `commonground status` says the project isn't
-> connected or there's no clone, point the user at `/commonground:initialize`.
+> connected or there's no clone, point the user at `/commonground:point`.
 
 > **Which team, on a machine signed in to several.** A bare `commonground pull` resolves the team
-> from this project's own router block, so an initialized project needs no argument even when the
-> user has several wikis. Failing that it uses their **active wiki** (`/commonground:switch`). It
-> only asks when neither applies — an uninitialized directory with no active wiki chosen — and then
-> it fails with `more than one wiki available — say which: …`, which lists the ids. Pass one as
-> `commonground pull <wiki>`, and offer `/commonground:switch` (choose one for this machine) or
-> `/commonground:initialize` (bind this project) so it stops asking.
+> from this project's own router block, so a project that has been pointed at a wiki needs no
+> argument even when the user has several. Failing that it uses the wiki they most recently pointed
+> at. It only asks when neither applies — a folder nobody has pointed anywhere — and then it fails
+> with `more than one wiki available — say which: …`, which lists the ids. Pass one as
+> `commonground pull <wiki>`, and offer **`/commonground:point`** so it stops asking.
 
 Run `commonground pull` and report the outcome in plain language:
 

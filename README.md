@@ -34,26 +34,34 @@ To update by hand instead:
 
 Restart Claude Code afterwards — an update stages immediately but only applies on restart.
 
-Then, in a project you want your wiki available in:
+Then **fill your wiki**, from any project — it doesn't need to be set up first:
 
 ```
-/commonground:initialize
+/commonground:seed
 ```
 
-That signs this machine in (a one-time browser step) and connects the project. Run
-`/commonground:seed` afterwards if the wiki is still empty — it's a short guided interview that
-charters the wiki and puts the first pages in.
+That signs this machine in (a one-time browser step), asks which wiki if you have more than one, and
+runs a short guided interview: it charters the wiki (who it's for, what it holds) and puts the first
+pages in. Pass a name to be explicit — `/commonground:seed acme-handbook`.
+
+Then **point the projects you actually work in** at it:
+
+```
+/commonground:point
+```
+
+Run that in any repo, any time you want to aim somewhere else — it is the same command every time,
+first run and after.
 
 ## Commands
 
 | Command | What it does |
 |---|---|
-| `/commonground:initialize` | Connect this project to your wiki (MCP or local-clone mode) |
-| `/commonground:seed` | Bootstrap or top up the wiki — guided interview, or import an existing markdown folder |
+| `/commonground:seed` | Fill the wiki — guided interview, or import an existing markdown folder. Signs you in and asks which wiki, so it works before anything is set up |
+| `/commonground:point` | Aim this project at one of your wikis (MCP or local-clone mode) — first time and every time after |
 | `/commonground:ingest` | Capture anything into the wiki: notes, a transcript, a doc or URL, a decision |
 | `/commonground:lint` | Health check — stale/orphan/broken-citation pages, coverage gaps, open suggestions |
 | `/commonground:status` | Where you stand: connection, which wiki and why, role, and what to do next |
-| `/commonground:switch` | Change which wiki is active, when you have more than one |
 | `/commonground:pull` | *(local-clone mode)* Get the latest into your local copy |
 | `/commonground:push` | *(local-clone mode)* Publish your changes |
 

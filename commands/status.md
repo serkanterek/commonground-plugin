@@ -24,9 +24,9 @@ Run `commonground status`. Report whether the user is signed in, the team, their
   the whole team on a shared wiki, for the user's other Claude sessions on a personal one.
 
 **Which wiki, and why that one.** When the output carries a `Wiki: … — …` line, relay **both
-halves**. The reason is the useful part: `this project is bound to it` and `it is your active wiki`
-mean different things the next time the user changes something, and every confusion in this area has
-come from not knowing which rule fired. A user signed in to one wiki won't see this line — there is
+halves**. The reason is the useful part: `this project is bound to it` and `it is the wiki you
+last pointed at` mean different things the next time the user changes something, and every confusion
+in this area has come from not knowing which rule fired. A user signed in to one wiki won't see this line — there is
 nothing to disambiguate — and its absence is not something to remark on.
 
 **Bound to a wiki this machine can't reach.** If the output says `This project is bound to <id>,
@@ -34,11 +34,11 @@ which this machine has no sign-in for`, that outranks the line above it — lead
 facts plainly and in this order: this project asks for `<id>`, and answers here are coming from a
 different wiki instead. Then the fix, which is **not** a login: `commonground login` cannot add a
 wiki nobody has invited them to, so if they should have access, an **admin of `<id>` has to invite
-them**. Offer `commonground init <the reachable wiki>` only as the other choice — repointing the
+them**. Offer **`/commonground:point <the reachable wiki>`** only as the other choice — repointing the
 project — and say that is what it means. Never present this as a credential problem they can solve
 alone, and never quietly treat the wiki that did answer as the one they asked for.
 
-If they want a different wiki, that's **`/commonground:switch`**. If they want a **new** one, wikis
+If they want a different wiki, that's **`/commonground:point`**. If they want a **new** one, wikis
 are created in the web app — **app.commongroundapp.io**, "+ New wiki". You cannot create one from
 here; say so plainly and point them there rather than hunting for a command. Once it exists and
 they're a member, it is usable here immediately — one sign-in reaches every wiki you belong to, so
@@ -65,10 +65,11 @@ Then say which of the two causes it is, because they have different fixes:
 - **This project was bound in this session** (or its settings changed since it started) — the
   connector has not re-read them yet. **Restart the session.** Nothing else is wrong.
 - **This project isn't bound to a wiki**, or was bound by a plugin older than 0.7.4 — nothing tells
-  the connector which wiki this is. Run **`commonground init <wiki>`** here, then restart.
+  the connector which wiki this is. Run **`/commonground:point`** here, then restart.
 
-**Do not paper over it** by picking one wiki as the answer, and do not offer `/commonground:switch`
-as the fix — that sets the *CLI's* active wiki, which the connector deliberately does not follow.
+**Do not paper over it** by picking one wiki as the answer. The fix is to point THIS project —
+**`/commonground:point`** — and then restart; nothing that only changes the machine-wide default
+moves the connector, which follows the project deliberately.
 Re-authorising the connector is not the fix either: it changes the fallback, not what this project
 asks for.
 
@@ -100,7 +101,7 @@ primer and point them at setup:
 > your own tokens; the hosted backend does storage, retrieval, and auth.
 
 Then: new teams sign up and create a team at https://app.commongroundapp.io, and everyone runs
-**`/commonground:initialize`** to connect this project (MCP connector or local clone). Stop here —
+**`/commonground:point`** to aim this project at it (MCP connector or local clone). Stop here —
 the rest needs a connection.
 
 ## 2. Wiki state
@@ -160,7 +161,7 @@ Rules for drawing it:
 ## 4. What you can do next
 
 Tailor to the user's **role** (and whether the wiki is empty). The full command set is small:
-**`/commonground:initialize`** (connect), **`/commonground:seed`** (bootstrap/import + charter),
+**`/commonground:point`** (aim this project at a wiki), **`/commonground:seed`** (bootstrap/import + charter),
 **`/commonground:ingest`** (capture anything — notes, docs, transcripts, URLs, decisions),
 **`/commonground:lint`** (health + coverage gaps), **`/commonground:pull`** / **`/commonground:push`**
 (local-clone only — get the published latest / publish yours), and **`/commonground:status`** (this).

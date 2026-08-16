@@ -15,7 +15,7 @@ learns the product does not know who they are.
 The frame is already in this session — take the first one available, and don't ask the user:
 
 - the SessionStart hook's context line (it names the wiki in its own voice);
-- this project's `./CLAUDE.md` router block, written by `/commonground:initialize`;
+- this project's `./CLAUDE.md` router block, written by `/commonground:point`;
 - `commonground status`, or `get_coverage`'s `audience` field.
 
 | Frame | Publishing means | Never say |

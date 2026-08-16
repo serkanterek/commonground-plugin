@@ -1,9 +1,9 @@
 ---
 description: Bootstrap (or top up) your CommonGround wiki — a guided seeding arc that charters the wiki (who it's for, what it holds), then builds from scratch or imports an existing markdown folder
-argument-hint: "[folder to import]"
+argument-hint: "[wiki] [folder to import]"
 ---
 
-Take the user from *just connected* to *a populated, useful wiki*. This is the onboarding arc: it
+Take the user from *an empty wiki* to *a populated, useful one*. This is the onboarding arc: it
 detects where the wiki is, **charters** it (who it's for, what it should hold, when an AI should
 consult it), forks into **build from scratch** or **import what you have**, then converges on a
 shared gap-fill loop driven by the charter's checklist. All drafting happens **in this session, on
@@ -18,6 +18,8 @@ the tool isn't available or the answer is open-ended. Either way, ask one thing 
 
 **Establish the project's mode before any write** — the SessionStart hook states it, else this
 project's `./CLAUDE.md` router block (`<!-- commonground:mode:… -->`) or `commonground status`.
+(When step 0 settles on a wiki this project is NOT pointed at, mode is decided there instead — the
+router block describes this project, and this project is not the target.)
 **Local-clone mode:** every page below is a FILE in the clone, and the charter too — do not use
 `save_page` / `save_charter`; nothing is published until `/commonground:push`. **MCP mode:** the
 write tools go straight to the hosted wiki, live the moment they land — for the whole team on a
@@ -31,12 +33,87 @@ working copy — but a member can't publish it, so say that when the arc complet
 only**: for a member, don't attempt writes — explain the limit and offer to answer questions from
 whatever wiki exists (`search` / `get_page`) instead.
 
+Your role is a property of **the wiki being seeded**, not of the one this project reads. Someone can
+curate their own wiki and be read-only in their company's, so when step 0 targets another wiki the
+server decides — relay what it says rather than reasoning from the role you have here.
+
 **Audience governs tone.** The charter (step 2) declares who the wiki is for. **just-me** → say
 "your wiki" and "your Claude", never "your teammates"; personal and subjective content is in-scope
 by definition. **my-team / whole-company** → the shared framing applies. Never suggest removing
 content for "shareability" — see the golden rules in the `maintainer` skill.
 
 Work through this conversationally — adapt to what's already true, don't robotically run every step.
+
+## 0. Which wiki, and is this session signed in?
+
+Seeding is the FIRST thing a new user does, so this command cannot assume a signed-in machine or a
+project that has already been pointed anywhere. It settles both itself and never bounces the user to
+another command to come back afterwards.
+
+**Parse `$ARGUMENTS`.** A token that names a wiki (a name, an id, or a unique prefix of either —
+check it against the `commonground use` listing) is the **target**. A token that is an existing path
+is the **import folder**. Both may appear, in either order; neither is required.
+
+**1. Signed in?** Run `commonground status`. If it reports a team, you're signed in — go to 2. If it
+reports "not logged in" / "no team logged in", sign in **here**, inline:
+
+- The user needs a CommonGround account **with at least one wiki** first — the authorize screen has
+  nothing to approve without one, and its button is hidden rather than left dead. No account yet →
+  https://app.commongroundapp.io/sign-up.
+- Use the **split** form, never the one-shot `commonground login`: the one-shot blocks until the
+  grant expires (~10 minutes), far longer than a tool call gets, so it is killed and looks like a
+  failure when it was only waiting.
+  1. `commonground login --start` — prints the URL and code, then exits. Relay both.
+  2. `commonground login --wait` — polls ~90 seconds. **still waiting** is not an error; run it again.
+- **Stop after the second "still waiting" and say why, instead of polling a third time.** A poll that
+  never lands almost always means the user cannot press the button, not that they are slow — and the
+  loop hides that completely. The two causes: they have **no wiki yet** (the screen offers no button
+  at all and says to create one), or the code expired and needs a fresh `--start`. Ask which they see.
+
+**2. Resolve the target.**
+
+- **An argument was given** → that's it. Don't second-guess it.
+- **Exactly one wiki** → don't stage a decision that isn't one. Say which and carry on.
+- **This project is pointed at a wiki** (or, failing that, this machine has one marked `*` active in
+  `commonground use`) → confirm in ONE sentence and move: *"Seeding **Acme Handbook** — that the
+  one?"* A confirmation is not the same as a guess: it is one sentence they can say no to.
+- **Several wikis and nothing pointed or active** → list them by name (`commonground use`) and ask.
+
+**Never guess, and never silently seed the fallback wiki when the user has several.** A wrong-wiki
+write is the defect class this whole area exists to close, and seeding is the one arc that writes
+dozens of pages before anyone would notice.
+
+**3. Mode, per target.**
+
+- **Target is this project's wiki** → today's mode logic above, unchanged.
+- **Target is a DIFFERENT wiki, MCP path** → pass **`wiki: <teamId>`** on every seed-path tool call:
+  `get_coverage`, `get_awareness`, `get_index`, `get_page`, `stage_sources`, `save_page`,
+  `save_charter`, `save_seeding_progress`. The connector resolves its own wiki once per session, so
+  this argument is the only thing that moves a write — there is no re-binding and no restart. The
+  server authorizes it against the TARGET (membership and your role *there*); **relay its refusals
+  as it words them** rather than pre-judging. A refusal is never a reason to retry without the
+  argument — that writes into the wrong wiki.
+- **Target is a DIFFERENT wiki, local path** → seeding another wiki's clone would need that clone.
+  Use the MCP argument path instead, and offer `/commonground:point <wiki> local` if they actually
+  want the files on disk.
+
+**4. Verify the argument took effect — before writing anything.** Every tool response ends with
+`[commonground] answered from wiki <id>`. After your FIRST `wiki:`-carrying call, read it:
+
+- It names the **target** → the argument landed. Proceed, and don't check again.
+- It names the **session's** wiki → this server predates the argument and **silently ignored it**
+  (an undeclared argument is dropped, not rejected — there is no error to catch, which is exactly
+  why this check exists). **Write nothing.** Say plainly that the server is older than this plugin,
+  and hand off: `/commonground:point <wiki>` in a project, then restart the session and seed there.
+  Never retry the argument in a loop, and never fall through to seeding whatever answered.
+
+**5. State the target once, then stay on it.** Name the wiki you are seeding at the top of the arc.
+For the rest of this session **every seed-path call carries the same `wiki:`** — the reads in step 1
+just as much as the writes in step 7. A `get_coverage` that forgets it reads the wrong wiki's
+checklist and then interviews the user against sections that aren't theirs, which is a wrong-wiki
+failure that produces no error and looks like a working session. Do not re-ask the target later —
+not at a branch, not at a gap, and not on re-entry: the beats in 1a resume a *wiki*, and the target
+was settled here.
 
 ## 1. Read the current state (and the lenses)
 
@@ -147,9 +224,10 @@ describing your own work and hearing it named back. The order below is the point
    ones a person would actually reach for. It names sections — not folders: folders come into
    existence when pages are written into them, they group nothing, and nothing here reserves a path.
 4. **Retrieval brief.** If `./CLAUDE.md` has the fenced CommonGround router block (written by
-   `/commonground:initialize`), show the user its trigger sentence verbatim; if this project was
-   never initialized (e.g. the connector was configured globally), skip the show-and-tell and just
-   capture the brief below.
+   `/commonground:point`) **and it names the wiki being seeded**, show the user its trigger sentence
+   verbatim; if this project was never pointed anywhere, or is pointed at a different wiki than the
+   one you are seeding, skip the show-and-tell and just capture the brief below — a trigger sentence
+   from another wiki's router block is not this wiki's to approve.
 
    **Say whose words they are.** That sentence was written by `init` moments ago in the DEFAULT
    voice — it is not theirs, and presenting it for approval as though it were invites a shrug and a
@@ -390,6 +468,13 @@ Close with a short, encouraging, **audience-aware** status:
 
 Then call **`save_seeding_progress` with `done: true`** — that clears the cursor, so the next run
 opens as a fresh top-up rather than trying to resume a session that finished.
+
+**Then hand off to pointing — that is the next beat, not the previous one.** A wiki with content in
+it is only useful where the user actually works, so close by offering
+**`/commonground:point <wiki>`** in the repos they spend their time in: *"Run
+`/commonground:point acme-handbook` in any project and I'll answer from this there too."* Say it even
+when THIS project is already pointed at the wiki — one project is rarely all of them. In MCP mode,
+a project pointed during a live session needs a restart before its connector follows.
 
 Note it's resumable (`/commonground:seed` again) and point admins/curators at
 `/commonground:ingest` (capture anything new — notes, docs, decisions) and `/commonground:lint`

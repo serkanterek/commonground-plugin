@@ -1,6 +1,6 @@
 {
   "name": "commonground",
-  "version": "0.9.1",
+  "version": "0.9.2",
   "description": "A curated, version-controlled context wiki — for your team or just for you — right inside Claude. Search its knowledge, and (as an admin) seed, ingest, and curate it. All curation runs in your own Claude session on your own tokens; the CommonGround backend does storage, retrieval, and auth.",
   "author": {
     "name": "Serkan Terek"

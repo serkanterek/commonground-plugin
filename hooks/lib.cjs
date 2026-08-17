@@ -241,10 +241,21 @@ function isSignedIn() {
 /**
  * The binding for the WIKI to act for, or null if it can't be resolved unambiguously.
  *
- * MUST resolve identically to the agent's `resolveWiki` (`team-resolve.ts`): same order, same
- * refusals. They are hand-mirrored — this file ships standalone inside the plugin bundle and cannot
- * import the agent — and they have drifted before, so `active-wiki-drift.test.ts` pins them against
- * each other across the whole matrix rather than trusting these comments.
+ * Resolves identically to the agent's `resolveWiki` (`team-resolve.ts`) — same order, same refusals —
+ * FOR EVERYTHING THIS SIDE CAN SEE. They are hand-mirrored (this file ships standalone inside the
+ * plugin bundle and cannot import the agent) and they have drifted before, so
+ * `active-wiki-drift.test.ts` pins them against each other across the whole matrix rather than
+ * trusting these comments.
+ *
+ * ONE DIVERGENCE IS DELIBERATE, and it is not drift to be repaired (SER-258). The CLI now confirms an
+ * unheld marker/pointer against the server's membership listing and honours it; this cannot, and must
+ * not try. Hooks run on every session start and every prompt, and this one is on the prompt hot path
+ * with ZERO network calls by design — the asymmetry is structural, not an oversight. The two sides
+ * also want opposite things from a candidate they cannot confirm: the CLI is choosing a wiki to
+ * REPORT and PUBLISH to, where a wrong answer is what SER-258 was filed about, while this is choosing
+ * a local keyword cache to read, where going quiet costs a nudge and nothing else. So this side keeps
+ * the narrower rule and returns null rather than guessing — which is what the whole resolution order
+ * exists to avoid. Widening it would mean acting for a wiki nobody confirmed, on every prompt.
  *
  * Order: this project's marker → the active wiki → the only wiki available → null.
  */
@@ -262,12 +273,14 @@ function activeBinding(cwd) {
 
   // The user's own choice (SER-224). Before this, someone with several wikis, in a project that was
   // never initialized, got null — so keyword auto-trigger silently never fired there, in every such
-  // folder, forever. Honoured only for a wiki we still hold a binding for: a pointer at a signed-out
-  // wiki is stale data, not an instruction, which is what makes signing out safe without anything
-  // clearing it. A marker naming a wiki we DON'T hold falls through to here rather than being
-  // repaired —
-  // reading one wiki's state while the router block points at another's is the failure the marker
-  // exists to prevent, and "the user picked this one" is a better answer than a wrong guess.
+  // folder, forever. Honoured only for a wiki we hold a binding for, because a hook cannot ask the
+  // server whether the user is a member and must not act on a guess (SER-258 — the CLI CAN ask, and
+  // does; see this function's header for why that divergence is deliberate). A pointer at a
+  // signed-out wiki is stale data, not an instruction, which is what makes signing out safe without
+  // anything clearing it. A marker naming a wiki we DON'T hold falls through to here rather than
+  // being repaired — reading one wiki's state while the router block points at another's is the
+  // failure the marker exists to prevent, and "the user picked this one" is a better answer than a
+  // wrong guess.
   const active = readActiveWiki();
   const chosen = active ? all.find((b) => b && b.teamId === active) : null;
   if (chosen) return chosen;

@@ -15748,17 +15748,36 @@ async function resolveWiki(deps, arg, projectDir = process.cwd()) {
   if (wikis.length === 0)
     throw notLoggedIn(void 0, deps.configHome);
   const bound = (await detectRouterBlock(projectDir))?.teamId;
-  if (bound && wikis.includes(bound))
+  const honourable = honourableIn(deps, wikis);
+  if (bound && await honourable(bound))
     return { teamId: bound, via: "project" };
   const unreachable = bound ? { unreachable: bound } : {};
   const active = await readActiveWiki(deps.configHome);
-  if (active && wikis.includes(active))
+  if (active && await honourable(active))
     return { teamId: active, via: "active", ...unreachable };
   if (wikis.length === 1)
     return { teamId: wikis[0], via: "sole", ...unreachable };
   const cached = await listWikis(deps.configHome, deps.dataHome);
   const label = (id) => wikiLabel(cached.find((l) => l.teamId === id) ?? { teamId: id });
   throw new AgentError(`more than one wiki available \u2014 say which: ${wikis.map(label).join(", ")}. (Choose one for this machine with "commonground use", or bind THIS project to one with "commonground init <wiki>" \u2014 after either, these commands resolve on their own.)` + (bound ? ` This project IS bound to ${bound}, but this machine has no sign-in for that wiki, so it is not one of the choices above \u2014 that is a membership question, not a login one: if you should have access, its admin has to invite you.` : ""));
+}
+function honourableIn(deps, held) {
+  let member = null;
+  return async (teamId) => {
+    if (held.includes(teamId))
+      return true;
+    if (!deps.backend)
+      return false;
+    if (member === null) {
+      const { listings, source } = await availableWikis({
+        backend: deps.backend,
+        configHome: deps.configHome,
+        dataHome: deps.dataHome
+      });
+      member = new Set(source === "server" ? listings.map((l) => l.teamId) : []);
+    }
+    return member.has(teamId);
+  };
 }
 async function resolveWikiArg(deps, arg) {
   const raw = arg.trim();

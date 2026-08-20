@@ -484,9 +484,10 @@ person who would know and offer a *delegated* invite:
 > lead with that section queued up, so they land straight on it."
 
 Call `invite_teammate` with the section's **`id` as** `targetScope` (from `get_coverage` — never
-invent one), and only once the user has confirmed the email address and role. Nothing is emailed:
-you get back an accept link for them to send on themselves. Then move to the next gap rather than
-waiting. If the user isn't an admin, say who to ask instead of offering something you cannot do.
+invent one), and only once the user has confirmed the email address and role. Whether the invitation
+is emailed for them or only comes back as a link to pass on depends on the deployment — **read
+`delivery` in the result and say which happened**, never promise either. The accept link always
+comes back. Then move to the next gap rather than waiting. If the user isn't an admin, say who to ask instead of offering something you cannot do.
 
 ## 7. Persist + close
 

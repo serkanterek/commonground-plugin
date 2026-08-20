@@ -12216,7 +12216,18 @@ var EnvSchema = external_exports.object({
   /** Clerk secret key — verifies session tokens + backs org/user lookups (@clerk/backend). */
   CLERK_SECRET_KEY: external_exports.string().optional(),
   /** The browser app origin allowed to call this api (CORS) + Clerk `azp` check. */
-  WEB_ORIGIN: external_exports.string().url().optional()
+  WEB_ORIGIN: external_exports.string().url().optional(),
+  // --- invitation email (SER-264) — optional, and absent is a SUPPORTED production mode rather
+  // than a broken one: with no provider configured the invite is still issued and its link still
+  // works, the admin just carries it themselves (the MVP behaviour SER-179 shipped). Both vars are
+  // required together; either one alone leaves delivery link-only.
+  /** Resend API key (`re_…`). Absent → `NoopMailer`, i.e. link-only delivery. */
+  RESEND_API_KEY: external_exports.string().optional(),
+  /**
+   * Sender for invitation email — `Name <invites@domain>` or a bare address. Deliberately NOT
+   * `z.string().email()`: the display-name form is the one worth using and it is not a bare address.
+   */
+  INVITE_FROM_EMAIL: external_exports.string().optional()
 });
 
 // ../shared/dist/text.js

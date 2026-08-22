@@ -394,6 +394,10 @@ function stepProse(step, state) {
       return `Someone invited this user specifically to fill ${gap || 'a section'} of the wiki, and it is still empty. Offer to start there with /commonground:seed.`;
     case 'first-question':
       return 'The wiki has pages but has never answered this user. If anything they ask is covered, consult it and cite the pageIds — that first grounded answer is the whole point.';
+    case 'settle-boundaries':
+      // SER-272: the 1 → 2 moment. The repair is a sharper self-description on the side the user
+      // controls, never a sentence naming the other wiki — lint.md carries the conversation.
+      return 'This user has more than one wiki, and some subjects appear in both with no charter written since — suggest /commonground:lint, which lists them and settles which wiki answers for each.';
     case 'review-suggestions':
       return 'Teammates have filed suggestions against this wiki. Mention /commonground:lint when there is a natural moment.';
     case 'invite-teammate':

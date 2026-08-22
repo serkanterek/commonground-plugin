@@ -243,6 +243,15 @@ describing your own work and hearing it named back. The order below is the point
    question ids with `save_seeding_progress` so re-entry doesn't re-ask them, and — critically —
    **Branch A must not ask the same things again** (step 4): draft its first page(s) straight from
    these answers, and open there rather than at question one.
+   **If they have another wiki, read its charter before naming anything (SER-272).** A second
+   wiki is seeded alone by default, as though the first did not exist — and then two connectors claim
+   the same subjects. List their wikis (`commonground use`, or the session's memberships); for each
+   other one, read its charter (`get_page` `wiki-charter` with `wiki: <that teamId>` in MCP mode —
+   its audience, Structure and brief; or the clone's `wiki-charter.md` when it is cloned here). Draft
+   THIS charter so it does not re-claim territory that wiki already holds as its subject: a personal
+   wiki beside an employer's wiki describes the person's own part in the company, not the company;
+   two team wikis name what each team owns. Never write a sentence naming the other wiki — describe
+   this one more sharply instead. After seeding, `/commonground:lint` compares the two for real.
 3. **Structure — named from what they just said.** Derive **4–8 sections from their own answers**,
    using their nouns: "I coach three clients and write a newsletter" gives you *Clients* and
    *Writing*, not *Mission* and *Personas*. Show each with a one-line "what goes here", and where
@@ -272,19 +281,33 @@ describing your own work and hearing it named back. The order below is the point
    "sure, fine". Name it: *"That's the generic version `init` wrote. Once you've chartered the wiki
    I'll rewrite it in your words."* Then explain that this text (plus a keyword nudge derived from
    page titles) is what sends an AI to the wiki, and that it re-renders from the charter — audience
-   framing plus their brief as a trigger line. Ask: **Keep the default** / **Tailor it**. Tailoring:
-   capture 1–3 sentences in the user's own words — which topics or questions should route here
-   (for a just-me wiki this is the crucial fix: e.g. "anything about me — how I work, my projects,
-   my preferences, my history"). Optionally collect a few **pinned keywords** (names, codenames)
-   a derived list would miss.
+   framing, the wiki's name and its Structure sections, plus their brief as a trigger line. Ask:
+   **Keep the default** / **Tailor it**. Tailoring: capture 1–3 sentences in the user's own words —
+   which topics or questions should route here (for a just-me wiki this is the crucial fix: e.g.
+   "anything about me — how I work, my projects, my preferences, my history"). **Describe this wiki,
+   never another one.** A brief that says "for Hipo questions, use the Hipo wiki" is a cross-reference
+   to a wiki a teammate may not have, and it tells everyone who reads the charter which wikis the
+   author belongs to. A sharper self-description ("my own part in the companies I worked at") routes
+   the same way and leaks nothing — and the frames already carry the general rule (an organization's
+   own wiki answers for the organization; a personal wiki answers for one person's part in it), so
+   the brief only has to say what THIS wiki is about.
+
+   **Pinned keywords — define, don't fish.** Their one job is trigger PHRASES no page title would
+   ever produce: "catch me up", "what did I miss", a codename that never appears as a title. The
+   keyword hook already harvests every page title and id, so pinning an entity that has a page (a
+   company, a product, a person) is a no-op for the hook and noise in the instruction — which names
+   the wiki and enumerates its Structure sections on its own. Empty is the usual answer; offer it
+   as such rather than asking for a list.
 5. **What does NOT belong.** Ask it plainly — "is there anything that should stay OUT of this wiki,
    and where does it live instead?" Capture their answer in their own words (e.g. "client work
-   stays in Notion; interview prep lives in Careerhelp"). This is the contract's other
+   stays in Notion; nothing about my day job lives here"). This is the contract's other
    half: without it every surface only ever says *consult this wiki*, so material drifts in and the
    wiki stops being trustworthy. Skip it gracefully if they have nothing to exclude — an absent
    Excludes section renders exactly as before. Also mention what it does: coverage stops chasing an
    excluded section as a gap (it reports it as excluded, never hides it), and both the CLAUDE.md
    router block and the connector's instructions start saying where that material belongs instead.
+   The self-description rule holds here too: say what this wiki is NOT about, never which other
+   CommonGround wiki should answer instead.
 
 Draft the charter page, show it, and on confirm **persist it right away** (don't defer to
 step 7 — it's the contract everything below reads). It goes at the reserved pageId `wiki-charter`
@@ -301,25 +324,34 @@ updated: <today>
 
 ## Structure
 - <Section> — <what belongs there>   (one bullet per section — the coverage checklist AND the
-  page-category vocabulary: pages carry these names in `tags:`)
+  page-category vocabulary: pages carry these names in `tags:`; the router instruction also
+  enumerates them — *consult it for anything related to <the wiki>: <these names>* — so name them
+  the way a reader would say them)
 
 ## Retrieval brief
 <When an AI should consult this wiki, in the user's words.>
 
 ## Pinned keywords
-<comma-separated, optional>
+<comma-separated, optional — usually empty. Trigger PHRASES no page title would produce ("catch
+me up", "what did I miss", a codename that is never a title). Not entity names: every page title
+and id is already a keyword, and the instruction names the wiki and its sections on its own.>
 
 ## Excludes
-<What does NOT belong here, and where it lives instead — in the user's words. Optional.>
+<What does NOT belong here, and where it lives instead — in the user's words. Optional. Describe
+what THIS wiki is not about; never point at another CommonGround wiki — the charter is shared
+content, and a sharper self-description routes the same way without naming a wiki a teammate may
+not have.>
 ```
 
 Keep the `##` headings exactly as written — the server parses them (coverage builds its checklist
 from Structure and marks an excluded section rather than chasing it; the keyword trigger unions
-Pinned keywords; both instruction surfaces render Retrieval brief and Excludes).
+Pinned keywords; both instruction surfaces name the wiki, enumerate its Structure sections, and
+render Retrieval brief and Excludes).
 
 With the charter persisted, make it live in this project: run **`commonground init --refresh`**.
 It re-renders the fenced router block in the wiki's own voice — personal framing for a just-me
-wiki, the brief as a trigger line — and absorbs any leftover `retrieval-brief` marker block from
+wiki, its name and Structure sections, the brief as a trigger line — and absorbs any leftover
+`retrieval-brief` marker block from
 earlier plugin versions. Never hand-edit inside the fence. The MCP connector's instructions pick
 the charter up automatically (per session/request) — no extra step there.
 
@@ -518,6 +550,11 @@ a project pointed during a live session needs a restart before its connector fol
 Note it's resumable (`/commonground:seed` again) and point admins/curators at
 `/commonground:ingest` (capture anything new — notes, docs, decisions) and `/commonground:lint`
 (health + remaining gaps) to keep it growing.
+
+**If they have more than one wiki, name the check.** *"You now have two wikis — run
+`/commonground:lint` and I'll show where they overlap and settle which answers for what."* That is
+the moment the boundary question becomes real (SER-272), and seeding is only one of the three ways
+to arrive there (joining a wiki and ordinary drift are the others).
 
 ### If it doesn't finish
 

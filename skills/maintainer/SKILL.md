@@ -408,39 +408,50 @@ from Claude Code's `CLAUDE.md` router). The user pastes it into **Settings → P
    `/commonground:seed` to charter (and tailor) it properly later.
 2. **Pick the variant** by audience: `just-me` → Personal, `my-team` → Team, `whole-company` →
    Company.
-3. **Fill and print.** Whitespace-flatten the retrieval brief (trim to ~400 chars) and take ≤12
-   pinned keywords; interpolate and print in a fenced `text` block. Tell the user where to paste it
-   and that they can edit the wording freely.
+3. **Fill and print.** Interpolate `<wiki name>` (the wiki's display name) and `<sections>` (the
+   charter's `## Structure` labels, in order, ≤12 — the same list `get_coverage` returns as rows),
+   whitespace-flatten the retrieval brief (trim to ~400 chars) and take ≤12 pinned keywords; print
+   in a fenced `text` block. Tell the user where to paste it and that they can edit the wording
+   freely. The snippets mirror the connector's own frames, including the one sentence that names
+   the OTHER kind of wiki — keep it: it is what lets a personal wiki and an employer's wiki share a
+   chat without each claiming the other's subject (SER-271).
 
 **Personal (`just-me`):**
 
-> I have CommonGround connected to this chat as an MCP connector — it's my curated personal knowledge
-> base: who I am, how I work and write, my projects, tools, decisions, preferences, and my own writing
-> voice. When a question is about me, my work, my writing or voice, or anything I've documented,
-> consult CommonGround first (its `search` / `get_page` tools) and cite the pages you used, rather than
-> guessing. Don't reach for Google Drive or the web to answer questions about me or my work —
-> CommonGround is the source for that; fall back to general knowledge only when it returns nothing
+> I have CommonGround connected to this chat as an MCP connector — it's my own personal wiki,
+> "<wiki name>": my curated record of who I am, how I work and write, my projects, tools, decisions,
+> preferences and my own writing voice, including my own part in the organizations and products in
+> my life. When a question is about me or anything I've documented — <sections> — consult
+> CommonGround first (its `search` / `get_page` tools) and cite the pages you used, rather than
+> guessing. Where an organization or product has a wiki of its own connected here, that wiki is the
+> authority on the organization itself; mine is the authority on my part in it, and on anything no
+> other wiki covers. Don't reach for Google Drive or the web to answer questions about me or my work
+> — CommonGround is the source for that; fall back to general knowledge only when it returns nothing
 > relevant.
 
 **Team (`my-team`):**
 
 > My team uses CommonGround as our shared source of truth, connected to this chat as an MCP connector
-> — it holds our curated context: team decisions, product and domain specifics, entities, and
-> conventions. When a question touches our team, our product, or anything we've decided or documented,
-> consult CommonGround first (its `search` / `get_page` tools) and cite the pages you used, rather than
-> guessing. Don't fall back to Google Drive or the web for our internal context — CommonGround is where
-> our curated answers live; use those only when it returns nothing relevant.
+> — the wiki "<wiki name>" holds our curated context and is the authority on <wiki name> itself: its
+> decisions, product and domain specifics, entities, and conventions. When a question touches
+> <wiki name> or what it covers — <sections> — consult CommonGround first (its `search` / `get_page`
+> tools) and cite the pages you used, rather than guessing. An individual's own history, preferences
+> and writing voice belong in that person's personal wiki, not here. Don't fall back to Google Drive
+> or the web for our internal context — CommonGround is where our curated answers live; use those
+> only when it returns nothing relevant.
 
 **Company (`whole-company`):**
 
 > My company uses CommonGround as our organization-wide source of truth, connected to this chat as an
-> MCP connector — it holds our curated company context across teams: decisions, policies, org
-> structure, and cross-team products and entities. When a question touches anything company-wide or
-> internal, consult CommonGround first (its `search` / `get_page` tools) and cite the pages you used,
-> rather than guessing. Don't reach for Google Drive or the open web for our internal, company-specific
-> context — CommonGround is the canonical source for it; use those only when it returns nothing
-> relevant.
+> MCP connector — the wiki "<wiki name>" holds our curated company context across teams and is the
+> authority on <wiki name> itself: decisions, policies, org structure, and cross-team products and
+> entities. When a question touches <wiki name> or what it covers — <sections> — consult CommonGround
+> first (its `search` / `get_page` tools) and cite the pages you used, rather than guessing. An
+> individual's own history, preferences and writing voice belong in that person's personal wiki, not
+> here. Don't reach for Google Drive or the open web for our internal, company-specific context —
+> CommonGround is the canonical source for it; use those only when it returns nothing relevant.
 
 After the base snippet, when the charter has them, append: one line
 `The charter says when to consult it: "<retrieval brief>".` (if a brief exists), and one line
-`Consult it first for topics like: <pinned keywords>.` (if any are pinned).
+`Topics it covers include: <pinned keywords>.` (if any are pinned — coverage, never "consult it
+first": a pinned term two wikis both hold must not be claimed by whichever pinned it).

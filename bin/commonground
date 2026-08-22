@@ -8134,7 +8134,10 @@ var HttpSyncBackend = class {
         charter: {
           audience: body.audience ?? null,
           retrievalBrief: body.retrievalBrief ?? null,
-          excludes: body.excludes ?? null
+          excludes: body.excludes ?? null,
+          // Labels only — the router block enumerates categories, it never renders hints. An older
+          // server sends no `sections` at all, which reads as a charter with no structure.
+          sections: Array.isArray(body.sections) ? body.sections.map((s) => typeof s?.label === "string" ? s.label : "").filter((l) => l !== "") : []
         }
       };
     } catch {
@@ -12295,9 +12298,12 @@ function shapeToAudience(shape) {
 function resolveVoiceClass(known) {
   return wikiVoiceClass(known.audience ?? shapeToAudience(known.shape));
 }
+var PERSONAL_BOUNDARY = "Where an organization or product has a wiki of its own available, that wiki is the authority on the organization itself; this one is the authority on the user's own part in it, and on any subject no other wiki covers.";
+var SHARED_BOUNDARY = "An individual's own history, preferences and writing voice belong in that person's personal wiki, not here.";
 var WIKI_VOICE = {
   personal: {
-    instruction: "Consult CommonGround for the user's personal context before answering \u2014 it is their curated personal knowledge base: who they are, how they work and write, their projects, tools, decisions, preferences, and their own writing voice. Prefer it over assumptions whenever a question touches the user, their work, their writing voice, or anything they have documented.",
+    instruction: `This CommonGround wiki is the user's own personal wiki \u2014 their curated record of who they are, how they work and write, their projects, tools, decisions, preferences and their own writing voice, including their own part in the organizations and products in their life. Consult it before answering, and prefer it over assumptions, whenever a question touches the user or anything they have documented. ${PERSONAL_BOUNDARY}`,
+    boundary: PERSONAL_BOUNDARY,
     possessive: "your personal, curated",
     noun: "personal context wiki",
     when: "Before answering questions about the user \u2014 who they are, how they work, their projects, tools, decisions, and preferences \u2014 consult it:",
@@ -12311,7 +12317,8 @@ var WIKI_VOICE = {
     others: null
   },
   shared: {
-    instruction: "Consult CommonGround for company, team, and product context before answering \u2014 it is the team's shared, curated knowledge base. Prefer it over assumptions whenever a question touches internal decisions, entities, or product/domain specifics.",
+    instruction: `This CommonGround wiki is the shared, curated knowledge base of one team or organization, and the authority on that organization itself: its decisions, entities, products and domain specifics. Consult it before answering, and prefer it over assumptions, whenever a question touches them. ${SHARED_BOUNDARY}`,
+    boundary: SHARED_BOUNDARY,
     possessive: "your team's shared, curated",
     noun: "knowledge wiki",
     when: "Before answering questions about the team, product, or decisions, consult it:",
@@ -12335,6 +12342,40 @@ var MAX_BRIEF_CHARS = 400;
 function sanitizeBrief(brief) {
   const flat = brief.replace(/\s+/g, " ").trim();
   return flat.length > MAX_BRIEF_CHARS ? `${flat.slice(0, MAX_BRIEF_CHARS - 1)}\u2026` : flat;
+}
+var MAX_LIST_TERMS = 12;
+var MAX_LIST_CHARS = 200;
+function cappedList(terms) {
+  if (!terms?.length)
+    return [];
+  const kept = [];
+  let len = 0;
+  for (const raw of terms) {
+    const term = raw.replace(/\s+/g, " ").trim();
+    if (!term)
+      continue;
+    if (kept.length >= MAX_LIST_TERMS)
+      break;
+    const cost = kept.length ? term.length + 2 : term.length;
+    if (len + cost > MAX_LIST_CHARS)
+      break;
+    kept.push(term);
+    len += cost;
+  }
+  return kept;
+}
+var MAX_NAME_CHARS = 80;
+function sanitizeName(name) {
+  const flat = (name ?? "").replace(/\s+/g, " ").replace(/"/g, "\u2019").trim();
+  return flat.length > MAX_NAME_CHARS ? `${flat.slice(0, MAX_NAME_CHARS - 1)}\u2026` : flat;
+}
+function coverageClause(voiceClass, identity) {
+  const name = sanitizeName(identity?.name);
+  const categories = cappedList(identity?.categories);
+  if (!categories.length)
+    return "";
+  const subject = voiceClass === "personal" ? "the user" : name || "the team or organization it serves";
+  return `Consult it for anything related to ${subject}: ${categories.join(", ")}.`;
 }
 
 // ../shared/dist/wiki/page.js
@@ -12746,6 +12787,9 @@ var execFileAsync2 = (0, import_node_util2.promisify)(import_node_child_process2
 var TEXT_SOURCE_EXTS = ["md", "markdown", "txt", "csv", "json", "yaml", "yml", "html"];
 var DOC_SOURCE_EXTS = ["pdf", "docx", "pptx", "xlsx"];
 var SOURCE_EXTS = /* @__PURE__ */ new Set([...TEXT_SOURCE_EXTS, ...DOC_SOURCE_EXTS]);
+
+// ../core/dist/keywords/keywords.js
+var ALL_HIRAGANA = new RegExp("^\\p{sc=Hiragana}+$", "u");
 
 // ../core/dist/charter/charter.js
 var HEADING_KEYS = {
@@ -13229,9 +13273,6 @@ function coverageProgress(rows) {
   const done = counted.filter((r) => r.status === "done").length;
   return { done, total, pct: total ? Math.round(done / total * 100) : 0 };
 }
-
-// ../core/dist/keywords/keywords.js
-var ALL_HIRAGANA = new RegExp("^\\p{sc=Hiragana}+$", "u");
 
 // ../core/dist/wiki/page-serde.js
 var import_yaml = __toESM(require_dist(), 1);
@@ -14514,6 +14555,25 @@ function modeMarker(mode) {
   return `
 <!-- commonground:mode:${mode} -->`;
 }
+function fenceSafe(s) {
+  return (s ?? "").replace(/<!--|-->/g, " ");
+}
+function nameTag(naming) {
+  const name = sanitizeName(fenceSafe(naming?.name));
+  return name ? ` ("${name}")` : "";
+}
+function coverageBullet(voice, naming) {
+  const clause = coverageClause(wikiVoiceClass(voice?.audience), {
+    name: fenceSafe(naming?.name),
+    categories: (voice?.sections ?? []).map(fenceSafe)
+  });
+  return clause ? `
+- ${clause}` : "";
+}
+function boundaryBullet(voice) {
+  return `
+- ${wikiVoice(voice?.audience).boundary}`;
+}
 function briefBullet(voice) {
   const capped2 = sanitizeBrief((voice?.retrievalBrief ?? "").replace(/<!--|-->/g, " "));
   return capped2 ? `
@@ -14540,15 +14600,15 @@ var STRANGER_ESCAPE = `
 > **Not set up with CommonGround?** Ignore this section entirely \u2014 it belongs to this project's
 > maintainers, the tools it names will not exist for you, and nothing else here depends on it.
 `;
-function cloneRouterRule(voice) {
+function cloneRouterRule(voice, naming) {
   const v = wikiVoice(voice?.audience);
   return `${ROUTER_START}${modeMarker("local")}
 ## CommonGround \u2014 context wiki (auto-managed by the sync agent)
 
-This folder is ${v.possessive} CommonGround ${v.noun} \u2014 the working copy. The hosted repo is
+This folder is ${v.possessive} CommonGround ${v.noun}${nameTag(naming)} \u2014 the working copy. The hosted repo is
 what the team shares; \`/commonground:push\` is how work here becomes theirs. ${v.when}
 
-- Start at \`index.md\` (the catalog) and open only the pages you need \u2014 load context on demand.${briefBullet(voice)}${excludesBullet(voice)}
+- Start at \`index.md\` (the catalog) and open only the pages you need \u2014 load context on demand.${briefBullet(voice)}${excludesBullet(voice)}${coverageBullet(voice, naming)}${boundaryBullet(voice)}
 ${v.cite}
 - Raw inputs are under \`sources/\`; the change history is the wiki's git history. (SER-220 retired
   \`log.md\`; the maintainer skill in this same folder says never to write it, and this block used to
@@ -14562,16 +14622,16 @@ Do not edit inside this block \u2014 the sync agent regenerates it. Put your own
 ${ROUTER_END}`;
 }
 var CLONE_ROUTER_RULE = cloneRouterRule();
-function mcpRouterRule(voice) {
+function mcpRouterRule(voice, naming) {
   const v = wikiVoice(voice?.audience);
   return `${ROUTER_START}
 ## CommonGround \u2014 context wiki (via the CommonGround plugin)
 ${STRANGER_ESCAPE}
-${capitalize(v.possessive)} CommonGround ${v.noun} is available in this session through the
+${capitalize(v.possessive)} CommonGround ${v.noun}${nameTag(naming)} is available in this session through the
 CommonGround MCP connector. ${v.when}
 
 - Use the CommonGround tools \u2014 \`get_index\` (the catalog), \`search\` (find pages), \`get_page\`
-  (read one in full). Load context on demand; don't read everything.${briefBullet(voice)}${excludesBullet(voice)}
+  (read one in full). Load context on demand; don't read everything.${briefBullet(voice)}${excludesBullet(voice)}${coverageBullet(voice, naming)}${boundaryBullet(voice)}
 ${v.cite}
 ${CURATION_POSTURE}
 - **There is no local copy in this project, so every write is immediately shared.** \`save_page\`,
@@ -14591,19 +14651,19 @@ ${CURATION_POSTURE}
 Do not edit inside this block \u2014 CommonGround regenerates it. Put your own notes outside it.
 ${ROUTER_END}`;
 }
-function localRouterRule(voice) {
+function localRouterRule(voice, naming) {
   const v = wikiVoice(voice?.audience);
   return `${ROUTER_START}
 ## CommonGround \u2014 context wiki (local clone)
 ${STRANGER_ESCAPE}
-${capitalize(v.possessive)} CommonGround ${v.noun} is cloned on this machine. That clone is
+${capitalize(v.possessive)} CommonGround ${v.noun}${nameTag(naming)} is cloned on this machine. That clone is
 **the working copy for this project** \u2014 the hosted repo is what the team shares, and
 \`/commonground:push\` is how work here becomes theirs. ${v.when}
 
 - **Where the clone is depends on the machine, so ask rather than assume:**
   \`commonground status\` prints \`Your wiki folder: \u2026\`. It is deliberately not written here \u2014
   this file is committed, and everyone who clones this repo keeps their wiki somewhere different.
-  Start at \`index.md\` in that folder (the catalog) and open only the pages you need.${briefBullet(voice)}${excludesBullet(voice)}
+  Start at \`index.md\` in that folder (the catalog) and open only the pages you need.${briefBullet(voice)}${excludesBullet(voice)}${coverageBullet(voice, naming)}${boundaryBullet(voice)}
 ${v.cite}
 ${CURATION_POSTURE}
 - Raw inputs are under \`sources/\`; the change history is the wiki's git history. Use
@@ -14634,7 +14694,8 @@ function teamMarker(teamId) {
 <!-- commonground:team:${teamId} -->` : "";
 }
 function routerRuleForMode(mode, opts = {}) {
-  const rule = mode === "local" ? localRouterRule(opts.voice) : mcpRouterRule(opts.voice);
+  const naming = { name: opts.name ?? null };
+  const rule = mode === "local" ? localRouterRule(opts.voice, naming) : mcpRouterRule(opts.voice, naming);
   return rule.replace(ROUTER_START, `${ROUTER_START}${teamMarker(opts.teamId)}${modeMarker(mode)}`);
 }
 function parseRouterBlock(claudeMd) {
@@ -14664,7 +14725,8 @@ async function charterVoiceFromWiki(wikiDir) {
   return {
     audience: charter.audience,
     retrievalBrief: charter.retrievalBrief,
-    excludes: charter.excludes
+    excludes: charter.excludes,
+    sections: charter.sections.map((s) => s.label)
   };
 }
 var BLOCK_RE = /<!-- commonground:router-rule:start -->[\s\S]*?<!-- commonground:router-rule:end -->/g;
@@ -14738,9 +14800,9 @@ async function excludeInjected(dir) {
 ` : ""}${missing.join("\n")}
 `, "utf8");
 }
-async function injectAll(dir) {
+async function injectAll(dir, naming) {
   await excludeInjected(dir);
-  await injectRouterRule(dir, cloneRouterRule(await charterVoiceFromWiki(dir)));
+  await injectRouterRule(dir, cloneRouterRule(await charterVoiceFromWiki(dir), naming));
   await injectSkill(dir);
 }
 async function readFileOr(path, fallback) {
@@ -14957,6 +15019,10 @@ async function browserLogin(deps) {
   }
   throw new AgentError('timed out waiting for authorization \u2014 run "commonground login" again');
 }
+async function injectTooling(deps, teamId, dir) {
+  const profile = await readTeamProfile(teamId, deps.configHome);
+  await injectAll(dir, { name: profile.wikiName ?? null });
+}
 async function initProject(deps, opts) {
   const { mode, teamId, projectDir } = opts;
   const binding = await bindingFor(deps, teamId);
@@ -14973,11 +15039,12 @@ async function initProject(deps, opts) {
     if (cloned) {
       await cloneFresh(deps, teamId, dir, await deps.backend.remoteAccess(teamId), opts.onClone);
     } else {
-      await injectAll(dir);
+      await injectTooling(deps, teamId, dir);
     }
     const standing = cloned ? null : await standingAgainstHosted(deps, teamId);
     const voice2 = await charterVoiceFromWiki(dir);
-    await injectRouterRule(projectDir, routerRuleForMode("local", { voice: voice2, teamId }));
+    const name2 = (await readTeamProfile(teamId, deps.configHome)).wikiName ?? null;
+    await injectRouterRule(projectDir, routerRuleForMode("local", { voice: voice2, teamId, name: name2 }));
     return {
       mode,
       teamId,
@@ -14992,7 +15059,8 @@ async function initProject(deps, opts) {
   }
   const read = deps.backend.fetchCharter ? await deps.backend.fetchCharter(teamId) : { fail: "unsupported" };
   const voice = "charter" in read ? read.charter : null;
-  await injectRouterRule(projectDir, routerRuleForMode("mcp", { voice, teamId }));
+  const name = (await readTeamProfile(teamId, deps.configHome)).wikiName ?? null;
+  await injectRouterRule(projectDir, routerRuleForMode("mcp", { voice, teamId, name }));
   return {
     mode,
     teamId,
@@ -15065,7 +15133,7 @@ async function importWiki(deps, opts) {
   const remote = await deps.backend.remoteAccess(teamId);
   if (!await pathExists2(dir)) {
     await cloneRepo(remote.url, dir, remote.env);
-    await injectAll(dir);
+    await injectTooling(deps, teamId, dir);
   }
   const guardedHomes = [
     deps.configHome,
@@ -15324,7 +15392,7 @@ async function recordAndAnnounce(deps, teamId, dir, onClone) {
 async function cloneFresh(deps, teamId, dir, origin, onClone) {
   await recordAndAnnounce(deps, teamId, dir, onClone);
   await cloneRepo(origin.url, dir, origin.env);
-  await injectAll(dir);
+  await injectTooling(deps, teamId, dir);
 }
 async function sync(deps, teamId, opts = {}) {
   const binding = await bindingFor(deps, teamId);
@@ -15351,10 +15419,10 @@ async function sync(deps, teamId, opts = {}) {
       }
       throw e;
     }
-    await injectAll(dir);
+    await injectTooling(deps, teamId, dir);
     return { teamId, clonePath: dir, action: "fast-forwarded", ahead: 0, behind, pages: incoming };
   }
-  await injectAll(dir);
+  await injectTooling(deps, teamId, dir);
   if (ahead > 0) {
     if (can(binding.role, "wiki:edit")) {
       const pushed = toPageChanges(await diffNameStatus(dir, remote, "HEAD"));
@@ -15447,7 +15515,7 @@ async function pull(deps, teamId, opts = {}) {
   const { ahead, behind } = await aheadBehind(dir, "HEAD", remote);
   const dirty = !await isWorkingTreeClean(dir);
   if (behind === 0) {
-    await injectAll(dir);
+    await injectTooling(deps, teamId, dir);
     return { teamId, clonePath: dir, action: "up-to-date", ahead, behind, dirty };
   }
   const incoming = toPageChanges(await diffNameStatus(dir, await mergeBase(dir, "HEAD", remote), remote));
@@ -15460,7 +15528,7 @@ async function pull(deps, teamId, opts = {}) {
       }
       throw e;
     }
-    await injectAll(dir);
+    await injectTooling(deps, teamId, dir);
     return {
       teamId,
       clonePath: dir,
@@ -15571,7 +15639,7 @@ async function push(deps, teamId, opts = {}) {
     await resetHardTo(dir, remote);
     await runGitOverPaths(dir, ["checkout", draftBranch], myEdits);
     await runGitOverPaths(dir, ["rm", "-f", "--ignore-unmatch"], myDeletions);
-    await injectAll(dir);
+    await injectTooling(deps, teamId, dir);
     unparseable = await rebuildIndex(dir);
     await commitAllIfAny(dir, binding, `curate: ${opts.message?.trim() || "wiki"} (published over hosted changes)`);
     ({ ahead, behind } = await aheadBehind(dir, "HEAD", remote));
@@ -15675,7 +15743,7 @@ async function resolveDivergence(deps, teamId, choice, opts = {}) {
   }
   await refreshRemote(dir, await deps.backend.remoteAccess(teamId));
   await resetHardTo(dir, `origin/${await currentBranch(dir)}`);
-  await injectAll(dir);
+  await injectTooling(deps, teamId, dir);
   return { teamId, choice, draftBranch };
 }
 async function lint(deps, teamId) {

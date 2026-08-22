@@ -154,6 +154,21 @@ team's BYO key; SER-214 retired it along with the rest of the Model-B stack, bec
 no key and spends no tokens. Here it runs on the user's own tokens, and in local-clone mode it sees
 the pages they haven't published yet.)*
 
+### Cross-wiki overlap — the one signal about OTHER wikis (SER-272)
+
+The `lint` tool's result carries **`crossWiki`** when the user belongs to more than one wiki: this
+wiki compared with each of their others — the SUBJECTS both would answer for, with the pages on each
+side (`a` is this wiki), `kind: subject` when a term is the other wiki's own name (a personal wiki
+with a page on the company, beside the company's wiki — the case that matters most), and `settled`
+when a charter has been written since the overlap appeared. **Read it in BOTH modes**: like
+`list_suggestions`, it is the one part of lint only the server can compute, because the other wikis
+live there — the clone cannot see them. `crossWiki: null` means the comparison could not be made;
+say so rather than reporting "no overlap". `skipped` names other wikis that could not be read.
+
+Nothing here is a defect. Two wikis sharing a subject is normal — a personal wiki holds the person's
+part in a company, the company's wiki holds the company. What `crossWiki` surfaces is the moment that
+boundary has not been WRITTEN yet, so two connectors could both answer for it.
+
 ## 2. Report — people first, then health, then gaps
 
 A short, grouped readout. Don't drown the user — surface the few that matter most:
@@ -180,6 +195,12 @@ A short, grouped readout. Don't drown the user — surface the few that matter m
    disagree with a category: name the counts, then say it is a question rather than a defect. Don't
    list every category, don't re-list the uncategorised pages (kind 2 already named them), and
    **don't turn a `null` ratio into a percentage**.
+
+**Then the boundaries**, when `crossWiki` has unsettled subjects: *"You and **Hipolabs** both cover
+3 subjects — Hipolabs itself (yours: `career/hipolabs`), Pera Wallet (yours: `projects/pera-wallet`;
+theirs: `products/pera-wallet`), onboarding (…)."* One line per subject, `subject`-kind first, and
+the settled ones as a single trailing count — never re-listed, since a charter has already answered
+them.
 
 ## 3. Offer to act
 
@@ -247,6 +268,22 @@ UI) when it's available in this session, as a plain question otherwise:
     which previews and confirms on its own.
   - If it reported a rule it **left alone**, relay that as a fact, not a problem: the wiki's other
     scopes are the reason, and there is nothing to fix.
+- **Settle a boundary** (when `crossWiki` has unsettled subjects) — **one question per subject,
+  never a charter-editing session.** For each: *"Both your wiki and <other> cover <subject>. Which
+  should answer for <subject> itself, and which for your part in it?"* The general rule is already
+  in both wikis' frames — an organization's own wiki answers for the organization, a personal wiki
+  for one person's part in it — so most personal-plus-employer pairs resolve in a sentence; the
+  question is for the pairs the frames cannot tell apart (two client wikis, two team wikis, a side
+  project). Then write the answer **as a sharper self-description of the side the user controls** —
+  what THIS wiki is the authority on, in the charter's retrieval brief or a Structure section's hint
+  — and **never as a sentence naming the other wiki** ("for Hipo questions use the Hipo wiki"): the
+  charter is shared content, a teammate may not have that wiki, and the cross-reference tells
+  everyone which wikis the author belongs to. One side sharpening is usually enough, since
+  over-claiming is the failure mode. Persist it as a charter edit — `save_charter` (MCP,
+  admin/curator) or the `wiki-charter.md` file (local clone) — and say that lint stops raising a
+  subject once a charter is newer than the pages that carry it. If the user controls neither side (a
+  member in both), say who to ask and offer `suggest_change` on the wiki where the sharper line
+  belongs.
 - **Fill a gap** — pick from the top gaps (a coverage section, or a red-link page someone already
   wants). Use the section's `prompt` (or the referencing pages) to interview the user, then draft
   schema-correct page(s) (see the `maintainer` skill) and persist the same way. This is the same

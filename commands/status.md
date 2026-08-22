@@ -166,7 +166,8 @@ Tailor to the user's **role** (and whether the wiki is empty). The full command 
 **`/commonground:lint`** (health + coverage gaps), **`/commonground:pull`** / **`/commonground:push`**
 (local-clone only — get the published latest / publish yours), and **`/commonground:status`** (this).
 In local-clone mode `commonground lint` and `commonground coverage` also run directly against the
-clone, so they include work not yet published.
+clone, so they include work not yet published. With more than one wiki, `/commonground:lint` also
+shows where this wiki and the others overlap and settles which answers for what (SER-272).
 
 - **admin / curator:** if the wiki is **empty or thin**, start with **`/commonground:seed`** (the
   guided bootstrap/import arc that also charters the wiki). Otherwise: `/commonground:ingest` to add

@@ -49,11 +49,17 @@ pages that *would* be published (including brand-new pages that were never stage
   afterwards asks the user the same question twice and answers it differently. The preview reports
   these even when there is nothing to publish, and `push` still refuses then — so relay them rather
   than stopping at "nothing to publish".
-- **"No page changes, but the catalog needs a refresh"** — a plugin update corrected the catalog
+- **"no page changes in <folder>, but the catalog needs a refresh"** — a plugin update corrected the catalog
   format, and `index.md` is machine-owned, so this is the one publish with no page content in it.
   Relay it as maintenance ("your wiki's catalog gets a correction — no page changes"), and let the
   same confirmation flow apply; declining just leaves the catalog stale until the next real publish.
-- **Nothing to publish, nothing broken** — say so and stop.
+- **A `Heads up: you are inside the folder of …` line first** — the preview examined a different
+  wiki's folder than the one the user is standing in (the pointer, or a name they typed, sent it
+  elsewhere). Relay both halves verbatim and confirm which wiki they mean before anything else; the
+  line names the command that addresses the one they are standing in. Never pick for them.
+- **Nothing to publish, nothing broken** — say so and stop. The line names the folder it read
+  (`nothing to publish in <folder>`); relay that folder — it answers "where did you look?" before
+  the user has to ask.
 - Otherwise, show the user the page list in plain language: what's being added, what's being
   updated.
 

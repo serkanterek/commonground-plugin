@@ -3992,10 +3992,10 @@ var require_resolve_block_map = __commonJS({
       let offset = bm.offset;
       let commentEnd = null;
       for (const collItem of bm.items) {
-        const { start, key, sep, value } = collItem;
+        const { start, key, sep: sep2, value } = collItem;
         const keyProps = resolveProps.resolveProps(start, {
           indicator: "explicit-key-ind",
-          next: key ?? sep?.[0],
+          next: key ?? sep2?.[0],
           offset,
           onError,
           parentIndent: bm.indent,
@@ -4009,7 +4009,7 @@ var require_resolve_block_map = __commonJS({
             else if ("indent" in key && key.indent !== bm.indent)
               onError(offset, "BAD_INDENT", startColMsg);
           }
-          if (!keyProps.anchor && !keyProps.tag && !sep) {
+          if (!keyProps.anchor && !keyProps.tag && !sep2) {
             commentEnd = keyProps.end;
             if (keyProps.comment) {
               if (map.comment)
@@ -4033,7 +4033,7 @@ var require_resolve_block_map = __commonJS({
         ctx.atKey = false;
         if (utilMapIncludes.mapIncludes(ctx, map.items, keyNode))
           onError(keyStart, "DUPLICATE_KEY", "Map keys must be unique");
-        const valueProps = resolveProps.resolveProps(sep ?? [], {
+        const valueProps = resolveProps.resolveProps(sep2 ?? [], {
           indicator: "map-value-ind",
           next: value,
           offset: keyNode.range[2],
@@ -4049,7 +4049,7 @@ var require_resolve_block_map = __commonJS({
             if (ctx.options.strict && keyProps.start < valueProps.found.offset - 1024)
               onError(keyNode.range, "KEY_OVER_1024_CHARS", "The : indicator must be at most 1024 chars after the start of an implicit block mapping key");
           }
-          const valueNode = value ? composeNode(ctx, value, valueProps, onError) : composeEmptyNode(ctx, offset, sep, null, valueProps, onError);
+          const valueNode = value ? composeNode(ctx, value, valueProps, onError) : composeEmptyNode(ctx, offset, sep2, null, valueProps, onError);
           if (ctx.schema.compat)
             utilFlowIndentCheck.flowIndentCheck(bm.indent, value, onError);
           offset = valueNode.range[2];
@@ -4140,7 +4140,7 @@ var require_resolve_end = __commonJS({
       let comment = "";
       if (end) {
         let hasSpace = false;
-        let sep = "";
+        let sep2 = "";
         for (const token of end) {
           const { source, type } = token;
           switch (type) {
@@ -4154,13 +4154,13 @@ var require_resolve_end = __commonJS({
               if (!comment)
                 comment = cb;
               else
-                comment += sep + cb;
-              sep = "";
+                comment += sep2 + cb;
+              sep2 = "";
               break;
             }
             case "newline":
               if (comment)
-                sep += source;
+                sep2 += source;
               hasSpace = true;
               break;
             default:
@@ -4203,18 +4203,18 @@ var require_resolve_flow_collection = __commonJS({
       let offset = fc.offset + fc.start.source.length;
       for (let i = 0; i < fc.items.length; ++i) {
         const collItem = fc.items[i];
-        const { start, key, sep, value } = collItem;
+        const { start, key, sep: sep2, value } = collItem;
         const props = resolveProps.resolveProps(start, {
           flow: fcName,
           indicator: "explicit-key-ind",
-          next: key ?? sep?.[0],
+          next: key ?? sep2?.[0],
           offset,
           onError,
           parentIndent: fc.indent,
           startOnNewline: false
         });
         if (!props.found) {
-          if (!props.anchor && !props.tag && !sep && !value) {
+          if (!props.anchor && !props.tag && !sep2 && !value) {
             if (i === 0 && props.comma)
               onError(props.comma, "UNEXPECTED_TOKEN", `Unexpected , in ${fcName}`);
             else if (i < fc.items.length - 1)
@@ -4268,8 +4268,8 @@ var require_resolve_flow_collection = __commonJS({
             }
           }
         }
-        if (!isMap && !sep && !props.found) {
-          const valueNode = value ? composeNode(ctx, value, props, onError) : composeEmptyNode(ctx, props.end, sep, null, props, onError);
+        if (!isMap && !sep2 && !props.found) {
+          const valueNode = value ? composeNode(ctx, value, props, onError) : composeEmptyNode(ctx, props.end, sep2, null, props, onError);
           coll.items.push(valueNode);
           offset = valueNode.range[2];
           if (isBlock(value))
@@ -4281,7 +4281,7 @@ var require_resolve_flow_collection = __commonJS({
           if (isBlock(key))
             onError(keyNode.range, "BLOCK_IN_FLOW", blockMsg);
           ctx.atKey = false;
-          const valueProps = resolveProps.resolveProps(sep ?? [], {
+          const valueProps = resolveProps.resolveProps(sep2 ?? [], {
             flow: fcName,
             indicator: "map-value-ind",
             next: value,
@@ -4292,8 +4292,8 @@ var require_resolve_flow_collection = __commonJS({
           });
           if (valueProps.found) {
             if (!isMap && !props.found && ctx.options.strict) {
-              if (sep)
-                for (const st of sep) {
+              if (sep2)
+                for (const st of sep2) {
                   if (st === valueProps.found)
                     break;
                   if (st.type === "newline") {
@@ -4310,7 +4310,7 @@ var require_resolve_flow_collection = __commonJS({
             else
               onError(valueProps.start, "MISSING_CHAR", `Missing , or : between ${fcName} items`);
           }
-          const valueNode = value ? composeNode(ctx, value, valueProps, onError) : valueProps.found ? composeEmptyNode(ctx, valueProps.end, sep, null, valueProps, onError) : null;
+          const valueNode = value ? composeNode(ctx, value, valueProps, onError) : valueProps.found ? composeEmptyNode(ctx, valueProps.end, sep2, null, valueProps, onError) : null;
           if (valueNode) {
             if (isBlock(value))
               onError(valueNode.range, "BLOCK_IN_FLOW", blockMsg);
@@ -4490,7 +4490,7 @@ var require_resolve_block_scalar = __commonJS({
           chompStart = i + 1;
       }
       let value = "";
-      let sep = "";
+      let sep2 = "";
       let prevMoreIndented = false;
       for (let i = 0; i < contentStart; ++i)
         value += lines[i][0].slice(trimIndent) + "\n";
@@ -4507,24 +4507,24 @@ var require_resolve_block_scalar = __commonJS({
           indent = "";
         }
         if (type === Scalar.Scalar.BLOCK_LITERAL) {
-          value += sep + indent.slice(trimIndent) + content;
-          sep = "\n";
+          value += sep2 + indent.slice(trimIndent) + content;
+          sep2 = "\n";
         } else if (indent.length > trimIndent || content[0] === "	") {
-          if (sep === " ")
-            sep = "\n";
-          else if (!prevMoreIndented && sep === "\n")
-            sep = "\n\n";
-          value += sep + indent.slice(trimIndent) + content;
-          sep = "\n";
+          if (sep2 === " ")
+            sep2 = "\n";
+          else if (!prevMoreIndented && sep2 === "\n")
+            sep2 = "\n\n";
+          value += sep2 + indent.slice(trimIndent) + content;
+          sep2 = "\n";
           prevMoreIndented = true;
         } else if (content === "") {
-          if (sep === "\n")
+          if (sep2 === "\n")
             value += "\n";
           else
-            sep = "\n";
+            sep2 = "\n";
         } else {
-          value += sep + content;
-          sep = " ";
+          value += sep2 + content;
+          sep2 = " ";
           prevMoreIndented = false;
         }
       }
@@ -4706,25 +4706,25 @@ var require_resolve_flow_scalar = __commonJS({
       if (!match)
         return source;
       let res = match[1];
-      let sep = " ";
+      let sep2 = " ";
       let pos = first.lastIndex;
       line.lastIndex = pos;
       while (match = line.exec(source)) {
         if (match[1] === "") {
-          if (sep === "\n")
-            res += sep;
+          if (sep2 === "\n")
+            res += sep2;
           else
-            sep = "\n";
+            sep2 = "\n";
         } else {
-          res += sep + match[1];
-          sep = " ";
+          res += sep2 + match[1];
+          sep2 = " ";
         }
         pos = line.lastIndex;
       }
       const last = /[ \t]*(.*)/sy;
       last.lastIndex = pos;
       match = last.exec(source);
-      return res + sep + (match?.[1] ?? "");
+      return res + sep2 + (match?.[1] ?? "");
     }
     function doubleQuotedValue(source, onError) {
       let res = "";
@@ -5534,14 +5534,14 @@ var require_cst_stringify = __commonJS({
         }
       }
     }
-    function stringifyItem({ start, key, sep, value }) {
+    function stringifyItem({ start, key, sep: sep2, value }) {
       let res = "";
       for (const st of start)
         res += st.source;
       if (key)
         res += stringifyToken(key);
-      if (sep)
-        for (const st of sep)
+      if (sep2)
+        for (const st of sep2)
           res += st.source;
       if (value)
         res += stringifyToken(value);
@@ -6708,18 +6708,18 @@ var require_parser = __commonJS({
         if (this.type === "map-value-ind") {
           const prev = getPrevProps(this.peek(2));
           const start = getFirstKeyStartProps(prev);
-          let sep;
+          let sep2;
           if (scalar.end) {
-            sep = scalar.end;
-            sep.push(this.sourceToken);
+            sep2 = scalar.end;
+            sep2.push(this.sourceToken);
             delete scalar.end;
           } else
-            sep = [this.sourceToken];
+            sep2 = [this.sourceToken];
           const map = {
             type: "block-map",
             offset: scalar.offset,
             indent: scalar.indent,
-            items: [{ start, key: scalar, sep }]
+            items: [{ start, key: scalar, sep: sep2 }]
           };
           this.onKeyLine = true;
           this.stack[this.stack.length - 1] = map;
@@ -6872,15 +6872,15 @@ var require_parser = __commonJS({
                 } else if (isFlowToken(it.key) && !includesToken(it.sep, "newline")) {
                   const start2 = getFirstKeyStartProps(it.start);
                   const key = it.key;
-                  const sep = it.sep;
-                  sep.push(this.sourceToken);
+                  const sep2 = it.sep;
+                  sep2.push(this.sourceToken);
                   delete it.key;
                   delete it.sep;
                   this.stack.push({
                     type: "block-map",
                     offset: this.offset,
                     indent: this.indent,
-                    items: [{ start: start2, key, sep }]
+                    items: [{ start: start2, key, sep: sep2 }]
                   });
                 } else if (start.length > 0) {
                   it.sep = it.sep.concat(start, this.sourceToken);
@@ -7074,13 +7074,13 @@ var require_parser = __commonJS({
             const prev = getPrevProps(parent);
             const start = getFirstKeyStartProps(prev);
             fixFlowSeqItems(fc);
-            const sep = fc.end.splice(1, fc.end.length);
-            sep.push(this.sourceToken);
+            const sep2 = fc.end.splice(1, fc.end.length);
+            sep2.push(this.sourceToken);
             const map = {
               type: "block-map",
               offset: fc.offset,
               indent: fc.indent,
-              items: [{ start, key: fc, sep }]
+              items: [{ start, key: fc, sep: sep2 }]
             };
             this.onKeyLine = true;
             this.stack[this.stack.length - 1] = map;
@@ -7360,9 +7360,9 @@ var require_dist = __commonJS({
 
 // ../../apps/sync-agent/dist/cli.js
 var import_node_child_process3 = require("node:child_process");
-var import_node_fs3 = require("node:fs");
+var import_node_fs4 = require("node:fs");
 var import_promises6 = require("node:fs/promises");
-var import_node_path7 = require("node:path");
+var import_node_path8 = require("node:path");
 
 // ../../apps/sync-agent/dist/args.js
 function takeFlagValue(rest, flag) {
@@ -7487,6 +7487,42 @@ async function writeActiveWiki(teamId, configHome = agentConfigHome()) {
   await (0, import_promises.mkdir)((0, import_node_path.dirname)(path), { recursive: true });
   await (0, import_promises.writeFile)(path, `${JSON.stringify(state, null, 2)}
 `, "utf8");
+}
+async function multiWikiNoticed(configHome = agentConfigHome()) {
+  try {
+    const raw = JSON.parse(await (0, import_promises.readFile)(statePath(configHome), "utf8"));
+    return typeof raw?.multiWikiNoticedAt === "string" && raw.multiWikiNoticedAt.trim() !== "";
+  } catch {
+    return false;
+  }
+}
+async function markMultiWikiNoticed(configHome = agentConfigHome(), now = () => /* @__PURE__ */ new Date()) {
+  const path = statePath(configHome);
+  let state = {};
+  try {
+    const parsed = JSON.parse(await (0, import_promises.readFile)(path, "utf8"));
+    if (parsed && typeof parsed === "object")
+      state = parsed;
+  } catch {
+  }
+  state.multiWikiNoticedAt = now().toISOString();
+  try {
+    await (0, import_promises.mkdir)((0, import_node_path.dirname)(path), { recursive: true });
+    await (0, import_promises.writeFile)(path, `${JSON.stringify(state, null, 2)}
+`, "utf8");
+  } catch {
+  }
+}
+function crossedToMultiWiki(count, alreadyNoticed) {
+  return count >= 2 && !alreadyNoticed;
+}
+async function readTeamProfiles(configHome = agentConfigHome()) {
+  try {
+    const raw = JSON.parse(await (0, import_promises.readFile)(profilesPath(configHome), "utf8"));
+    return raw?.teams && typeof raw.teams === "object" ? raw.teams : {};
+  } catch {
+    return {};
+  }
 }
 async function listWikis(configHome = agentConfigHome(), dataHome = agentDataHome()) {
   const store = await readStore(configHome, dataHome);
@@ -12856,9 +12892,9 @@ function parseSections(lines) {
       continue;
     if (/^[—–:-]/.test(text))
       continue;
-    const sep = SEPARATORS.map((s) => ({ s, at: text.indexOf(s) })).filter((x) => x.at !== -1).sort((a, b) => a.at - b.at)[0];
-    const label = (sep ? text.slice(0, sep.at) : text).trim();
-    const hint = sep ? text.slice(sep.at + sep.s.length).trim() : "";
+    const sep2 = SEPARATORS.map((s) => ({ s, at: text.indexOf(s) })).filter((x) => x.at !== -1).sort((a, b) => a.at - b.at)[0];
+    const label = (sep2 ? text.slice(0, sep2.at) : text).trim();
+    const hint = sep2 ? text.slice(sep2.at + sep2.s.length).trim() : "";
     if (label)
       sections.push({ label, hint });
   }
@@ -14610,10 +14646,10 @@ function mcpParagraph(count, primaryLabel) {
   }
   return `This project reads ${count} CommonGround wikis through the CommonGround MCP connector: \`search\` and \`get_index\` answer from every wiki it reads, grouped by wiki (each group carries \`wiki.teamId\`); pass that id as \`wiki\` to \`get_page\`, or to any tool, to address one wiki, and a call that names no \`wiki\` addresses the primary, ${primaryLabel}. ${CHARTER_PAGE_NOTE}. Load context on demand; don't read everything. ${citeClause(true)} ${captureClause(true, "mcp")} ` + CONNECTOR_HEALTH_RULE;
 }
-function cloneRouterRule(voice, naming) {
+function cloneRouterRule(voice, naming, teamId) {
   const name = sanitizeName(fenceSafe(naming?.name));
   const who = name ? `the CommonGround wiki **"${name}"**` : "a CommonGround wiki";
-  return `${ROUTER_START}${modeMarker("local")}
+  return `${ROUTER_START}${teamMarker(teamId)}${modeMarker("local")}
 ## CommonGround wiki (this folder is the working copy)
 
 This folder is ${who} (${kindOf(voice)}): the working copy; \`/commonground:push\` publishes it.
@@ -14775,9 +14811,9 @@ async function excludeInjected(dir) {
 ` : ""}${missing.join("\n")}
 `, "utf8");
 }
-async function injectAll(dir, naming) {
+async function injectAll(dir, naming, teamId) {
   await excludeInjected(dir);
-  await injectRouterRule(dir, cloneRouterRule(await charterVoiceFromWiki(dir), naming));
+  await injectRouterRule(dir, cloneRouterRule(await charterVoiceFromWiki(dir), naming, teamId));
   await injectSkill(dir);
 }
 async function readFileOr(path, fallback) {
@@ -14997,7 +15033,7 @@ async function browserLogin(deps) {
 var MAX_WIKIS_PER_PROJECT = 5;
 async function injectTooling(deps, teamId, dir) {
   const profile = await readTeamProfile(teamId, deps.configHome);
-  await injectAll(dir, { name: profile.wikiName ?? null });
+  await injectAll(dir, { name: profile.wikiName ?? null }, teamId);
 }
 async function wikiNamesFor(deps, teamIds) {
   const names = /* @__PURE__ */ new Map();
@@ -15117,6 +15153,19 @@ async function detectRouterBlock(projectDir) {
   } catch {
     return null;
   }
+}
+async function findRouterBlock(startDir) {
+  let dir = (0, import_node_path6.resolve)(startDir);
+  for (let depth = 0; depth < 64; depth++) {
+    const found = await detectRouterBlock(dir);
+    if (found)
+      return { ...found, dir };
+    const parent = (0, import_node_path6.dirname)(dir);
+    if (parent === dir)
+      return null;
+    dir = parent;
+  }
+  return null;
 }
 async function recordProjectWiki(projectDir) {
   const block = await detectRouterBlock(projectDir);
@@ -15859,7 +15908,141 @@ async function pathExists2(path) {
   }
 }
 
+// ../../apps/sync-agent/dist/format.js
+var PAGE_SYMBOL = {
+  added: "+",
+  modified: "~",
+  deleted: "-",
+  renamed: "~"
+};
+function formatReceipt(pages) {
+  return pages.map((p) => `${PAGE_SYMBOL[p.kind]} ${p.page}`).join(" \xB7 ");
+}
+function pageCount(n) {
+  return `${n} page${n === 1 ? "" : "s"}`;
+}
+function deleteWarning(deletions, v) {
+  if (!deletions?.length)
+    return "";
+  return `  \u26A0 REMOVES ${pageCount(deletions.length)} from ${v.wiki}: ${deletions.map((p) => p.page).join(", ")}
+    ${capitalize(v.removalImpact)}. Past versions stay in history, but the page goes away.
+`;
+}
+function unparseableLines(pages, indent) {
+  return pages.map((p) => `${indent}${p.relPath}: ${p.reason}
+`).join("");
+}
+function placeholderNote(unparseable) {
+  if (!unparseable?.length)
+    return "";
+  return `  \u26A0 ${unparseable.length} page(s) went out as "(unparseable)" placeholders \u2014 listed, but nothing can read them:
+${unparseableLines(unparseable, "    ")}`;
+}
+function capitalize(s) {
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+function formatPush(r, v, who) {
+  const label = wikiLabel(who);
+  switch (r.action) {
+    case "preview": {
+      const pages = r.pages ?? [];
+      const broken = r.unparseable?.length ? `  \u26A0 ${r.unparseable.length} page(s) don't parse, so the catalog can't describe them:
+` + unparseableLines(r.unparseable, "    ") + `    Publishing stops until they're fixed (or "commonground push --allow-unparseable").
+` : "";
+      const catalog = r.catalogRefresh ? `  The wiki catalog (index.md) is out of date with this clone's pages \u2014 publishing
+  refreshes it. (It is machine-owned; a plugin update can correct its format.)
+` : "";
+      if (!pages.length)
+        return r.catalogRefresh ? `${label}: no page changes in ${r.clonePath}, but the catalog needs a refresh.
+${catalog}${broken}  Nothing published yet \u2014 run "commonground push" to publish the corrected catalog.
+` : `${label}: nothing to publish in ${r.clonePath}.
+${broken}`;
+      const conflict = r.behind ? `  Heads up: ${v.wiki} moved (${r.behind} change(s)): ${formatReceipt(r.incoming ?? []) || "(none)"}
+` : "";
+      return `${label}: would publish ${pageCount(pages.length)} from ${r.clonePath}: ${formatReceipt(pages)}
+` + catalog + conflict + broken + deleteWarning(r.deletions, v) + `  Nothing published yet \u2014 run "commonground push" to confirm.
+`;
+    }
+    case "needs-delete-confirm":
+      return `${label}: this would publish ${pageCount((r.pages ?? []).length)} from ${r.clonePath}: ${formatReceipt(r.pages ?? [])}
+` + deleteWarning(r.deletions, v) + // On the --mine path the replay has already happened and the branch now sits on top of the
+      // hosted tip, so the retry is a plain --allow-deletes; re-passing --mine would be a no-op.
+      (r.draftBranch ? `  Your pre-merge state is saved on ${r.draftBranch}.
+` : "") + `  Nothing was published. To go ahead including the removal(s):
+    commonground push --allow-deletes
+`;
+    case "needs-unparseable-fix": {
+      const broken = r.unparseable ?? [];
+      return `${label}: ${broken.length} page(s) don't parse \u2014 nothing was published.
+` + unparseableLines(broken, "  ") + `  These would be invisible in the wiki catalog. Fix them, or publish as-is:
+    commonground push --allow-unparseable
+`;
+    }
+    case "read-only": {
+      const pages = r.pages ?? [];
+      return `${label}: your role is read-only \u2014 publishing is admins/curators only.
+` + (pages.length ? `  Your work is safe in ${r.clonePath} \u2014 it just isn't shared yet.
+  Unpublished here: ${formatReceipt(pages)}
+  To get it to ${v.reaches}, file it as a suggestion for a curator to fold in.
+` : "");
+    }
+    case "nothing-to-push":
+      return `${label}: nothing to publish in ${r.clonePath}.
+`;
+    case "pushed": {
+      const pages = r.pages ?? [];
+      const contentPages = pages.filter((p) => p.path !== "index.md");
+      if (r.catalogRefresh && contentPages.length === 0 && !r.deletions?.length) {
+        return `Refreshed the wiki catalog for ${label} \u2014 no page content changed.
+  (A plugin update corrected the catalog format; index.md now matches this clone's pages.)
+` + placeholderNote(r.unparseable);
+      }
+      const removed = r.deletions?.length ? `  Removed from ${v.wiki}: ${r.deletions.map((p) => p.page).join(", ")}
+` : "";
+      return pages.length ? `Published ${pageCount(pages.length)} from ${r.clonePath} to ${label}: ${formatReceipt(pages)}
+${removed}${placeholderNote(r.unparseable)}` : `Published ${r.ahead} change(s) from ${r.clonePath} to ${label}.
+${removed}${placeholderNote(r.unparseable)}`;
+    }
+    case "blocked":
+      return `${label}: ${v.remoteMoved} (${r.behind} change(s)) \u2014 nothing was published.
+  ${capitalize(v.theirs)}: ${formatReceipt(r.incoming ?? []) || "(none)"}
+  Yours (in ${r.clonePath}): ${formatReceipt(r.pages ?? []) || "(none)"}
+  Keep YOUR version of any overlapping pages: commonground push --mine
+  Take the published version instead (yours saved first): commonground pull --take-remote
+`;
+    case "published-mine": {
+      const pages = r.pages ?? [];
+      return `Published your version to ${label}${pages.length ? `: ${formatReceipt(pages)}` : ""}
+` + (r.deletions?.length ? `  Removed from ${v.wiki}: ${r.deletions.map((p) => p.page).join(", ")}
+` : "") + placeholderNote(r.unparseable) + (r.draftBranch ? `  Your pre-merge state is saved on ${r.draftBranch}.
+` : "");
+    }
+  }
+}
+function formatUse(picked, bound, opts = {}) {
+  const head = `Active wiki is now ${wikiLabel(picked)} (you: ${picked.role}).
+`;
+  const radius = `  Every commonground command run in a project that has not named a wiki now answers for
+  ${wikiLabel(picked)} \u2014 on this whole machine, not just in this folder.
+`;
+  const boundId = typeof bound === "string" ? bound : bound?.teamId;
+  const boundName = typeof bound === "string" ? bound : bound ? wikiLabel(bound) : "";
+  const stays = boundId && boundId !== picked.teamId ? `  THIS project stays on ${boundName} \u2014 it is bound to that wiki, and a project's own binding
+  always wins, so a switch can never silently retarget a project that named its wiki.
+  To move this project too: commonground init ${picked.teamId}
+` : "";
+  return head + radius + stays + (opts.firstMulti ? multiWikiNotice() : "");
+}
+function multiWikiNotice() {
+  return `  You now have more than one wiki on this machine. Point each project at its wiki once \u2014
+  /commonground:point in Claude, or "commonground init <wiki>" \u2014 and the active pointer
+  stops mattering for it. (Said once; it will not repeat.)
+`;
+}
+
 // ../../apps/sync-agent/dist/team-resolve.js
+var import_node_fs3 = require("node:fs");
+var import_node_path7 = require("node:path");
 var FULL_WIKI_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 async function resolveWiki(deps, arg, projectDir = process.cwd()) {
   if (arg)
@@ -15867,10 +16050,13 @@ async function resolveWiki(deps, arg, projectDir = process.cwd()) {
   const wikis = Object.keys((await readStore(deps.configHome, deps.dataHome)).teams);
   if (wikis.length === 0)
     throw notLoggedIn(void 0, deps.configHome);
-  const bound = (await detectRouterBlock(projectDir))?.teamId;
+  const found = await findRouterBlock(projectDir);
+  const bound = found?.teamId;
   const honourable = honourableIn(deps, wikis);
-  if (bound && await honourable(bound))
-    return { teamId: bound, via: "project" };
+  if (bound && await honourable(bound)) {
+    const clone = await isCloneDir(deps, bound, found.dir);
+    return { teamId: bound, via: clone ? "clone" : "project" };
+  }
   const unreachable = bound ? { unreachable: bound } : {};
   const active = await readActiveWiki(deps.configHome);
   if (active && await honourable(active))
@@ -15931,6 +16117,8 @@ function why(choice) {
       return "you named it on the command line";
     case "project":
       return "this project is bound to it";
+    case "clone":
+      return "this folder is its working copy";
     case "active":
       return choice.unreachable ? "it is your active wiki" : "it is your active wiki, and this project is not bound to one";
     case "sole":
@@ -15951,6 +16139,71 @@ function describeWikiChoice(choice, label, alsoLabels = []) {
   not a login one: if you should have access, an admin of ${bound} has to invite you.
   To point this project at a wiki you do hold instead: commonground init ${choice.teamId}
 `;
+}
+function canon(p) {
+  const abs = (0, import_node_path7.resolve)(p);
+  try {
+    return import_node_fs3.realpathSync.native(abs);
+  } catch {
+    const parent = (0, import_node_path7.dirname)(abs);
+    return parent === abs ? abs : (0, import_node_path7.join)(canon(parent), (0, import_node_path7.basename)(abs));
+  }
+}
+function within(child, root) {
+  const c = canon(child);
+  const r = canon(root);
+  return c === r || c.startsWith(r.endsWith(import_node_path7.sep) ? r : r + import_node_path7.sep);
+}
+async function isCloneDir(deps, teamId, dir) {
+  try {
+    return canon(dir) === canon(await resolveClonePath(teamId, deps.configHome, deps.dataHome));
+  } catch {
+    return false;
+  }
+}
+function cwdCloneMismatch(cwd, resolvedTeamId, clones) {
+  let deepest = null;
+  for (const c of clones) {
+    if (!c.clonePath || !within(cwd, c.clonePath))
+      continue;
+    if (!deepest || canon(c.clonePath).length > canon(deepest.clonePath).length)
+      deepest = c;
+  }
+  if (!deepest)
+    return null;
+  return deepest.teamId === resolvedTeamId ? null : deepest;
+}
+async function knownClones(deps) {
+  const profiles = await readTeamProfiles(deps.configHome);
+  const ids = /* @__PURE__ */ new Set([
+    ...Object.keys(profiles),
+    ...Object.keys((await readStore(deps.configHome, deps.dataHome)).teams)
+  ]);
+  const out = [];
+  for (const teamId of ids) {
+    try {
+      out.push({
+        teamId,
+        clonePath: await resolveClonePath(teamId, deps.configHome, deps.dataHome),
+        ...profiles[teamId]?.wikiName ? { wikiName: profiles[teamId].wikiName } : {}
+      });
+    } catch {
+    }
+  }
+  return out;
+}
+function describeCloneMismatch(hit, resolvedLabel, verb) {
+  return `  Heads up: you are inside the folder of ${wikiLabel(hit)}, but this command addressed ${resolvedLabel}.
+  To act on the wiki you are standing in, name it: commonground ${verb} ${hit.teamId}
+`;
+}
+async function cloneMismatchNote(deps, resolvedTeamId, verb, cwd = process.cwd()) {
+  const clones = await knownClones(deps);
+  const hit = cwdCloneMismatch(cwd, resolvedTeamId, clones);
+  if (!hit)
+    return "";
+  const resolved = clones.find((c) => c.teamId === resolvedTeamId) ?? { teamId: resolvedTeamId };
+  return describeCloneMismatch(hit, wikiLabel(resolved), verb);
 }
 
 // ../../apps/sync-agent/dist/cli.js
@@ -16103,17 +16356,17 @@ Authorize this device in your browser:
   };
 }
 var WAIT_BUDGET_MS = 9e4;
-var PAGE_SYMBOL = {
-  added: "+",
-  modified: "~",
-  deleted: "-",
-  renamed: "~"
-};
-function formatReceipt(pages) {
-  return pages.map((p) => `${PAGE_SYMBOL[p.kind]} ${p.page}`).join(" \xB7 ");
-}
-function pageCount(n) {
-  return `${n} page${n === 1 ? "" : "s"}`;
+async function multiWikiNoticeAfterLogin() {
+  try {
+    const deps = await buildDeps();
+    const { listings } = await availableWikis(deps);
+    if (!crossedToMultiWiki(listings.length, await multiWikiNoticed(deps.configHome)))
+      return "";
+    await markMultiWikiNoticed(deps.configHome);
+    return multiWikiNotice();
+  } catch {
+    return "";
+  }
 }
 function parseInitArgs(rest) {
   let mode = "mcp";
@@ -16366,18 +16619,6 @@ function formatWikiList(listings, activeId, boundId, alsoIds = []) {
 `;
   }).join("");
 }
-function formatUse(picked, bound) {
-  const head = `Active wiki is now ${wikiLabel(picked)} (you: ${picked.role}).
-`;
-  const boundId = typeof bound === "string" ? bound : bound?.teamId;
-  if (!boundId || boundId === picked.teamId)
-    return head;
-  const boundName = typeof bound === "string" ? bound : wikiLabel(bound);
-  return head + `  THIS project stays on ${boundName} \u2014 it is bound to that wiki, and a project's own binding
-  always wins, so a switch can never silently retarget a project that named its wiki.
-  To move this project too: commonground init ${picked.teamId}
-`;
-}
 function whereItLives(s, mode) {
   if (mode === "mcp")
     return "";
@@ -16475,26 +16716,6 @@ function formatPull(r, v) {
       return `${r.teamId}: adopted the published version` + (r.draftBranch ? ` \u2014 your local work is saved on ${r.draftBranch}.
 ` : ".\n");
   }
-}
-function deleteWarning(deletions, v) {
-  if (!deletions?.length)
-    return "";
-  return `  \u26A0 REMOVES ${pageCount(deletions.length)} from ${v.wiki}: ${deletions.map((p) => p.page).join(", ")}
-    ${capitalize(v.removalImpact)}. Past versions stay in history, but the page goes away.
-`;
-}
-function unparseableLines(pages, indent) {
-  return pages.map((p) => `${indent}${p.relPath}: ${p.reason}
-`).join("");
-}
-function placeholderNote(unparseable) {
-  if (!unparseable?.length)
-    return "";
-  return `  \u26A0 ${unparseable.length} page(s) went out as "(unparseable)" placeholders \u2014 listed, but nothing can read them:
-${unparseableLines(unparseable, "    ")}`;
-}
-function capitalize(s) {
-  return s.charAt(0).toUpperCase() + s.slice(1);
 }
 var MAX_PRINTED_IDS = 5;
 var MAX_COHESION_ROWS = 5;
@@ -16652,83 +16873,6 @@ ${tail}`;
 `;
   }
 }
-function formatPush(r, v) {
-  switch (r.action) {
-    case "preview": {
-      const pages = r.pages ?? [];
-      const broken = r.unparseable?.length ? `  \u26A0 ${r.unparseable.length} page(s) don't parse, so the catalog can't describe them:
-` + unparseableLines(r.unparseable, "    ") + `    Publishing stops until they're fixed (or "commonground push --allow-unparseable").
-` : "";
-      const catalog = r.catalogRefresh ? `  The wiki catalog (index.md) is out of date with this clone's pages \u2014 publishing
-  refreshes it. (It is machine-owned; a plugin update can correct its format.)
-` : "";
-      if (!pages.length)
-        return r.catalogRefresh ? `${r.teamId}: no page changes, but the catalog needs a refresh.
-${catalog}${broken}  Nothing published yet \u2014 run "commonground push" to publish the corrected catalog.
-` : `${r.teamId}: nothing to publish.
-${broken}`;
-      const conflict = r.behind ? `  Heads up: ${v.wiki} moved (${r.behind} change(s)): ${formatReceipt(r.incoming ?? []) || "(none)"}
-` : "";
-      return `${r.teamId}: would publish ${pageCount(pages.length)}: ${formatReceipt(pages)}
-` + catalog + conflict + broken + deleteWarning(r.deletions, v) + `  Nothing published yet \u2014 run "commonground push" to confirm.
-`;
-    }
-    case "needs-delete-confirm":
-      return `${r.teamId}: this would publish ${pageCount((r.pages ?? []).length)}: ${formatReceipt(r.pages ?? [])}
-` + deleteWarning(r.deletions, v) + // On the --mine path the replay has already happened and the branch now sits on top of the
-      // hosted tip, so the retry is a plain --allow-deletes; re-passing --mine would be a no-op.
-      (r.draftBranch ? `  Your pre-merge state is saved on ${r.draftBranch}.
-` : "") + `  Nothing was published. To go ahead including the removal(s):
-    commonground push --allow-deletes
-`;
-    case "needs-unparseable-fix": {
-      const broken = r.unparseable ?? [];
-      return `${r.teamId}: ${broken.length} page(s) don't parse \u2014 nothing was published.
-` + unparseableLines(broken, "  ") + `  These would be invisible in the wiki catalog. Fix them, or publish as-is:
-    commonground push --allow-unparseable
-`;
-    }
-    case "read-only": {
-      const pages = r.pages ?? [];
-      return `${r.teamId}: your role is read-only \u2014 publishing is admins/curators only.
-` + (pages.length ? `  Your work is safe in ${r.clonePath} \u2014 it just isn't shared yet.
-  Unpublished here: ${formatReceipt(pages)}
-  To get it to ${v.reaches}, file it as a suggestion for a curator to fold in.
-` : "");
-    }
-    case "nothing-to-push":
-      return `${r.teamId}: nothing to publish.
-`;
-    case "pushed": {
-      const pages = r.pages ?? [];
-      const contentPages = pages.filter((p) => p.path !== "index.md");
-      if (r.catalogRefresh && contentPages.length === 0 && !r.deletions?.length) {
-        return `Refreshed the wiki catalog for ${r.teamId} \u2014 no page content changed.
-  (A plugin update corrected the catalog format; index.md now matches this clone's pages.)
-` + placeholderNote(r.unparseable);
-      }
-      const removed = r.deletions?.length ? `  Removed from ${v.wiki}: ${r.deletions.map((p) => p.page).join(", ")}
-` : "";
-      return pages.length ? `Published ${pageCount(pages.length)} to ${r.teamId}: ${formatReceipt(pages)}
-${removed}${placeholderNote(r.unparseable)}` : `Published ${r.ahead} change(s) to ${r.teamId}.
-${removed}${placeholderNote(r.unparseable)}`;
-    }
-    case "blocked":
-      return `${r.teamId}: ${v.remoteMoved} (${r.behind} change(s)) \u2014 nothing was published.
-  ${capitalize(v.theirs)}: ${formatReceipt(r.incoming ?? []) || "(none)"}
-  Yours: ${formatReceipt(r.pages ?? []) || "(none)"}
-  Keep YOUR version of any overlapping pages: commonground push --mine
-  Take the published version instead (yours saved first): commonground pull --take-remote
-`;
-    case "published-mine": {
-      const pages = r.pages ?? [];
-      return `Published your version to ${r.teamId}${pages.length ? `: ${formatReceipt(pages)}` : ""}
-` + (r.deletions?.length ? `  Removed from ${v.wiki}: ${r.deletions.map((p) => p.page).join(", ")}
-` : "") + placeholderNote(r.unparseable) + (r.draftBranch ? `  Your pre-merge state is saved on ${r.draftBranch}.
-` : "");
-    }
-  }
-}
 async function clearStaleCredential() {
   const legacy = legacyStorePath();
   const state = await legacyCredentialState();
@@ -16747,9 +16891,9 @@ async function clearStaleCredential() {
       throw new AgentError(`couldn't remove ${legacy} (${e.message}) \u2014 fix the permissions on that folder, or remove the file yourself`);
     }
   }
-  await (0, import_promises6.rmdir)((0, import_node_path7.dirname)(legacy)).catch(() => void 0);
+  await (0, import_promises6.rmdir)((0, import_node_path8.dirname)(legacy)).catch(() => void 0);
   process.stdout.write(`Removed ${legacy}.
-` + ((0, import_node_fs3.existsSync)(storePath()) ? `  Your sign-in is unaffected \u2014 CommonGround reads it from ${storePath()}.
+` + ((0, import_node_fs4.existsSync)(storePath()) ? `  Your sign-in is unaffected \u2014 CommonGround reads it from ${storePath()}.
 ` : `  It held no sign-in, so nothing changed about how this machine is signed in.
 `));
 }
@@ -16777,13 +16921,13 @@ Then run "commonground login --wait" (the code is valid for about ${Math.round(p
           return;
         }
         process.stdout.write(`Logged in to team ${result.teamId} as ${result.role} (user ${result.userId}).
-`);
+` + await multiWikiNoticeAfterLogin());
         return;
       }
       const token = rest[0];
       const binding = token ? await login(await buildDeps(), token) : await deviceLogin();
       process.stdout.write(`Logged in to team ${binding.teamId} as ${binding.role} (user ${binding.userId}).
-`);
+` + await multiWikiNoticeAfterLogin());
       return;
     }
     case "use": {
@@ -16792,7 +16936,7 @@ Then run "commonground login --wait" (the code is valid for about ${Math.round(p
       if (listings.length === 0)
         throw notLoggedIn(void 0, deps.configHome);
       const active = await readActiveWiki(deps.configHome);
-      const project = await detectRouterBlock(process.cwd());
+      const project = await findRouterBlock(process.cwd());
       const boundId = project?.teamId ?? null;
       const alsoIds = project?.alsoTeamIds ?? [];
       const bound = listings.find((l) => l.teamId === boundId) ?? boundId;
@@ -16817,7 +16961,10 @@ ${formatWikiList(hits, active, boundId, alsoIds)}Say which one \u2014 the full n
       }
       const picked = hits[0];
       await writeActiveWiki(picked.teamId, deps.configHome);
-      process.stdout.write(formatUse(picked, bound));
+      const firstMulti = crossedToMultiWiki(listings.length, await multiWikiNoticed(deps.configHome));
+      process.stdout.write(formatUse(picked, bound, { firstMulti }));
+      if (firstMulti)
+        await markMultiWikiNoticed(deps.configHome);
       return;
     }
     case "init": {
@@ -16939,7 +17086,7 @@ ${formatWikiList(hits, active, boundId, alsoIds)}Say which one \u2014 the full n
       const takeRemote = rest.includes("--take-remote");
       const teamId = await resolveTeamId(deps, teamArg(rest));
       const result = await pull(deps, teamId, { takeRemote, onClone: announceClone });
-      process.stdout.write(formatPull(result, await voiceFor(deps, teamId)));
+      process.stdout.write(await cloneMismatchNote(deps, teamId, "pull") + formatPull(result, await voiceFor(deps, teamId)));
       return;
     }
     case "push": {
@@ -16957,7 +17104,8 @@ ${formatWikiList(hits, active, boundId, alsoIds)}Say which one \u2014 the full n
         allowUnparseable,
         ...message === void 0 ? {} : { message }
       });
-      process.stdout.write(formatPush(result, await voiceFor(deps, teamId)));
+      const who = { teamId, ...await readTeamProfile(teamId, deps.configHome) };
+      process.stdout.write(await cloneMismatchNote(deps, teamId, "push") + formatPush(result, await voiceFor(deps, teamId), who));
       return;
     }
     case "status": {
@@ -16968,9 +17116,9 @@ ${formatWikiList(hits, active, boundId, alsoIds)}Say which one \u2014 the full n
       const deps = await buildDeps();
       const choice = await resolveWiki(deps, teamArg(rest));
       const result = await status(deps, choice.teamId);
-      const project = await detectRouterBlock(process.cwd());
+      const project = await findRouterBlock(process.cwd());
       const alsoLabels = await Promise.all((project?.alsoTeamIds ?? []).map(async (id) => wikiLabel({ teamId: id, ...await readTeamProfile(id, deps.configHome) })));
-      process.stdout.write(formatStatus(result, deps, project?.mode ?? null, choice, await readTeamProfile(choice.teamId, deps.configHome), alsoLabels));
+      process.stdout.write(await cloneMismatchNote(deps, choice.teamId, "status") + formatStatus(result, deps, project?.mode ?? null, choice, await readTeamProfile(choice.teamId, deps.configHome), alsoLabels));
       return;
     }
     case "normalize": {
@@ -17026,7 +17174,7 @@ ${formatWikiList(hits, active, boundId, alsoIds)}Say which one \u2014 the full n
         throw new AgentError("usage: commonground import <dir> [wiki]");
       const deps = await buildDeps();
       const teamId = await resolveTeamId(deps, rest[1]);
-      const result = await importWiki(deps, { sourceDir: (0, import_node_path7.resolve)(folder), teamId });
+      const result = await importWiki(deps, { sourceDir: (0, import_node_path8.resolve)(folder), teamId });
       process.stdout.write(formatImport(result, await voiceFor(deps, teamId)));
       return;
     }

@@ -116,13 +116,34 @@ function projectCwd(input) {
   return (input && typeof input.cwd === 'string' && input.cwd) || process.cwd();
 }
 
-/** True when this project's CLAUDE.md carries the CommonGround router block (i.e. it's initialized). */
-function isInitialized(cwd) {
-  try {
-    return fs.readFileSync(path.join(cwd, 'CLAUDE.md'), 'utf8').includes(ROUTER_MARKER);
-  } catch {
-    return false;
+/**
+ * The `CLAUDE.md` that GOVERNS `cwd`: its own, else the nearest ancestor's that carries the
+ * CommonGround router block (SER-268). Mirrors the sync agent's `findRouterBlock` (commands.ts) —
+ * Claude Code itself loads `CLAUDE.md` from the working directory and every parent, so a block two
+ * folders up is already what Claude is reading; and a wiki clone's own block now carries a team
+ * marker, so a session opened in a subfolder of your wiki must see the same wiki the CLI does.
+ * Returns the file's text, or null. Bounded, offline, reads nothing but `CLAUDE.md` files, and
+ * fail-open: an unreadable file is simply not a block.
+ */
+function governingClaudeMd(cwd) {
+  let dir = path.resolve(cwd || process.cwd());
+  for (let depth = 0; depth < 64; depth++) {
+    try {
+      const md = fs.readFileSync(path.join(dir, 'CLAUDE.md'), 'utf8');
+      if (md.includes(ROUTER_MARKER)) return md;
+    } catch {
+      /* no CLAUDE.md here — keep climbing */
+    }
+    const parent = path.dirname(dir);
+    if (parent === dir) return null;
+    dir = parent;
   }
+  return null;
+}
+
+/** True when the CLAUDE.md governing this folder carries the CommonGround router block (i.e. it's initialized). */
+function isInitialized(cwd) {
+  return governingClaudeMd(cwd) !== null;
 }
 
 /**
@@ -133,13 +154,9 @@ function isInitialized(cwd) {
  * nudge on THIS project being a clone, not merely on a clone existing somewhere for the team.
  */
 function routerMode(cwd) {
-  let block;
-  try {
-    const md = fs.readFileSync(path.join(cwd, 'CLAUDE.md'), 'utf8');
-    block = /<!-- commonground:router-rule:start -->([\s\S]*?)<!-- commonground:router-rule:end -->/.exec(md);
-  } catch {
-    return null;
-  }
+  const md = governingClaudeMd(cwd);
+  if (md === null) return null;
+  const block = /<!-- commonground:router-rule:start -->([\s\S]*?)<!-- commonground:router-rule:end -->/.exec(md);
   if (!block) return null;
   const marked = /<!-- commonground:mode:(mcp|local) -->/.exec(block[1]);
   if (marked) return marked[1];
@@ -299,15 +316,12 @@ function activeBinding(cwd) {
  * user's CLAUDE.md cannot rebind the project.
  */
 function projectTeamId(cwd) {
-  try {
-    const md = fs.readFileSync(path.join(cwd, 'CLAUDE.md'), 'utf8');
-    const block = /<!-- commonground:router-rule:start -->([\s\S]*?)<!-- commonground:router-rule:end -->/.exec(md);
-    if (!block) return null;
-    const marker = /<!-- commonground:team:([^\s>]+) -->/.exec(block[1]);
-    return marker ? marker[1] : null;
-  } catch {
-    return null;
-  }
+  const md = governingClaudeMd(cwd);
+  if (md === null) return null;
+  const block = /<!-- commonground:router-rule:start -->([\s\S]*?)<!-- commonground:router-rule:end -->/.exec(md);
+  if (!block) return null;
+  const marker = /<!-- commonground:team:([^\s>]+) -->/.exec(block[1]);
+  return marker ? marker[1] : null;
 }
 
 /**
@@ -319,20 +333,17 @@ function projectTeamId(cwd) {
  * the whole set ask this.
  */
 function projectTeamIds(cwd) {
-  try {
-    const md = fs.readFileSync(path.join(cwd, 'CLAUDE.md'), 'utf8');
-    const block = /<!-- commonground:router-rule:start -->([\s\S]*?)<!-- commonground:router-rule:end -->/.exec(md);
-    if (!block) return [];
-    const primary = /<!-- commonground:team:([^\s>]+) -->/.exec(block[1]);
-    if (!primary) return [];
-    const ids = [primary[1]];
-    for (const m of block[1].matchAll(/<!-- commonground:also:([^\s>]+) -->/g)) {
-      if (!ids.includes(m[1])) ids.push(m[1]);
-    }
-    return ids;
-  } catch {
-    return [];
+  const md = governingClaudeMd(cwd);
+  if (md === null) return [];
+  const block = /<!-- commonground:router-rule:start -->([\s\S]*?)<!-- commonground:router-rule:end -->/.exec(md);
+  if (!block) return [];
+  const primary = /<!-- commonground:team:([^\s>]+) -->/.exec(block[1]);
+  if (!primary) return [];
+  const ids = [primary[1]];
+  for (const m of block[1].matchAll(/<!-- commonground:also:([^\s>]+) -->/g)) {
+    if (!ids.includes(m[1])) ids.push(m[1]);
   }
+  return ids;
 }
 
 /*
@@ -762,15 +773,12 @@ function pathExists(p) {
  * user's CLAUDE.md is not mistaken for a binding.
  */
 function legacyClonePath(cwd) {
-  try {
-    const md = fs.readFileSync(path.join(cwd, 'CLAUDE.md'), 'utf8');
-    const block = /<!-- commonground:router-rule:start -->([\s\S]*?)<!-- commonground:router-rule:end -->/.exec(md);
-    if (!block) return null;
-    const found = /is cloned at `([^`\n]+)`/.exec(block[1]);
-    return found ? found[1].trim() || null : null;
-  } catch {
-    return null;
-  }
+  const md = governingClaudeMd(cwd);
+  if (md === null) return null;
+  const block = /<!-- commonground:router-rule:start -->([\s\S]*?)<!-- commonground:router-rule:end -->/.exec(md);
+  if (!block) return null;
+  const found = /is cloned at `([^`\n]+)`/.exec(block[1]);
+  return found ? found[1].trim() || null : null;
 }
 
 /**
@@ -1095,4 +1103,5 @@ module.exports = {
   cloneHasCommit,
   matchKeywords,
   emitContext,
+  governingClaudeMd,
 };

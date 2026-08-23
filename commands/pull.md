@@ -30,6 +30,11 @@ a clash it stops and asks.
 
 Run `commonground pull` and report the outcome in plain language:
 
+- **A `Heads up: you are inside the folder of …` line first** — the user is standing inside one
+  wiki's clone while the pull addressed another. Nothing wrong happened, but relay both halves
+  verbatim and confirm which wiki they mean before reporting the rest; the line names the command that
+  addresses the one they are standing in.
+
 - **Cloned** — first time. The CLI prints `Creating your wiki folder at <path>` *before* it makes
   anything, so the user is never surprised by a new directory. **Relay that path** — it is where
   their team's context now lives, and it's the folder they'd open in an editor. Then offer to answer

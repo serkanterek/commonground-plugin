@@ -29,6 +29,13 @@ last pointed at` mean different things the next time the user changes something,
 in this area has come from not knowing which rule fired. A user signed in to one wiki won't see this line — there is
 nothing to disambiguate — and its absence is not something to remark on.
 
+**Standing inside a wiki folder.** `this folder is its working copy` means the user is inside the
+wiki's own clone (or a subfolder of it), and the clone answered for itself — say so in those words.
+When the output opens with a **`Heads up: you are inside the folder of …`** line, the folder the user
+is standing in belongs to a DIFFERENT wiki than the one this command answered for (the pointer, or a
+name they typed). Relay both halves verbatim and ask which wiki they mean before doing anything else;
+the line names the command that addresses the one they are standing in. Never switch for them.
+
 **A project can read several wikis.** When the output carries a `This project also reads: …` line,
 relay it as the second half of "which wiki": the wiki above is the **primary** — what a bare
 `commonground` verb and a tool call that names no `wiki` address — and the others are read beside it

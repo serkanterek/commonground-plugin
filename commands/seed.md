@@ -77,6 +77,10 @@ reports "not logged in" / "no team logged in", sign in **here**, inline:
 - **This project is pointed at a wiki** (or, failing that, this machine has one marked `*` active in
   `commonground use`) → confirm in ONE sentence and move: *"Seeding **Acme Handbook** — that the
   one?"* A confirmation is not the same as a guess: it is one sentence they can say no to.
+- **This project reads several wikis** (the listing marks `this project` AND `this project also
+  reads it`) → that is a choice, not a confirmation: name them and ask which one this seeding is
+  for. The primary is not a default here — a seeding arc writes dozens of pages, and the wiki it
+  fills has to be the one the user meant.
 - **Several wikis and nothing pointed or active** → list them by name (`commonground use`) and ask.
 
 **Never guess, and never silently seed the fallback wiki when the user has several.** A wrong-wiki

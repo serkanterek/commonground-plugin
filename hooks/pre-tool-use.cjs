@@ -67,7 +67,11 @@ const COMMONGROUND_TOOLS = new Set([
  * Refuse a CommonGround call when this project and the connector name DIFFERENT wikis (SER-234).
  *
  * The invariant: a session reads the wiki its project is bound to, or it refuses. It never silently
- * reads another. Before SER-236/237 that could only be *detected*, and only if the user happened to
+ * reads another. "The wiki" is the PRIMARY (SER-278): a project may read several, and the rest ride
+ * in `COMMONGROUND_WIKIS`, but the one bare calls address is the one a confirmed disagreement on is
+ * a wrong-wiki session. A drifted set is repaired and said by the SessionStart hook instead — it is
+ * a missing wiki, not a wrong one, and denying every read over it would break far more than it
+ * protects. Before SER-236/237 that could only be *detected*, and only if the user happened to
  * run `/commonground:status` — every answer in between came from the wrong wiki and looked normal.
  *
  * Both sides are readable right here, which is what makes a block possible at all:
@@ -94,14 +98,17 @@ function wrongWikiVerdict(cwd) {
     reason:
       `Refused: this project is set up for CommonGround wiki ${bound}, but the connector has been ` +
       `told to serve ${serving}. Reading would answer from a wiki this project isn't about, which ` +
-      `is worse than not answering — it looks like it worked. Re-run "commonground init ${bound}" ` +
-      `here (it rewrites both), then restart the session.`,
+      `is worse than not answering — it looks like it worked. Run "commonground init --refresh" ` +
+      `here (it re-records what this project's CLAUDE.md names, every wiki of it), then restart ` +
+      'the session.',
     instruction:
       'This project and the CommonGround connector name different wikis, so every wiki answer here ' +
       'would come from the wrong one. Do NOT retry the tool and do not work around it with another ' +
       'source. Tell the user plainly which two wikis disagree, and that "commonground init ' +
-      `${bound}" in this project followed by a session restart fixes it. Answer the rest of their ` +
-      'question from what you already have, saying the wiki was not consulted.',
+      '--refresh" in this project followed by a session restart fixes it — never "commonground ' +
+      `init ${bound}", which would reset the set of wikis this project reads to that one alone. ` +
+      'Answer the rest of their question from what you already have, saying the wiki was not ' +
+      'consulted.',
   };
 }
 

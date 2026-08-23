@@ -65,22 +65,44 @@ function keywordNudge(prompt, cwd) {
   const binding = lib.activeBinding(cwd);
   if (!binding) return ''; // can't resolve a single team → don't guess
 
-  const cache = lib.readKeywordsCache(binding.teamId);
-  if (!cache || !Array.isArray(cache.keywords) || cache.keywords.length === 0) return '';
-  // Stale cache is fine to use (SessionStart refreshes it); we only skip a totally missing one.
+  // Every wiki this project reads (SER-278), primary first — each with its own keyword cache,
+  // written by SessionStart. A single-wiki project is the one-element case of the same loop.
+  const teamIds = [binding.teamId];
+  for (const id of lib.projectTeamIds(cwd)) if (!teamIds.includes(id)) teamIds.push(id);
 
-  const hits = lib.matchKeywords(prompt, cache.keywords, 6);
-  if (hits.length === 0) return '';
+  const matched = [];
+  for (const teamId of teamIds) {
+    const cache = lib.readKeywordsCache(teamId);
+    if (!cache || !Array.isArray(cache.keywords) || cache.keywords.length === 0) continue;
+    // Stale cache is fine to use (SessionStart refreshes it); we only skip a totally missing one.
+    const hits = lib.matchKeywords(prompt, cache.keywords, 6);
+    if (hits.length) matched.push({ teamId, hits });
+  }
+  if (matched.length === 0) return '';
 
   // Audience-NEUTRAL wording, deliberately (SER-185). This hook is on the prompt hot path and makes
   // ZERO network calls by design — its only local cache holds keywords, not the charter — so it
   // cannot know whether this wiki is personal or shared. "Their CommonGround wiki" is true either
   // way; "your team's" was a guess that read as wrong to every solo user.
+  if (teamIds.length === 1) {
+    const hits = matched[0].hits;
+    return (
+      `The user's message mentions ${hits.map((h) => `"${h}"`).join(', ')}, which their ` +
+      'CommonGround wiki likely covers. Before answering, search the wiki (search / get_index / ' +
+      'get_page) and ground your answer in it, citing the pageIds you used. If nothing relevant is ' +
+      'found, say so rather than guessing.'
+    );
+  }
+  // Several wikis: name WHICH matched, by id — the cache holds no names, and the id is what the
+  // `wiki` argument takes — so Claude can aim `get_page` and cite the wiki beside the pageId.
+  const which = matched
+    .map((m) => `${m.hits.map((h) => `"${h}"`).join(', ')} (wiki ${m.teamId})`)
+    .join('; ');
   return (
-    `The user's message mentions ${hits.map((h) => `"${h}"`).join(', ')}, which their ` +
-    'CommonGround wiki likely covers. Before answering, search the wiki (search / get_index / ' +
-    'get_page) and ground your answer in it, citing the pageIds you used. If nothing relevant is ' +
-    'found, say so rather than guessing.'
+    `The user's message mentions ${which}, which the CommonGround wikis this project reads likely ` +
+    'cover. Before answering, search (a bare `search` answers from every wiki this project reads, ' +
+    'grouped by wiki; pass `wiki` to narrow) and ground your answer in it, citing the wiki and the ' +
+    'pageIds you used. If nothing relevant is found, say so rather than guessing.'
   );
 }
 

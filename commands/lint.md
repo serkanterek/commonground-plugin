@@ -21,6 +21,16 @@ correct — and, more importantly, *which wiki the answer describes*:
   already filled and orphans they already linked — confidently wrong about work done ten minutes ago.
 - **MCP mode** → use the `lint` and `get_coverage` tools; there is no local copy to read.
 
+**A project that reads several wikis lints one at a time, and says which.** The SessionStart hook
+and the router block name every wiki the project reads; `$ARGUMENTS` may name one. A bare run lints
+the **primary**; to lint another, name it — `commonground lint <wiki>` / `commonground coverage
+<wiki>` in local-clone mode, the `lint` / `get_coverage` tools with `wiki: <teamId>` in MCP mode —
+and when nothing was named and the user plainly means "all of them", go through the set in order,
+one report per wiki, each headed by the wiki's name. Never blend two wikis' findings into one list:
+an orphan in the personal wiki and an orphan in the team wiki are different people's work. (The
+`crossWiki` block below is the one part that is about the PAIR and needs no per-wiki run: the
+server computes it for the wiki being linted against every other wiki the user belongs to.)
+
 Fixes are ordinary page edits, so they follow the same rule: in local-clone mode they are file edits
 that anyone may make (publishing is the gated step); in MCP mode writing takes an admin/curator.
 

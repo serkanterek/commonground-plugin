@@ -9,7 +9,9 @@
  *
  * Claude Code runs this once per connection and turns the JSON it prints into request headers. The
  * server treats `X-CG-Wiki` as a SELECTION and re-checks membership itself (SER-236), so the worst
- * a wrong value here can do is name a wiki the user already belongs to — or nothing at all.
+ * a wrong value here can do is name a wiki the user already belongs to — or nothing at all. Since
+ * SER-278 it also sends `X-CG-Wikis`, every wiki the project reads, authorized the same way one by
+ * one (SER-276) — so the connector serves the project's whole set over this one connection.
  *
  * WHY A HELPER RATHER THAN A STATIC `headers` ENTRY. `${VAR}` interpolation inside `.mcp.json` reads
  * only the real process environment; it does NOT see the project's `.claude/settings.json` `env`,
@@ -32,8 +34,18 @@
  * directory already ships; it is not itself a hook and is not registered in `hooks.json`.
  */
 const wiki = (process.env.COMMONGROUND_WIKI || '').trim();
+// The whole SET a project reads (SER-278) — primary first, comma-separated, written by `init` only
+// when the project reads more than one wiki. Sent beside the primary, never instead of it: a server
+// that predates the set ignores the second header and serves the primary exactly as before, and a
+// plugin that predates it never sends one. Same fail-open contract as the line above.
+const wikis = (process.env.COMMONGROUND_WIKIS || '').trim();
 
 // No validation beyond "is there anything here". The server owns what a well-formed wiki id is, and
 // a second opinion in the client is a second thing to keep in step — one that fails by dropping a
 // header the server would have accepted, which reads to the user as the wrong wiki.
-process.stdout.write(JSON.stringify(wiki ? { 'X-CG-Wiki': wiki } : {}));
+process.stdout.write(
+  JSON.stringify({
+    ...(wiki ? { 'X-CG-Wiki': wiki } : {}),
+    ...(wikis ? { 'X-CG-Wikis': wikis } : {}),
+  }),
+);

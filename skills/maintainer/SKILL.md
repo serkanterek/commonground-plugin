@@ -63,6 +63,17 @@ help them read, answer, and file `suggest_change`.
 - **Read/answer** — search the wiki and answer with citations. In MCP mode use the CommonGround
   MCP tools (`search`, `get_page`, `get_index`). In local-clone mode start at `index.md` and open
   only the pages you need. Never assert a fact a page doesn't back.
+- **A project that reads several wikis.** The SessionStart hook and the router block name every
+  wiki the project reads, primary first. In MCP mode a bare `search` / `get_index` then answers
+  from ALL of them, **grouped per wiki** — each group carries `wiki.teamId` and `wiki.name`; pass
+  that `wiki.teamId` as `wiki` to `get_page` (and to any write) for a page from that group, since a
+  call that names no `wiki` addresses the primary. In local-clone mode each wiki has its own clone;
+  `commonground status` names the primary's folder and `commonground status <wiki>` the others.
+  Either way: **cite the wiki beside the pageId** — `(Hipolabs) decisions/pricing` — and **never
+  merge two wikis' claims into one unattributed sentence**. When both could answer, each wiki's own
+  router lines decide: an organisation's or product's wiki is the authority on the organisation
+  itself, the personal wiki on the user's own part in it and on whatever no other wiki covers.
+  A declared wiki the connector reports it could not reach is said, not answered for.
 - **Curate** — run the procedures below. Persist by editing the clone (local) or via the MCP write
   tools (MCP). The server re-validates frontmatter on write — that's the backstop, not a substitute
   for getting it right here.

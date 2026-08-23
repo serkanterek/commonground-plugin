@@ -29,6 +29,13 @@ last pointed at` mean different things the next time the user changes something,
 in this area has come from not knowing which rule fired. A user signed in to one wiki won't see this line — there is
 nothing to disambiguate — and its absence is not something to remark on.
 
+**A project can read several wikis.** When the output carries a `This project also reads: …` line,
+relay it as the second half of "which wiki": the wiki above is the **primary** — what a bare
+`commonground` verb and a tool call that names no `wiki` address — and the others are read beside it
+(`search` and `get_index` answer from all of them; `commonground pull <wiki>` / `lint <wiki>` and the
+`wiki` argument address one). Their own sync standing is one `commonground status <wiki>` away; say
+so rather than guessing it. Adding or dropping one is `/commonground:point <wiki> --also` / `--drop`.
+
 **Bound to a wiki this machine can't reach.** If the output says `This project is bound to <id>,
 which this machine has no sign-in for`, that outranks the line above it — lead with it. Say the two
 facts plainly and in this order: this project asks for `<id>`, and answers here are coming from a
@@ -53,6 +60,12 @@ a formality.
 **`get_started` reports the wiki the connector is serving** — it names the wiki and, always, its
 `team <id>`. Compare that **id** with the one `commonground status` just reported. Match on the id,
 never the name: two wikis can share a display name, and the id is what every other surface keys on.
+For a project that reads several wikis, `get_started` also says `This project also reads …` with each
+further wiki's `team <id>`, and names any declared wiki the connection could not reach. Compare that
+list with the `also reads` line from `commonground status` the same way, by id. A wiki the project
+reads that the connector does NOT list is the same situation as a mismatched primary — bound in this
+session, or by an older plugin — and the fix is the same restart / `/commonground:point`; a wiki
+the connector reports it *could not reach* is a membership matter for that wiki, not a restart.
 
 If they **differ**, lead with it — it outranks everything else on this screen, because every wiki
 answer in the session is coming from a wiki the user did not choose:

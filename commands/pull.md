@@ -21,6 +21,13 @@ a clash it stops and asks.
 > with `more than one wiki available — say which: …`, which lists your wikis by name and id. Pass one as
 > `commonground pull <wiki>`, and offer **`/commonground:point`** so it stops asking.
 
+> **A project that reads several wikis pulls each of them.** A bare `commonground pull` brings in
+> the **primary** only — the SessionStart hook and `commonground status` name the others the
+> project also reads. Run `commonground pull <wiki>` for each further wiki in turn, and report each
+> outcome under the wiki's name rather than folding them into one line: "updated" for the personal
+> wiki and "blocked" for the team wiki are two different situations, and only one of them needs a
+> decision. The same per-wiki rule holds for `/commonground:push`.
+
 Run `commonground pull` and report the outcome in plain language:
 
 - **Cloned** — first time. The CLI prints `Creating your wiki folder at <path>` *before* it makes

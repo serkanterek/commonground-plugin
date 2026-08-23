@@ -53,12 +53,17 @@ Then **point the projects you actually work in** at it:
 Run that in any repo, any time you want to aim somewhere else — it is the same command every time,
 first run and after.
 
+**A project can read more than one wiki.** Your personal wiki beside your team's, a product wiki
+beside the company's — `/commonground:point <wiki> --also` adds one alongside what the project
+already reads (`--drop` takes it back out). Claude then answers from all of them at once, each wiki
+speaking for what it covers, and says which one a fact came from.
+
 ## Commands
 
 | Command | What it does |
 |---|---|
 | `/commonground:seed` | Fill the wiki — guided interview, or import an existing markdown folder. Signs you in and asks which wiki, so it works before anything is set up |
-| `/commonground:point` | Aim this project at one of your wikis (MCP or local-clone mode) — first time and every time after |
+| `/commonground:point` | Aim this project at one of your wikis (MCP or local-clone mode) — first time and every time after; `--also` / `--drop` let one project read several |
 | `/commonground:ingest` | Capture anything into the wiki: notes, a transcript, a doc or URL, a decision |
 | `/commonground:lint` | Health check — stale/orphan/broken-citation pages, coverage gaps, open suggestions |
 | `/commonground:status` | Where you stand: connection, which wiki and why, role, and what to do next |

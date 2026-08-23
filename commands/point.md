@@ -1,6 +1,6 @@
 ---
-description: Point this project at your CommonGround wiki — sign in, pick a wiki, done. Works the first time and every time after.
-argument-hint: "[wiki] [mcp|local]"
+description: Point this project at your CommonGround wiki — sign in, pick a wiki, done. Works the first time and every time after, and a project can read more than one wiki.
+argument-hint: "[wiki] [mcp|local] [--also|--drop]"
 ---
 
 Aim the current project at a CommonGround wiki so this session can consult it. Work through these
@@ -9,6 +9,17 @@ steps conversationally, adapting to what's already true — don't blindly run ev
 **One verb, first time and every time after.** Setting a project up and re-aiming it later are the
 same command, so there is never a moment where the user has to work out which one they are in.
 Re-running this on an already-pointed project is expected, not a mistake.
+
+**A project can read more than one wiki.** A personal wiki beside the employer's, a product wiki
+beside the team's — one set, read over one connection (or from one clone each), with `search` and
+`get_index` answering from all of them and each wiki's own charter saying what it covers. The flags
+carry it: `--also <wiki>` adds a wiki beside the ones the project already reads, `--drop <wiki>`
+stops reading one, and a bare wiki name keeps its old meaning — *this project reads THIS wiki* — so
+it replaces the set. Plain words map to the same two flags: "also point this at Hipo", "read my
+personal wiki here too", "add Hipo" mean `--also`; "stop reading Hipo here", "drop the personal
+wiki from this project" mean `--drop`. The first wiki a project reads is its **primary** — what a
+bare `commonground` verb and a tool call that names no `wiki` address; everything else about the
+set is additive.
 
 The bundled `commonground` CLI talks to the hosted API by default (no env setup needed).
 
@@ -48,6 +59,15 @@ nothing to approve without one, and its button is hidden rather than left dead.
 
 If `$ARGUMENTS` names a wiki, that wins — use it and skip the listing.
 
+**Already pointed, and a different wiki named?** `commonground use` (below) marks the wiki *this
+project* reads and any it *also reads*. When the project already reads A and the user names B
+without saying whether to add or switch, **ask — with the `AskUserQuestion` tool if it's available,
+otherwise as a plain question — and never default**: *"This project reads A. Add B alongside it
+(the project answers from both), or switch to B (it stops reading A)?"* Adding and switching are
+different decisions with different consequences, and an ambiguous choice that resolves itself is the
+exact failure this step exists to remove. A flag or a plain word in `$ARGUMENTS` ("also", "add",
+"too" / "drop", "stop reading", "remove") answers the question, so don't ask it twice.
+
 Otherwise run `commonground use` with no argument. It lists every wiki the user is a **member** of —
 asked of the server, not of this machine's sign-ins — marks the currently-active one with `*`, marks
 the one **this project** is bound to, and marks any it reaches without a sign-in of its own as
@@ -61,6 +81,17 @@ Relay it in plain language — wiki names, never bare UUIDs.
   session, otherwise as a plain question. **Don't guess, don't default to the first, and don't pick
   "the one they used last."** Which wiki a project reads from is the user's decision, not a default,
   and an ambiguous choice that resolves itself is the exact failure this step exists to remove.
+
+**Offer the other kind, once.** The listing tags a personal wiki `personal`. When the user has just
+chosen (or already has) a shared wiki and ALSO owns a personal one — or the other way round — offer
+to read both here, in one sentence, after the first point lands: *"You also have a personal wiki.
+This project can read both — the personal one answers for you, Acme Handbook for the company. Add it
+(`--also`)?"* That pairing can never collide (each account has one personal wiki, and the two kinds
+describe different subjects), which is why it is the one pairing worth volunteering. **Two wikis of
+the same kind** — two shared wikis, two client wikis — are not offered: they may genuinely overlap.
+If the user asks for such a pair, add it (this command never refuses a wiki they belong to), and
+say that `/commonground:lint` shows where the two overlap and settles which answers for what. Offer
+once; if they decline, don't raise it again in this session.
 
 **One caveat about the listing.** If the output ends with a parenthetical note that it was *"listed
 from this machine's sign-ins"*, the list may be **incomplete** — a wiki joined recently will be
@@ -122,6 +153,23 @@ appears, and can say otherwise. Ask it as a confirm-or-override, never as an ope
 
 Run `commonground init --mode <mcp|local> [--path <folder>] <wiki>`, then `commonground use <wiki>`.
 
+**Adding or dropping instead?** The project is already pointed, so its mode and its primary are
+settled — don't pass `--mode` or a bare wiki name beside the flag:
+- add: `commonground init --also <wiki>` (local mode: add `--path <folder>` to choose where THAT
+  wiki's folder goes; same confirm-or-override as step 4, same refusal of a non-empty folder; an
+  existing clone is connected, not refreshed). Nothing about the wikis it already reads changes.
+- drop: `commonground init --drop <wiki>`. Its folder, if any, is untouched; the project simply
+  stops reading it. The CLI refuses to drop the primary while other wikis remain — point the project
+  at another wiki first (`commonground init <wiki>`, which replaces the set), then `--also` the rest
+  back — and refuses to drop the last wiki: a project reads at least one.
+- a project reads at most five wikis; the CLI says so at the sixth.
+Skip `commonground use` on an add or a drop: the machine-wide default is about the primary, and the
+primary did not move.
+
+**After a bare `init <wiki>` on a project that read several wikis, relay the line about what it
+no longer reads.** Replacing the set is the bare verb's meaning and the receipt names what fell out;
+the user should hear it from you, not discover it from a later `status`.
+
 The first binds THIS project. It writes an idempotent CommonGround router block into this project's
 `./CLAUDE.md` (it merges — it never clobbers the user's existing content) so Claude consults the wiki
 before answering team questions. Local mode also clones the wiki, printing the folder it is creating
@@ -162,9 +210,20 @@ When the project was already pointed somewhere else, say what changed, from whic
 
 ## 6. Confirm, then hand off (don't dead-end at an empty wiki)
 
-Tell the user: the mode chosen, that `./CLAUDE.md` now routes to CommonGround, and the wiki. **For
-MCP mode, tell them to restart the session** — the wiki this project is bound to is read at session
-start, so until they do, the connector is still answering for whichever wiki it was authorised for.
+Tell the user: the mode chosen, that `./CLAUDE.md` now routes to CommonGround, and the wiki — or,
+for a project that reads several, every wiki and which is the primary. **For MCP mode, tell them to
+restart the session** — the wikis this project reads are recorded for the connector at session
+start, so until they do, the connector is still answering for whichever wiki (or set) it was told
+about when the session began; an add or a drop needs the restart exactly as a first point does.
+
+**After an add, run the overlap check.** Two wikis read together is the moment SER-272's boundary
+question becomes real. In MCP mode call the `lint` tool once (the session's own wiki; no `wiki`
+argument needed) and read its `crossWiki` block — it compares the session's wiki against every
+other wiki the user belongs to, the one just added included. In local mode `commonground lint` reads
+the working tree and the MCP `lint` tool is still the one that carries `crossWiki`. If `unsettled`
+is above zero, say so in a sentence and point at `/commonground:lint`, which lists the subjects
+and settles which wiki answers for each; if it is zero, say the two don't overlap and move on.
+Don't run `/commonground:lint` itself here uninvited — naming the check is the job.
 Do not skip this because everything looks connected: that is exactly the state in which a wrong-wiki
 answer is indistinguishable from a right one. For MCP
 mode, mention that if the connector needs authentication — or if its tools stop appearing later,
@@ -205,5 +264,7 @@ member on an empty wiki, note that an admin or curator needs to run `/commongrou
 
 ## Related
 
-- **`/commonground:status`** — which wiki this project reads, which rule chose it, and its state.
+- **`/commonground:status`** — which wiki this project reads (and which it also reads), which rule
+  chose it, and its state.
 - **`/commonground:seed`** — charter and fill the wiki (or import an existing folder).
+- **`/commonground:lint`** — after a second wiki, where the two overlap and which answers for what.

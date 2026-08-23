@@ -194,19 +194,30 @@ const CURATION_POSTURE =
   'project should not write to the wiki. The rule above is about WHERE a write lands, not whether ' +
   'it may happen.';
 
-function modeRule(mode, teamId, voice) {
+function modeRule(mode, teamId, voice, alsoTeamIds) {
   const v = voice || NEUTRAL_VOICE;
   // The RULE is frame-independent — where writes land does not depend on who reads the wiki — but
   // the CONSEQUENCE is: "nothing reaches the team" is false on a wiki with no team in it.
   const published = v.others ? 'the published wiki' : 'the published copy';
+  const also = Array.isArray(alsoTeamIds) ? alsoTeamIds : [];
   if (mode === 'local') {
     // No resolvable team (signed out here, or several signed in) → still state the RULE, just
     // without a concrete path. The rule is what prevents the wrong write; the path is a convenience.
     const dir = teamId ? lib.clonePath(teamId) : null;
+    // Every wiki this project reads has a clone of its own (SER-278), and a write belongs in the
+    // clone of the wiki it is about — so each folder is named here, at runtime, on this machine
+    // (the tracked block never carries them — SER-242).
+    const others = also.length
+      ? ` This project also reads ${also.length === 1 ? 'wiki' : 'wikis'} ${also
+          .map((id) => `${id} (working copy at ${lib.clonePath(id)})`)
+          .join(', ')}; a write lands in the clone of the wiki it belongs to.`
+      : '';
     return (
       `This project is in CommonGround LOCAL-CLONE mode: the wiki is a working copy` +
       (dir ? ` at ${dir}` : ' on this machine') +
-      '. ' +
+      '.' +
+      others +
+      ' ' +
       'ALL curation — ingest, edits, lint fixes, seeding, the charter — writes FILES in that ' +
       'clone. Do NOT ' +
       'use the CommonGround MCP write tools (`save_page`, `stage_sources`, `save_charter`) in this ' +
@@ -220,13 +231,21 @@ function modeRule(mode, teamId, voice) {
       CURATION_POSTURE
     );
   }
+  const others = also.length
+    ? ` This project also reads ${also.length === 1 ? 'wiki' : 'wikis'} ${also.join(', ')} over the same ` +
+      'connector: `search` and `get_index` answer from every wiki it reads, grouped by wiki; a tool ' +
+      'call that names no `wiki` addresses the primary, so pass `wiki` (the team id) to read or ' +
+      'write another.'
+    : '';
   return (
     'This project is in CommonGround MCP mode: there is no local copy, so every write is ' +
     'immediately live. `save_page`, `stage_sources` and `save_charter` commit straight to ' +
     `${published} — the moment one lands it is what ` +
     (v.others ? `${v.others}' Claude reads` : 'every Claude you use reads') +
     '. Show what you intend to write and get an explicit yes before each write; there is no ' +
-    'staging step to undo it in. ' +
+    'staging step to undo it in.' +
+    others +
+    ' ' +
     CURATION_POSTURE
   );
 }
@@ -279,7 +298,15 @@ function bindingRepairClause(cwd, mode) {
   const serving = (process.env.COMMONGROUND_WIKI || '').trim();
   // Case-insensitive, like the guard: the server canonicalises the id, so casing is not a mismatch.
   // This is also the cheap path — a healthy project never spawns the CLI.
-  if (serving.toLowerCase() === bound.toLowerCase()) return '';
+  const fold = (ids) => ids.map((id) => String(id).trim().toLowerCase()).filter(Boolean).join(',');
+  // The SET too (SER-278): the connector mounts what `COMMONGROUND_WIKIS` names, and a project whose
+  // also-markers say more (a teammate's clone, a set bound by an older plugin) is served only its
+  // primary — fluent, sourced, and missing a wiki. Same repair, same receipt.
+  const boundSet = lib.projectTeamIds(cwd);
+  const servingSet = (process.env.COMMONGROUND_WIKIS || '').split(',');
+  const wantedSet = boundSet.length > 1 ? fold(boundSet) : '';
+  const setAgrees = fold(servingSet) === wantedSet;
+  if (serving.toLowerCase() === bound.toLowerCase() && setAgrees) return '';
 
   // What THIS session is serving and what the FILE says are different questions, and only the file
   // is ours to fix. `unchanged` below is exactly the case where they disagree: someone bound this
@@ -292,15 +319,19 @@ function bindingRepairClause(cwd, mode) {
       : 'Until then, wiki answers here may come from another wiki entirely — and such an answer is ' +
         'fluent, sourced and indistinguishable from a right one, so do not wait to see whether it ' +
         'matters';
-  const head = `This project names CommonGround wiki ${bound}, but this session's connector was ` +
-    (serving ? `told to serve ${serving} instead. ` : 'never told which wiki to serve. ');
+  const head =
+    serving.toLowerCase() === bound.toLowerCase()
+      ? `This project reads CommonGround wikis ${boundSet.join(', ')}, but this session's connector was ` +
+        (fold(servingSet) ? `told to serve ${fold(servingSet)}. ` : 'told only about the primary. ')
+      : `This project names CommonGround wiki ${bound}, but this session's connector was ` +
+        (serving ? `told to serve ${serving} instead. ` : 'never told which wiki to serve. ');
 
   if (done && done.outcome === 'unreadable') {
     return (
       head +
       `It could NOT be recorded: this project's .claude/settings.json isn't valid JSON, so it was ` +
       'left untouched rather than overwritten. Nothing will fix this on its own — TELL THE USER, ' +
-      `and that repairing that file (or running "commonground init ${bound}" after) is what ends ` +
+      `and that repairing that file (or running "commonground init --refresh" after) is what ends ` +
       `it. ${consequence}.`
     );
   }
@@ -319,7 +350,7 @@ function bindingRepairClause(cwd, mode) {
   return (
     head +
     'It could not be recorded automatically this session, so nothing has changed yet. TELL THE ' +
-    `USER, and that "commonground init ${bound}" in this project followed by a restart fixes it. ` +
+    `USER, and that "commonground init --refresh" in this project followed by a restart fixes it. ` +
     `${consequence}.`
   );
 }
@@ -466,6 +497,43 @@ function awarenessFromState(state) {
   };
 }
 
+/**
+ * Refresh each also-wiki's keyword cache and, in local mode, its pull/push standing (SER-278).
+ *
+ * Bounded: at most four reads, 1500 ms each, fail-open per wiki — a wiki that cannot be reached says
+ * nothing here rather than taking the session's start down with it. Returns the nudge sentence(s)
+ * for clones that are out of step, '' otherwise. The keyword cache is the point: the prompt hook
+ * matches every wiki the project reads, and a cache nobody writes is a wiki that never triggers.
+ */
+async function alsoWikiNudges(alsoIds, binding, localMode, now) {
+  const lines = [];
+  for (const teamId of (alsoIds || []).slice(0, 4)) {
+    const st = await lib.fetchJson(
+      '/wiki/state?surface=code&projectInitialized=true',
+      binding,
+      1500,
+      { 'x-cg-wiki': teamId },
+    );
+    const wiki = st && st.active && st.active.wiki;
+    if (!wiki) continue;
+    if (Array.isArray(wiki.keywords) && wiki.keywords.length > 0) {
+      lib.writeKeywordsCache(teamId, wiki.keywords, now);
+    }
+    if (!localMode) continue;
+    const localHead = lib.localCloneHead(teamId);
+    const hostedHead = wiki.lastCommitOid;
+    if (!localHead || !hostedHead || hostedHead === localHead) continue;
+    lines.push(
+      lib.cloneHasCommit(teamId, hostedHead)
+        ? `The clone of wiki ${teamId} (which this project also reads) has unpublished changes — ` +
+            `suggest running /commonground:push ${teamId} when the user is ready.`
+        : `Wiki ${teamId} (which this project also reads) has moved on since its local clone last ` +
+            `updated — suggest running /commonground:pull ${teamId}.`,
+    );
+  }
+  return lines.join(' ');
+}
+
 async function main() {
   const input = lib.readStdinInput();
   const cwd = lib.projectCwd(input);
@@ -524,6 +592,9 @@ async function main() {
   const binding = lib.activeBinding(cwd);
   const bindingRepair = bindingRepairClause(cwd, projectMode);
   const foreignClone = foreignClonePathClause(cwd, projectMode);
+  // The OTHER wikis this project reads (SER-278) — every initialized path names them in the mode
+  // rule, and the live path below refreshes each one's keyword cache and sync standing.
+  const alsoIds = lib.projectTeamIds(cwd).slice(1);
   if (!binding) {
     // Initialized, but no single resolvable binding — either signed out on THIS machine (0 tokens)
     // or signed in to several teams (>1, ambiguous). We can't fetch LIVE awareness for one team
@@ -550,7 +621,7 @@ async function main() {
     // pageIds" followed by every tool call failing reads to the user as a permissions problem.
     // The mode rule still applies with no binding: which surface may be written is a property of
     // the PROJECT, not of whether this machine can currently resolve a device token.
-    emit(`${awarenessContext(null)}${hint}`, modeRule(projectMode, null), bindingRepair, foreignClone, CONNECTOR_HEALTH_CLAUSE);
+    emit(`${awarenessContext(null)}${hint}`, modeRule(projectMode, null, null, alsoIds), bindingRepair, foreignClone, CONNECTOR_HEALTH_CLAUSE);
     return;
   }
 
@@ -584,13 +655,19 @@ async function main() {
           : "The team's CommonGround wiki has moved on since this local clone last updated — suggest " +
             'running /commonground:pull.'
         : '';
+    // The also-wikis (SER-278): one more read each — the same token, the wiki SELECTED by header
+    // (one sign-in reaches every wiki, SER-241) — to refresh that wiki's keyword cache and, in local
+    // mode, to compare its clone with the hosted tip. NOT ambient: their `next` step is never
+    // rendered here (one nudge per session is the budget), so their nudge budget is not spent.
+    const alsoNudges = await alsoWikiNudges(alsoIds, binding, localMode0, now);
 
     emit(
       resolvedContext(state),
-      modeRule(projectMode, binding.teamId, voiceOf(state)),
+      modeRule(projectMode, binding.teamId, voiceOf(state), alsoIds),
       bindingRepair,
       foreignClone,
       nudge,
+      alsoNudges,
       delegatedWelcome(state),
       updateNotice(state),
     );
@@ -612,7 +689,7 @@ async function main() {
   emit(
     `${awarenessContext(null)} CommonGround could not be reached this session, so the figures above ` +
       'are unavailable — the wiki itself is fine; run /commonground:status to check.',
-    modeRule(projectMode, binding.teamId),
+    modeRule(projectMode, binding.teamId, null, alsoIds),
     bindingRepair,
     foreignClone,
     localHead ? 'This project has a local wiki clone; /commonground:pull and /commonground:push still work offline-first.' : '',
@@ -631,6 +708,7 @@ module.exports = {
   main,
   awarenessContext,
   modeRule,
+  alsoWikiNudges,
   canSeed,
   stepProse,
   resolvedContext,

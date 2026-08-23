@@ -33,6 +33,22 @@ about this project not being the wiki, don't push back on the request, and never
 project shouldn't write to the wiki. The only things worth raising are a genuine charter-scope
 question (below) and, in MCP mode, the per-write yes.
 
+**Several wikis → the TARGET is a decision, made once, said out loud.** A project can read more
+than one wiki (`/commonground:point … --also`); the SessionStart hook names them, as does the router
+block. When it does, decide which wiki this capture belongs to BEFORE writing, by subject, using each
+wiki's own charter lines in the block: the organisation's or product's own facts go to its wiki;
+the user's own part in things, their preferences, their writing voice, and any subject no other
+wiki covers go to the personal wiki. Default by that rule; when a capture could genuinely belong to
+either, ask once — *"this reads like a Hipo decision; record it in the Hipolabs wiki, or in your
+personal wiki as your own take on it?"* — and stay on the answer for the rest of the session. Then
+aim the write: in **MCP mode** a write that names no `wiki` lands in the **primary**, so pass
+`wiki: <teamId>` (the id from the block, the hook, or a search group) on every `stage_sources` /
+`save_page` / `save_charter` for any other wiki, and read its `[commonground] answered from wiki
+<id>` stamp after the first one; in **local-clone mode** write the FILES into THAT wiki's clone —
+`commonground status` prints the primary's folder and `commonground status <wiki>` the others; never
+guess a path. **Say where it went** in the receipt, every time: a capture in the wrong wiki is a
+fluent, well-formed page nobody will look for where it is.
+
 **Roles.** In **local-clone mode ingesting needs no particular role** — it's the user's own working
 copy, so a member ingests exactly like an admin. Only **publishing** is admin/curator, and
 `/commonground:push` says so rather than failing; a member's work then travels to the team as a

@@ -14555,6 +14555,11 @@ function modeMarker(mode) {
   return `
 <!-- commonground:mode:${mode} -->`;
 }
+var ALSO_MARKER_RE = /<!-- commonground:also:([^\s>]+) -->/g;
+function alsoMarkers(ids) {
+  return ids.map((id) => `
+<!-- commonground:also:${id} -->`).join("");
+}
 function fenceSafe(s) {
   return (s ?? "").replace(/<!--|-->/g, " ");
 }
@@ -14685,6 +14690,100 @@ ${CURATION_POSTURE}
 Do not edit inside this block \u2014 CommonGround regenerates it. Put your own notes outside it.
 ${ROUTER_END}`;
 }
+function sectionLabel(w) {
+  const name = sanitizeName(fenceSafe(w.name));
+  return name ? `"${name}"` : `wiki ${w.teamId}`;
+}
+function wikiSection(w, primary) {
+  const v = wikiVoice(w.voice?.audience);
+  const naming = { name: w.name ?? null };
+  const bullets = `${briefBullet(w.voice)}${excludesBullet(w.voice)}${coverageBullet(w.voice, naming)}${boundaryBullet(w.voice)}`;
+  return `### ${sectionLabel(w)} \u2014 ${v.possessive} CommonGround ${v.noun}${primary ? " (the primary)" : ""}
+
+${v.when}${bullets}
+${v.cite}`;
+}
+function introLabel(w) {
+  const v = wikiVoice(w.voice?.audience);
+  return `${sectionLabel(w)} (${v.possessive} ${v.noun})`;
+}
+var WHICH_WIKI_RULE = "Each wiki describes itself below \u2014 consult the one whose subject a question is about, and cite the wiki alongside the pageId. When something the user asks you to capture could belong to either wiki, ask which, and say where you wrote it.";
+function mcpRouterRuleForSet(primary, also) {
+  const all = [primary, ...also];
+  return `${ROUTER_START}
+## CommonGround \u2014 context wikis (via the CommonGround plugin)
+${STRANGER_ESCAPE}
+This project reads ${all.length} CommonGround wikis through the CommonGround MCP connector:
+${all.map(introLabel).join("; ")}. ${WHICH_WIKI_RULE}
+
+- Use the CommonGround tools \u2014 \`get_index\` (the catalog), \`search\` (find pages), \`get_page\`
+  (read one in full). \`search\` and \`get_index\` answer from EVERY wiki this project reads, grouped
+  by wiki \u2014 each group carries \`wiki.teamId\` and \`wiki.name\`; pass that \`wiki.teamId\` as \`wiki\`
+  to \`get_page\` for a page from that group, or to any tool to address one wiki in particular. A
+  call that names no \`wiki\` addresses the primary, ${sectionLabel(primary)}. Load context on demand;
+  don't read everything.
+
+${all.map((w, i) => wikiSection(w, i === 0)).join("\n\n")}
+
+${CURATION_POSTURE}
+- **There is no local copy in this project, so every write is immediately shared.** \`save_page\`,
+  \`stage_sources\` and \`save_charter\` commit straight to the hosted wiki \u2014 the moment one lands,
+  it is what everyone else's Claude reads. Show what you intend to write and get an explicit yes
+  before each write; there is no staging step to undo it in. A write that names no \`wiki\` lands in
+  the primary \u2014 pass \`wiki\` (the team id) to write into another wiki this project reads.
+- If the connector needs authentication \u2014 or its CommonGround tools stop appearing mid-session,
+  which a plugin update can cause \u2014 run \`/mcp\` to (re)connect and complete the browser sign-in, or
+  restart the session. ${CONNECTOR_HEALTH_RULE} \`commonground pull [wiki]\` still reads a wiki
+  meanwhile \u2014 it authenticates as the signed-in device rather than through the connector \u2014 so offer
+  it (it writes a readable copy of the wiki to disk, so ask first).
+- To curate, use the CommonGround maintainer skill / \`/commonground:*\` commands. Admins and
+  curators can write; a member's \`tools/list\` simply carries no write tools, and their path is
+  \`suggest_change\`. Don't pre-emptively tell anyone they lack access \u2014 the tools you were given
+  are the answer.
+
+Do not edit inside this block \u2014 CommonGround regenerates it. Put your own notes outside it.
+${ROUTER_END}`;
+}
+function localRouterRuleForSet(primary, also) {
+  const all = [primary, ...also];
+  return `${ROUTER_START}
+## CommonGround \u2014 context wikis (local clones)
+${STRANGER_ESCAPE}
+This project reads ${all.length} CommonGround wikis, each cloned on this machine:
+${all.map(introLabel).join("; ")}. Those clones are **the working copies for this project** \u2014 the
+hosted repos are what each wiki's readers share, and \`/commonground:push\` is how work here becomes
+theirs. ${WHICH_WIKI_RULE}
+
+- **Where each clone is depends on the machine, so ask rather than assume:**
+  \`commonground status\` prints \`Your wiki folder: \u2026\` for the primary, ${sectionLabel(primary)}, and a
+  folder for every other wiki this project reads. They are deliberately not written here \u2014 this
+  file is committed, and everyone who clones this repo keeps their wikis somewhere different.
+  Start at \`index.md\` in a wiki's folder (its catalog) and open only the pages you need. Bare
+  \`commonground\` verbs address the primary; name another wiki to act on it (\`commonground pull
+  <wiki>\`, \`commonground lint <wiki>\`).
+
+${all.map((w, i) => wikiSection(w, i === 0)).join("\n\n")}
+
+${CURATION_POSTURE}
+- Raw inputs are under each wiki's \`sources/\`; the change history is that wiki's git history. Use
+  \`/commonground:pull\` to get the latest and \`/commonground:push\` to publish your changes, per
+  wiki (it commits for you \u2014 pass \`--message\` saying what the session did).
+- **Curation writes FILES in the right wiki's clone \u2014 never the CommonGround MCP write tools.** Do
+  not call \`save_page\`, \`stage_sources\` or \`save_charter\` in this project: they write the hosted
+  wikis directly, skipping the user's review and the publish step. Ingesting, editing, linting,
+  seeding and chartering all mean editing files in the wiki folder the material belongs to \u2014 so an
+  ingest asked for here is a file write, never a refusal. Nothing reaches anyone else until
+  \`/commonground:push\`, which previews and asks first.
+- **Read from the clones too** \u2014 they are current with the user's own unpushed work, which the hosted
+  wikis are not. The one thing a clone genuinely cannot hold is the suggestions queue
+  (\`list_suggestions\` / \`suggest_change\` / \`resolve_suggestion\`), which lives server-side
+  because it carries messages from people who have no write access to the repo.
+- Curating locally needs no particular role \u2014 it is the user's own copy. Only **publishing** is
+  admin/curator (\`/commonground:push\` reports this rather than failing).
+
+Do not edit inside this block \u2014 CommonGround regenerates it. Put your own notes outside it.
+${ROUTER_END}`;
+}
 function capitalize(s) {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
@@ -14695,17 +14794,32 @@ function teamMarker(teamId) {
 }
 function routerRuleForMode(mode, opts = {}) {
   const naming = { name: opts.name ?? null };
-  const rule = mode === "local" ? localRouterRule(opts.voice, naming) : mcpRouterRule(opts.voice, naming);
-  return rule.replace(ROUTER_START, `${ROUTER_START}${teamMarker(opts.teamId)}${modeMarker(mode)}`);
+  const also = opts.also ?? [];
+  let rule;
+  if (also.length === 0) {
+    rule = mode === "local" ? localRouterRule(opts.voice, naming) : mcpRouterRule(opts.voice, naming);
+  } else {
+    const primary = { teamId: opts.teamId ?? "", voice: opts.voice, name: opts.name };
+    rule = mode === "local" ? localRouterRuleForSet(primary, also) : mcpRouterRuleForSet(primary, also);
+  }
+  return rule.replace(ROUTER_START, `${ROUTER_START}${teamMarker(opts.teamId)}${alsoMarkers(also.map((a) => a.teamId))}${modeMarker(mode)}`);
 }
 function parseRouterBlock(claudeMd) {
   const block = /<!-- commonground:router-rule:start -->([\s\S]*?)<!-- commonground:router-rule:end -->/.exec(claudeMd)?.[1];
   if (!block)
     return null;
   const marked = MODE_MARKER_RE.exec(block)?.[1];
+  const teamId = TEAM_MARKER_RE.exec(block)?.[1] ?? null;
+  const alsoTeamIds = [];
+  for (const m of block.matchAll(ALSO_MARKER_RE)) {
+    const id = m[1];
+    if (id !== teamId && !alsoTeamIds.includes(id))
+      alsoTeamIds.push(id);
+  }
   return {
     mode: marked === "local" || marked === "mcp" ? marked : block.includes("(local clone)") ? "local" : "mcp",
-    teamId: TEAM_MARKER_RE.exec(block)?.[1] ?? null
+    teamId,
+    alsoTeamIds
   };
 }
 async function charterVoiceFromWiki(wikiDir) {
@@ -14750,7 +14864,8 @@ ${rule}
 }
 var PROJECT_SETTINGS = [".claude", "settings.json"];
 var WIKI_ENV_KEY = "COMMONGROUND_WIKI";
-async function writeProjectWikiEnv(dir, teamId) {
+var WIKI_SET_ENV_KEY = "COMMONGROUND_WIKIS";
+async function writeProjectWikiEnv(dir, teamId, alsoTeamIds = []) {
   const path = (0, import_node_path5.join)(dir, ...PROJECT_SETTINGS);
   const existing = await readFileOr(path, "");
   let settings = {};
@@ -14769,9 +14884,15 @@ async function writeProjectWikiEnv(dir, teamId) {
     return "unreadable";
   }
   const env = { ...current ?? {} };
-  if (env[WIKI_ENV_KEY] === teamId)
+  const set2 = [teamId, ...alsoTeamIds.filter((id, i, all) => id !== teamId && all.indexOf(id) === i)];
+  const wanted = set2.length > 1 ? set2.join(",") : void 0;
+  if (env[WIKI_ENV_KEY] === teamId && env[WIKI_SET_ENV_KEY] === wanted)
     return "unchanged";
   env[WIKI_ENV_KEY] = teamId;
+  if (wanted === void 0)
+    delete env[WIKI_SET_ENV_KEY];
+  else
+    env[WIKI_SET_ENV_KEY] = wanted;
   await (0, import_promises4.mkdir)((0, import_node_path5.dirname)(path), { recursive: true });
   await (0, import_promises4.writeFile)(path, `${JSON.stringify({ ...settings, env }, null, 2)}
 `, "utf8");
@@ -15019,55 +15140,95 @@ async function browserLogin(deps) {
   }
   throw new AgentError('timed out waiting for authorization \u2014 run "commonground login" again');
 }
+var MAX_WIKIS_PER_PROJECT = 5;
 async function injectTooling(deps, teamId, dir) {
   const profile = await readTeamProfile(teamId, deps.configHome);
   await injectAll(dir, { name: profile.wikiName ?? null });
 }
 async function initProject(deps, opts) {
   const { mode, teamId, projectDir } = opts;
-  const binding = await bindingFor(deps, teamId);
+  const clonePaths = {
+    ...opts.clonePaths ?? {},
+    ...opts.path === void 0 ? {} : { [teamId]: opts.path }
+  };
+  const alsoIds = (opts.also ?? []).filter((id, i, all) => id !== teamId && all.indexOf(id) === i);
+  if (1 + alsoIds.length > MAX_WIKIS_PER_PROJECT) {
+    throw new AgentError(`a project reads at most ${MAX_WIKIS_PER_PROJECT} wikis \u2014 this would make ${1 + alsoIds.length}. Drop one first ("commonground init --drop <wiki>").`);
+  }
+  const before = await detectRouterBlock(projectDir);
+  const after = /* @__PURE__ */ new Set([teamId, ...alsoIds]);
+  const dropped = before ? [before.teamId, ...before.alsoTeamIds].filter((id) => !!id && !after.has(id)) : [];
+  const bindings = /* @__PURE__ */ new Map();
+  for (const id of [teamId, ...alsoIds])
+    bindings.set(id, await bindingFor(deps, id));
   if (mode === "local") {
-    if (opts.path) {
-      const existing = await resolveClonePath(teamId, deps.configHome, deps.dataHome);
-      if (await pathExists2(existing)) {
-        throw new AgentError(`this wiki is already cloned at ${existing} \u2014 to move it, run "commonground relocate ${opts.path} ${teamId}" (which moves the folder and updates this project's CLAUDE.md), not "init --path"`);
-      }
-      await setClonePath(teamId, await validateClonePath(opts.path, deps.configHome, deps.dataHome), deps.configHome);
+    const primary2 = await connectLocalWiki(deps, teamId, bindings.get(teamId), clonePaths[teamId], opts.onClone);
+    const also2 = [];
+    const sections2 = [];
+    for (const id of alsoIds) {
+      const w = await connectLocalWiki(deps, id, bindings.get(id), clonePaths[id], opts.onClone);
+      also2.push({ teamId: id, clonePath: w.dir, cloned: w.cloned, ...w.cloned ? {} : { standing: w.standing } });
+      sections2.push({ teamId: id, voice: w.voice, name: w.name });
     }
-    const dir = await resolveCloneTarget(deps, teamId, binding.token);
-    const cloned = !await pathExists2(dir);
-    if (cloned) {
-      await cloneFresh(deps, teamId, dir, await deps.backend.remoteAccess(teamId), opts.onClone);
-    } else {
-      await injectTooling(deps, teamId, dir);
-    }
-    const standing = cloned ? null : await standingAgainstHosted(deps, teamId);
-    const voice2 = await charterVoiceFromWiki(dir);
-    const name2 = (await readTeamProfile(teamId, deps.configHome)).wikiName ?? null;
-    await injectRouterRule(projectDir, routerRuleForMode("local", { voice: voice2, teamId, name: name2 }));
+    await injectRouterRule(projectDir, routerRuleForMode("local", { voice: primary2.voice, teamId, name: primary2.name, also: sections2 }));
     return {
       mode,
       teamId,
       projectDir,
-      clonePath: dir,
-      cloned,
+      clonePath: primary2.dir,
+      cloned: primary2.cloned,
       // Recorded in local mode too: the connector is registered machine-wide whatever mode this
       // project chose, so the only question is whether it agrees with the clone (SER-237).
-      wikiEnv: await writeProjectWikiEnv(projectDir, teamId),
-      ...cloned ? {} : { standing }
+      wikiEnv: await writeProjectWikiEnv(projectDir, teamId, alsoIds),
+      ...primary2.cloned ? {} : { standing: primary2.standing },
+      also: also2,
+      dropped
     };
   }
-  const read = deps.backend.fetchCharter ? await deps.backend.fetchCharter(teamId) : { fail: "unsupported" };
-  const voice = "charter" in read ? read.charter : null;
-  const name = (await readTeamProfile(teamId, deps.configHome)).wikiName ?? null;
-  await injectRouterRule(projectDir, routerRuleForMode("mcp", { voice, teamId, name }));
+  const primary = await readMcpWiki(deps, teamId);
+  const also = [];
+  const sections = [];
+  for (const id of alsoIds) {
+    const w = await readMcpWiki(deps, id);
+    also.push({ teamId: id, ...w.voiceFail ? { voiceFail: w.voiceFail } : {} });
+    sections.push({ teamId: id, voice: w.voice, name: w.name });
+  }
+  await injectRouterRule(projectDir, routerRuleForMode("mcp", { voice: primary.voice, teamId, name: primary.name, also: sections }));
   return {
     mode,
     teamId,
     projectDir,
-    wikiEnv: await writeProjectWikiEnv(projectDir, teamId),
-    ..."fail" in read ? { voiceFail: read.fail } : {}
+    wikiEnv: await writeProjectWikiEnv(projectDir, teamId, alsoIds),
+    ...primary.voiceFail ? { voiceFail: primary.voiceFail } : {},
+    also,
+    dropped
   };
+}
+async function connectLocalWiki(deps, teamId, binding, path, onClone) {
+  if (path) {
+    const existing = await resolveClonePath(teamId, deps.configHome, deps.dataHome);
+    if (await pathExists2(existing)) {
+      throw new AgentError(`this wiki is already cloned at ${existing} \u2014 to move it, run "commonground relocate ${path} ${teamId}" (which moves the folder and updates this project's CLAUDE.md), not "init --path"`);
+    }
+    await setClonePath(teamId, await validateClonePath(path, deps.configHome, deps.dataHome), deps.configHome);
+  }
+  const dir = await resolveCloneTarget(deps, teamId, binding.token);
+  const cloned = !await pathExists2(dir);
+  if (cloned) {
+    await cloneFresh(deps, teamId, dir, await deps.backend.remoteAccess(teamId), onClone);
+  } else {
+    await injectTooling(deps, teamId, dir);
+  }
+  const standing = cloned ? null : await standingAgainstHosted(deps, teamId);
+  const voice = await charterVoiceFromWiki(dir);
+  const name = (await readTeamProfile(teamId, deps.configHome)).wikiName ?? null;
+  return { dir, cloned, standing, voice, name };
+}
+async function readMcpWiki(deps, teamId) {
+  const read = deps.backend.fetchCharter ? await deps.backend.fetchCharter(teamId) : { fail: "unsupported" };
+  const voice = "charter" in read ? read.charter : null;
+  const name = (await readTeamProfile(teamId, deps.configHome)).wikiName ?? null;
+  return { voice, name, ..."fail" in read ? { voiceFail: read.fail } : {} };
 }
 async function standingAgainstHosted(deps, teamId) {
   try {
@@ -15084,10 +15245,16 @@ async function detectRouterBlock(projectDir) {
   }
 }
 async function recordProjectWiki(projectDir) {
-  const wiki = (await detectRouterBlock(projectDir))?.teamId ?? null;
+  const block = await detectRouterBlock(projectDir);
+  const wiki = block?.teamId ?? null;
   if (!wiki)
     return { outcome: "no-marker", wiki: null };
-  return { outcome: await writeProjectWikiEnv(projectDir, wiki), wiki };
+  const also = block?.alsoTeamIds ?? [];
+  return {
+    outcome: await writeProjectWikiEnv(projectDir, wiki, also),
+    wiki,
+    ...also.length ? { wikis: [wiki, ...also] } : {}
+  };
 }
 async function relocateClone(deps, opts) {
   const { teamId, projectDir } = opts;
@@ -15896,10 +16063,13 @@ function why(choice) {
       return "it is the only wiki this machine is signed in to";
   }
 }
-function describeWikiChoice(choice, label) {
+function describeWikiChoice(choice, label, alsoLabels = []) {
   const bound = choice.unreachable;
-  const head = !bound && choice.via === "sole" ? "" : `  Wiki: ${label} \u2014 ${why(choice)}.
-`;
+  const also = choice.via === "project" && alsoLabels.length ? `  This project also reads: ${alsoLabels.join(", ")} \u2014 bare commands address the wiki above;
+  name one of these to act on it (commonground pull <wiki>, commonground lint <wiki>).
+` : "";
+  const head = (!bound && choice.via === "sole" ? "" : `  Wiki: ${label} \u2014 ${why(choice)}.
+`) + also;
   if (!bound)
     return head;
   return head + `  This project is bound to ${bound}, which this machine has no sign-in for \u2014 so the wiki
@@ -15925,7 +16095,10 @@ Usage:
                                ./CLAUDE.md (--mode mcp [default] | local; local also clones).
                                --path <folder> puts the wiki folder where you want it (local mode;
                                the folder must be empty or new). --refresh re-renders the block in
-                               the wiki's charter voice
+                               the wiki's charter voice. A project can read SEVERAL wikis:
+                               --also <wiki> adds one beside the ones it already reads (same
+                               mode; local mode clones it), --drop <wiki> stops reading one; a
+                               bare "init <wiki>" replaces the whole set with that wiki
   commonground relocate <folder> [wiki]
                                move your wiki folder somewhere else \u2014 moves the files, remembers
                                the new location, and updates THIS project's ./CLAUDE.md. Other
@@ -16070,9 +16243,12 @@ function pageCount(n) {
 }
 function parseInitArgs(rest) {
   let mode = "mcp";
+  let modeGiven = false;
   let team;
   let refresh = false;
   let path;
+  let also;
+  let drop;
   for (let i = 0; i < rest.length; i++) {
     const arg = rest[i];
     const modeVal = arg === "--mode" ? rest[++i] : arg.startsWith("--mode=") ? arg.slice(7) : void 0;
@@ -16081,23 +16257,42 @@ function parseInitArgs(rest) {
         throw new AgentError(USAGE_INIT);
       }
       mode = modeVal;
+      modeGiven = true;
     } else if (arg === "--path" || arg.startsWith("--path=")) {
       const val = arg === "--path" ? rest[++i] : arg.slice(7);
       if (!val)
         throw new AgentError(USAGE_INIT);
       path = val;
+    } else if (arg === "--also" || arg.startsWith("--also=")) {
+      const val = arg === "--also" ? rest[++i] : arg.slice(7);
+      if (!val || val.startsWith("-"))
+        throw new AgentError(USAGE_INIT);
+      also = val;
+    } else if (arg === "--drop" || arg.startsWith("--drop=")) {
+      const val = arg === "--drop" ? rest[++i] : arg.slice(7);
+      if (!val || val.startsWith("-"))
+        throw new AgentError(USAGE_INIT);
+      drop = val;
     } else if (arg === "--refresh") {
       refresh = true;
     } else if (!arg.startsWith("-")) {
       team = arg;
     }
   }
-  if (path && mode !== "local") {
+  if (path && mode !== "local" && !also) {
     throw new AgentError("--path sets where your wiki FOLDER goes, which only local-clone mode has \u2014 add --mode local, or drop --path");
   }
-  return { mode, team, refresh, path };
+  if ([also, drop, refresh ? "refresh" : void 0].filter(Boolean).length > 1) {
+    throw new AgentError(`--also, --drop and --refresh are separate changes \u2014 one per run.
+${USAGE_INIT}`);
+  }
+  if ((also || drop) && (team || modeGiven)) {
+    throw new AgentError((also ? "--also" : "--drop") + ` changes which wikis this project reads, in the mode it already has \u2014 name the wiki after the flag, and leave --mode and the bare wiki argument off.
+${USAGE_INIT}`);
+  }
+  return { mode, modeGiven, team, refresh, path, also, drop };
 }
-var USAGE_INIT = "usage: commonground init [--mode mcp|local] [--path <folder>] [--refresh] [wiki]";
+var USAGE_INIT = "usage: commonground init [--mode mcp|local] [--path <folder>] [--refresh] [wiki]\n       commonground init --also <wiki> [--path <folder>]   (read one more wiki here)\n       commonground init --drop <wiki>                     (stop reading one here)";
 function announceClone(dir) {
   process.stdout.write(`Creating your wiki folder at ${dir}
 `);
@@ -16109,24 +16304,25 @@ folder, so there is nothing to update anywhere else.
 `;
 }
 function formatWikiEnv(r) {
+  const several = r.also.length > 0;
   switch (r.wikiEnv) {
     case "written":
-      return `Recorded this project's wiki in ${r.projectDir}/.claude/settings.json, so the MCP
-connector answers for it here. Claude Code reads that file at startup \u2014 restart this
+      return `Recorded this project's ${several ? "wikis" : "wiki"} in ${r.projectDir}/.claude/settings.json, so the MCP
+connector answers for ${several ? "them" : "it"} here. Claude Code reads that file at startup \u2014 restart this
 session for it to take effect.
 `;
     case "unreadable":
-      return `Could NOT record the wiki in ${r.projectDir}/.claude/settings.json \u2014 it isn't valid
+      return `Could NOT record the ${several ? "wikis" : "wiki"} in ${r.projectDir}/.claude/settings.json \u2014 it isn't valid
 JSON, and it was left untouched rather than overwritten. Until it parses, the MCP
-connector will answer here for whichever wiki it was authorised for, not this one.
+connector will answer here for whichever wiki it was authorised for, not ${several ? "these" : "this one"}.
 `;
     default:
       return "";
   }
 }
 var COMMITTED_DISCLOSURE = `Both files are normally committed, so what they contain reaches anyone who clones this repo:
-CLAUDE.md carries the wiki's id and quotes your charter's brief and anti-scope; settings.json
-carries the id. No file paths and nothing secret \u2014 your sign-in lives elsewhere.
+CLAUDE.md carries each wiki's id and quotes its charter's brief and anti-scope; settings.json
+carries the ids. No file paths and nothing secret \u2014 your sign-in lives elsewhere.
 `;
 function formatVoiceFail(r) {
   switch (r.voiceFail) {
@@ -16150,17 +16346,39 @@ accepted. "commonground login", then "commonground init --refresh" re-renders it
 }
 function formatInit(r) {
   const wrote = `Wrote the CommonGround router block into ${r.projectDir}/CLAUDE.md.`;
+  const set2 = r.also.length ? ` \u2014 this project now reads ${1 + r.also.length} wikis` : "";
   if (r.mode !== "local")
-    return `Initialized ${r.teamId} (MCP mode). ${wrote}
-` + formatWikiEnv(r) + formatVoiceFail(r) + COMMITTED_DISCLOSURE + `The wiki is reached via the CommonGround MCP connector \u2014 if it needs auth, run /mcp.
+    return `Initialized ${r.teamId} (MCP mode)${set2}. ${wrote}
+` + formatAlso(r) + formatDropped(r) + formatWikiEnv(r) + formatVoiceFail(r) + COMMITTED_DISCLOSURE + `The ${r.also.length ? "wikis are" : "wiki is"} reached via the CommonGround MCP connector \u2014 if it needs auth, run /mcp.
 `;
-  const head = `Initialized ${r.teamId} (local-clone mode). ${wrote}
-` + formatWikiEnv(r) + COMMITTED_DISCLOSURE;
+  const head = `Initialized ${r.teamId} (local-clone mode)${set2}. ${wrote}
+` + formatAlso(r) + formatDropped(r) + formatWikiEnv(r) + COMMITTED_DISCLOSURE;
   if (r.cloned)
     return head + `Cloned your wiki to ${r.clonePath}.
 `;
   return head + `Your wiki folder was already at ${r.clonePath} \u2014 left exactly as it was.
 ` + formatInitStanding(r.standing);
+}
+function formatAlso(r) {
+  if (r.also.length === 0)
+    return "";
+  const lines = r.also.map((w) => {
+    if (r.mode === "local") {
+      if (w.cloned)
+        return `  Also reads ${w.teamId} \u2014 cloned to ${w.clonePath}.
+`;
+      return `  Also reads ${w.teamId} \u2014 its folder was already at ${w.clonePath}, left exactly as it was.
+` + formatInitStanding(w.standing).replace(/^/gm, "  ").replace(/\n {2}$/, "\n");
+    }
+    return `  Also reads ${w.teamId}` + (w.voiceFail ? ` \u2014 its charter could not be read, so its section is in the generic voice` : "") + ".\n";
+  });
+  return lines.join("");
+}
+function formatDropped(r) {
+  if (r.dropped.length === 0)
+    return "";
+  return `This project no longer reads ${r.dropped.join(", ")}` + (r.mode === "local" ? " (the folder is untouched)" : "") + ` \u2014 "commonground init --also <wiki>" adds one back.
+`;
 }
 function formatInitStanding(s) {
   if (!s)
@@ -16243,19 +16461,25 @@ function legacyCredentialNote(state, deps) {
 `;
   }
 }
-function formatStatus(s, deps, mode = null, choice = null, profile = {}) {
-  return formatSyncState(s, mode, profile) + whichWiki(s, choice, profile) + whereItLives(s, mode) + legacyCredentialNote(s.legacyCredential, deps);
+function formatStatus(s, deps, mode = null, choice = null, profile = {}, alsoLabels = []) {
+  return formatSyncState(s, mode, profile) + whichWiki(s, choice, profile, alsoLabels) + whereItLives(s, mode) + legacyCredentialNote(s.legacyCredential, deps);
 }
-function whichWiki(s, choice, profile) {
+function whichWiki(s, choice, profile, alsoLabels = []) {
   if (!choice)
     return "";
-  return describeWikiChoice(choice, wikiLabel({ teamId: s.teamId, ...profile }));
+  return describeWikiChoice(choice, wikiLabel({ teamId: s.teamId, ...profile }), alsoLabels);
 }
-function formatWikiList(listings, activeId, boundId) {
+function formatWikiList(listings, activeId, boundId, alsoIds = []) {
   return listings.map((l) => {
     const marks = [
       l.teamId === activeId ? "active" : null,
       l.teamId === boundId ? "this project" : null,
+      // SER-277: a wiki this project reads BESIDE its primary. Said as a separate mark so the
+      // primary (what bare commands address) and the rest never blur into one word.
+      alsoIds.includes(l.teamId) ? "this project also reads it" : null,
+      // SER-277: the KIND, so `point.md` can tell a personal wiki from a shared one without a
+      // second listing — the proactive "you also have a personal wiki" offer keys on this.
+      resolveVoiceClass(l) === "personal" ? "personal" : null,
       // SER-241. Reachable through a sign-in minted for another of YOUR wikis — same account,
       // nothing separate to log into. Invisible when everything works, and the entire explanation
       // when this one alone fails offline. Worded so it cannot read as a second account: "via
@@ -16693,12 +16917,14 @@ Then run "commonground login --wait" (the code is valid for about ${Math.round(p
       if (listings.length === 0)
         throw notLoggedIn(void 0, deps.configHome);
       const active = await readActiveWiki(deps.configHome);
-      const boundId = (await detectRouterBlock(process.cwd()))?.teamId ?? null;
+      const project = await detectRouterBlock(process.cwd());
+      const boundId = project?.teamId ?? null;
+      const alsoIds = project?.alsoTeamIds ?? [];
       const bound = listings.find((l) => l.teamId === boundId) ?? boundId;
       const query = rest.find((a) => !a.startsWith("-"));
       if (!query) {
         process.stdout.write(`Your wikis:
-${formatWikiList(listings, active, boundId)}
+${formatWikiList(listings, active, boundId, alsoIds)}
 Switch with "commonground use <wiki>" \u2014 a name or an id, and a unique prefix of
 either is enough.
 ${sourceNote(source)}`);
@@ -16708,11 +16934,11 @@ ${sourceNote(source)}`);
       if (hits.length === 0) {
         throw new AgentError(`no wiki of yours matches "${query}".
 Your wikis:
-${formatWikiList(listings, active, boundId)}` + sourceNote(source));
+${formatWikiList(listings, active, boundId, alsoIds)}` + sourceNote(source));
       }
       if (hits.length > 1) {
         throw new AgentError(`"${query}" matches more than one of your wikis:
-${formatWikiList(hits, active, boundId)}Say which one \u2014 the full name, or the id.`);
+${formatWikiList(hits, active, boundId, alsoIds)}Say which one \u2014 the full name, or the id.`);
       }
       const picked = hits[0];
       await writeActiveWiki(picked.teamId, deps.configHome);
@@ -16720,16 +16946,58 @@ ${formatWikiList(hits, active, boundId)}Say which one \u2014 the full name, or t
       return;
     }
     case "init": {
-      const { mode, team, refresh, path } = parseInitArgs(rest);
+      const { mode, team, refresh, path, also, drop } = parseInitArgs(rest);
       const deps = await buildDeps();
+      const projectDir = process.cwd();
+      if (also || drop) {
+        const detected = await detectRouterBlock(projectDir);
+        if (!detected?.teamId) {
+          throw new AgentError(`this project isn't pointed at a wiki yet, so there is nothing to ${also ? "add to" : "drop from"} \u2014 point it first: commonground init [--mode mcp|local] <wiki>`);
+        }
+        const primary = detected.teamId;
+        const current = detected.alsoTeamIds;
+        if (also) {
+          const id2 = await resolveTeamId(deps, also, projectDir);
+          if (id2 === primary || current.includes(id2)) {
+            throw new AgentError(`this project already reads ${id2} \u2014 nothing to add.`);
+          }
+          const result3 = await initProject(deps, {
+            mode: detected.mode,
+            teamId: primary,
+            also: [...current, id2],
+            projectDir,
+            ...path === void 0 ? {} : { clonePaths: { [id2]: path } },
+            onClone: announceClone
+          });
+          process.stdout.write(formatInit(result3));
+          return;
+        }
+        const id = await resolveTeamId(deps, drop, projectDir);
+        if (id === primary) {
+          throw new AgentError(current.length ? `${id} is this project's PRIMARY wiki \u2014 the one bare commands and bare connector calls address. Point the project at another wiki first ("commonground init <wiki>", which replaces the set), then add the others back with --also.` : `${id} is the only wiki this project reads; a project reads at least one. To read a different wiki instead: commonground init <wiki>.`);
+        }
+        if (!current.includes(id))
+          throw new AgentError(`this project does not read ${id} \u2014 nothing to drop.`);
+        const result2 = await initProject(deps, {
+          mode: detected.mode,
+          teamId: primary,
+          also: current.filter((x) => x !== id),
+          projectDir,
+          onClone: announceClone
+        });
+        process.stdout.write(formatInit(result2));
+        return;
+      }
       let effectiveMode = mode;
       let effectiveTeam = team;
+      let alsoIds = [];
       if (refresh) {
-        const detected = await detectRouterBlock(process.cwd());
+        const detected = await detectRouterBlock(projectDir);
         if (!detected) {
           throw new AgentError("no CommonGround router block in ./CLAUDE.md \u2014 initialize first: commonground init [--mode mcp|local]");
         }
         effectiveMode = detected.mode;
+        alsoIds = detected.alsoTeamIds;
         if (detected.teamId) {
           if (team && team !== detected.teamId) {
             throw new AgentError(`this project's block is bound to team ${detected.teamId} \u2014 refresh without a team argument, or re-run init --mode ${detected.mode} ${team} to rebind`);
@@ -16740,7 +17008,8 @@ ${formatWikiList(hits, active, boundId)}Say which one \u2014 the full name, or t
       const result = await initProject(deps, {
         mode: effectiveMode,
         teamId: await resolveTeamId(deps, effectiveTeam),
-        projectDir: process.cwd(),
+        also: alsoIds,
+        projectDir,
         ...path === void 0 ? {} : { path },
         onClone: announceClone
       });
@@ -16825,7 +17094,8 @@ ${formatWikiList(hits, active, boundId)}Say which one \u2014 the full name, or t
       const choice = await resolveWiki(deps, teamArg(rest));
       const result = await status(deps, choice.teamId);
       const project = await detectRouterBlock(process.cwd());
-      process.stdout.write(formatStatus(result, deps, project?.mode ?? null, choice, await readTeamProfile(choice.teamId, deps.configHome)));
+      const alsoLabels = await Promise.all((project?.alsoTeamIds ?? []).map(async (id) => wikiLabel({ teamId: id, ...await readTeamProfile(id, deps.configHome) })));
+      process.stdout.write(formatStatus(result, deps, project?.mode ?? null, choice, await readTeamProfile(choice.teamId, deps.configHome), alsoLabels));
       return;
     }
     case "normalize": {

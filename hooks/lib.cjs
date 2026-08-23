@@ -310,6 +310,31 @@ function projectTeamId(cwd) {
   }
 }
 
+/**
+ * EVERY wiki this project reads, primary first (SER-278) — the team marker, then each also-marker
+ * (`<!-- commonground:also:<id> -->`) in block order, duplicates and the primary dropped. `[]` when
+ * the project names no wiki. Mirrors the sync agent's `parseRouterBlock` (SER-277), scoped to the
+ * block like every reader here. {@link projectTeamId} stays the PRIMARY on purpose: every consumer
+ * that asks "which wiki" still gets the one bare calls address, and only the consumers that want
+ * the whole set ask this.
+ */
+function projectTeamIds(cwd) {
+  try {
+    const md = fs.readFileSync(path.join(cwd, 'CLAUDE.md'), 'utf8');
+    const block = /<!-- commonground:router-rule:start -->([\s\S]*?)<!-- commonground:router-rule:end -->/.exec(md);
+    if (!block) return [];
+    const primary = /<!-- commonground:team:([^\s>]+) -->/.exec(block[1]);
+    if (!primary) return [];
+    const ids = [primary[1]];
+    for (const m of block[1].matchAll(/<!-- commonground:also:([^\s>]+) -->/g)) {
+      if (!ids.includes(m[1])) ids.push(m[1]);
+    }
+    return ids;
+  } catch {
+    return [];
+  }
+}
+
 /*
  * Completing the SER-165 split for a terminal-free user (SER-175). The split only ever relocated an
  * existing store from `commonground login`, and someone already signed in never runs it again — the
@@ -767,7 +792,13 @@ function parseRecordWiki(stdout) {
     if (!parsed || typeof parsed !== 'object') return null;
     if (!RECORD_OUTCOMES.includes(parsed.outcome)) return null;
     const wiki = typeof parsed.wiki === 'string' && parsed.wiki.trim() ? parsed.wiki.trim() : null;
-    return { outcome: parsed.outcome, wiki };
+    // The whole set, when the project reads more than one wiki (SER-277/278). Optional on the wire
+    // — a CLI that predates the set never prints it — and only ever a list of non-empty strings.
+    const wikis =
+      Array.isArray(parsed.wikis) && parsed.wikis.every((w) => typeof w === 'string' && w.trim())
+        ? parsed.wikis.map((w) => w.trim())
+        : null;
+    return { outcome: parsed.outcome, wiki, ...(wikis ? { wikis } : {}) };
   } catch {
     return null;
   }
@@ -846,8 +877,14 @@ function writeVersionMarker(sessionId, version) {
   }
 }
 
-/** GET a `/wiki/*` JSON read with the device token, bounded by a timeout. Returns null on any failure. */
-async function fetchJson(pathname, binding, timeoutMs) {
+/**
+ * GET a `/wiki/*` JSON read with the device token, bounded by a timeout. Returns null on any failure.
+ *
+ * `headers` lets a caller SELECT a wiki (`x-cg-wiki`, SER-241) — one sign-in reaches every wiki the
+ * user belongs to, so the SessionStart hook can read an also-wiki's state with the same token it
+ * holds for the primary (SER-278). Never an authorization: the server re-checks membership.
+ */
+async function fetchJson(pathname, binding, timeoutMs, headers) {
   if (typeof fetch !== 'function') return null; // very old Node without global fetch → skip
   const ac = new AbortController();
   const timer = setTimeout(() => ac.abort(), timeoutMs);
@@ -858,7 +895,7 @@ async function fetchJson(pathname, binding, timeoutMs) {
       // records here is what an MCP request later reads back, since those arrive from Claude's own
       // MCP client with nowhere for us to put a header. Omitted rather than faked when the manifest
       // cannot be read: unknown is a state the server already handles, a guess is not.
-      headers: { authorization: `Bearer ${binding.token}`, ...clientHeader() },
+      headers: { authorization: `Bearer ${binding.token}`, ...clientHeader(), ...(headers || {}) },
       signal: ac.signal,
     });
     if (!res || !res.ok) return null;
@@ -1021,6 +1058,7 @@ module.exports = {
   readStdinInput,
   projectCwd,
   projectTeamId, // the wrong-wiki guard reads it directly (SER-234), not only via activeBinding
+  projectTeamIds, // the whole set, primary first (SER-278)
   isInitialized,
   routerMode,
   legacyClonePath,

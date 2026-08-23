@@ -187,11 +187,13 @@ decision: **mention it only when it's relevant** (they work in folders that aren
 just asked what "active" means). Never make the user reason about two pointers to run one command.
 
 **Relay the CLI's line about what gets committed — don't drop it as boilerplate.** Both files it
-writes are normally tracked by git, so `CLAUDE.md`'s quoted charter brief and anti-scope, and the
-wiki id in both, reach anyone who clones this repo. That is usually fine and occasionally not: a
-charter's anti-scope is a statement of what the team does and does not keep, and in a public repo it
-is on GitHub. Say it once, plainly, and move on — this is a heads-up, not a confirmation to collect.
-Neither file gets a filesystem path and neither holds a secret; the sign-in lives elsewhere.
+writes are normally tracked by git, so `CLAUDE.md`'s wiki names, the first sentence of each charter's
+brief and each category list, and the wiki id in both, reach anyone who clones this repo. That is
+usually fine and occasionally not: a charter's first sentence and its categories are a statement of
+what the team keeps, and in a public repo they are on GitHub. (The block no longer quotes the brief
+at length or the anti-scope at all: both are read from the charter page on demand.) Say it once,
+plainly, and move on — this is a heads-up, not a confirmation to collect. Neither file gets a
+filesystem path and neither holds a secret; the sign-in lives elsewhere.
 
 **If a wiki folder already exists, `init` leaves it exactly as it is.** It clones only when there is
 nothing on disk yet; it will not fast-forward an existing folder onto the hosted version, and it will

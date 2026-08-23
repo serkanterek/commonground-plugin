@@ -308,8 +308,9 @@ describing your own work and hearing it named back. The order below is the point
    half: without it every surface only ever says *consult this wiki*, so material drifts in and the
    wiki stops being trustworthy. Skip it gracefully if they have nothing to exclude — an absent
    Excludes section renders exactly as before. Also mention what it does: coverage stops chasing an
-   excluded section as a gap (it reports it as excluded, never hides it), and both the CLAUDE.md
-   router block and the connector's instructions start saying where that material belongs instead.
+   excluded section as a gap (it reports it as excluded, never hides it), the connector's
+   instructions start saying where that material belongs instead, and the CLAUDE.md router block
+   points Claude at the charter page for it (it no longer quotes the anti-scope itself).
    The self-description rule holds here too: say what this wiki is NOT about, never which other
    CommonGround wiki should answer instead.
 
@@ -349,12 +350,13 @@ not have.>
 
 Keep the `##` headings exactly as written — the server parses them (coverage builds its checklist
 from Structure and marks an excluded section rather than chasing it; the keyword trigger unions
-Pinned keywords; both instruction surfaces name the wiki, enumerate its Structure sections, and
-render Retrieval brief and Excludes).
+Pinned keywords; both instruction surfaces name the wiki and enumerate its Structure sections; the
+connector's instructions render Retrieval brief and Excludes in full, the CLAUDE.md router block
+carries the brief's first sentence as the wiki's trigger and points at the charter for the rest).
 
 With the charter persisted, make it live in this project: run **`commonground init --refresh`**.
-It re-renders the fenced router block in the wiki's own voice — personal framing for a just-me
-wiki, its name and Structure sections, the brief as a trigger line — and absorbs any leftover
+It re-renders the fenced router block in the wiki's own voice — its kind (personal for a just-me
+wiki), its name and Structure sections, the brief's first sentence as its trigger line — and absorbs any leftover
 `retrieval-brief` marker block from
 earlier plugin versions. Never hand-edit inside the fence. The MCP connector's instructions pick
 the charter up automatically (per session/request) — no extra step there.

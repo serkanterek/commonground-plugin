@@ -12332,17 +12332,23 @@ var WIKI_VOICE = {
     others: "your teammates"
   }
 };
-function wikiVoice(audience) {
-  return WIKI_VOICE[wikiVoiceClass(audience)];
-}
 function wikiVoiceFor(known) {
   return WIKI_VOICE[resolveVoiceClass(known)];
 }
-var MAX_BRIEF_CHARS = 400;
-function sanitizeBrief(brief) {
-  const flat = brief.replace(/\s+/g, " ").trim();
-  return flat.length > MAX_BRIEF_CHARS ? `${flat.slice(0, MAX_BRIEF_CHARS - 1)}\u2026` : flat;
+var MAX_SUBJECT_CHARS = 120;
+function charterSubject(brief) {
+  const flat = (brief ?? "").replace(/\s+/g, " ").trim();
+  if (!flat)
+    return "";
+  const sentence = (/^(.*?[.!?])(?:\s|$)/.exec(flat)?.[1] ?? flat).trim();
+  if (sentence.length <= MAX_SUBJECT_CHARS)
+    return sentence;
+  const head = sentence.slice(0, MAX_SUBJECT_CHARS);
+  const strong = Math.max(head.lastIndexOf(" \u2014 "), head.lastIndexOf("; "), head.lastIndexOf(": "));
+  const cut = strong >= MAX_SUBJECT_CHARS / 3 ? strong : head.lastIndexOf(" ");
+  return `${head.slice(0, cut > 0 ? cut : MAX_SUBJECT_CHARS - 1).trimEnd()}\u2026`;
 }
+var ROUTER_BOUNDARY = "A personal wiki is the authority on its person, and on any subject no other wiki covers; a shared wiki is the authority on its organization or product. Read the one whose subject the question is about.";
 var MAX_LIST_TERMS = 12;
 var MAX_LIST_CHARS = 200;
 function cappedList(terms) {
@@ -12368,14 +12374,6 @@ var MAX_NAME_CHARS = 80;
 function sanitizeName(name) {
   const flat = (name ?? "").replace(/\s+/g, " ").replace(/"/g, "\u2019").trim();
   return flat.length > MAX_NAME_CHARS ? `${flat.slice(0, MAX_NAME_CHARS - 1)}\u2026` : flat;
-}
-function coverageClause(voiceClass, identity) {
-  const name = sanitizeName(identity?.name);
-  const categories = cappedList(identity?.categories);
-  if (!categories.length)
-    return "";
-  const subject = voiceClass === "personal" ? "the user" : name || "the team or organization it serves";
-  return `Consult it for anything related to ${subject}: ${categories.join(", ")}.`;
 }
 
 // ../shared/dist/wiki/page.js
@@ -14563,229 +14561,91 @@ function alsoMarkers(ids) {
 function fenceSafe(s) {
   return (s ?? "").replace(/<!--|-->/g, " ");
 }
-function nameTag(naming) {
-  const name = sanitizeName(fenceSafe(naming?.name));
-  return name ? ` ("${name}")` : "";
+function wikiLabel2(teamId, name) {
+  const clean = sanitizeName(fenceSafe(name));
+  return clean ? `"${clean}"` : teamId ? `wiki ${teamId}` : "this wiki";
 }
-function coverageBullet(voice, naming) {
-  const clause = coverageClause(wikiVoiceClass(voice?.audience), {
-    name: fenceSafe(naming?.name),
-    categories: (voice?.sections ?? []).map(fenceSafe)
-  });
-  return clause ? `
-- ${clause}` : "";
+function kindOf(voice) {
+  return wikiVoiceClass(voice?.audience) === "personal" ? "personal" : "shared";
 }
-function boundaryBullet(voice) {
-  return `
-- ${wikiVoice(voice?.audience).boundary}`;
+function terminated(s) {
+  return /[.!?…]$/.test(s) ? s : `${s}.`;
 }
-function briefBullet(voice) {
-  const capped2 = sanitizeBrief((voice?.retrievalBrief ?? "").replace(/<!--|-->/g, " "));
-  return capped2 ? `
-- The wiki's charter states when to consult it: "${capped2}"` : "";
+function triggerClause(voice, name) {
+  const cls = wikiVoiceClass(voice?.audience);
+  const cleanName = sanitizeName(fenceSafe(name));
+  const own = charterSubject(fenceSafe(voice?.retrievalBrief));
+  const fallback = cls === "personal" ? "Consult it for anything about the user: who they are, how they work, their projects, tools, decisions and preferences." : `Consult it for anything about ${cleanName || "the team or organization it serves"}.`;
+  const categories = cappedList((voice?.sections ?? []).map(fenceSafe));
+  const coverage2 = categories.length ? ` Categories: ${categories.join(", ")}.` : "";
+  return `${terminated(own || fallback)}${coverage2}`;
 }
-function excludesBullet(voice) {
-  const capped2 = sanitizeBrief((voice?.excludes ?? "").replace(/<!--|-->/g, " "));
-  return capped2 ? `
-- It also states what does NOT belong here: "${capped2}" \u2014 don't file that material here, and don't expect to find it.` : "";
+function wikiLine(w, primary) {
+  const tag = primary ? "; the primary" : "";
+  return `- **${wikiLabel2(w.teamId, w.name)}** (${kindOf(w.voice)}${tag}): ${triggerClause(w.voice, w.name)}`;
 }
-var CURATION_POSTURE = `- **Curating from here is not this project's job, and never off-limits.** Don't volunteer wiki
-  edits while working on this codebase \u2014 reading is the default. But when the user asks to ingest,
-  record, correct or seed something, that is an ordinary request: say what you're about to write,
-  get a yes, then write it. Never tell them this project shouldn't write to the wiki. The rules
-  below govern WHERE a write lands, not whether it may happen.`;
-var CONNECTOR_HEALTH_RULE = `Missing tools are USUALLY a connection problem \u2014 a plugin
-  update or a dropped session \u2014 so \`/mcp\` or a restart is the first thing to try. Not always: if
-  this project names a wiki the user is NOT A MEMBER of, every CommonGround call fails in exactly
-  the same way, and re-authorising cannot fix that \u2014 \`/mcp\` does not grant membership; an admin of
-  that wiki has to invite them. So check which wiki this project names before asserting either
-  diagnosis (\`commonground status\` says, and says whether this machine can reach it). Never tell
-  someone they lack access on a guess \u2014 and never rule it out on one either.`;
 var STRANGER_ESCAPE = `
-> **Not set up with CommonGround?** Ignore this section entirely \u2014 it belongs to this project's
-> maintainers, the tools it names will not exist for you, and nothing else here depends on it.
+> Not using CommonGround? Ignore this section; nothing else in this file depends on it.
 `;
+var CONNECTOR_HEALTH_RULE = "If the CommonGround tools are missing, that is USUALLY a connection problem (`/mcp` reconnects, or restart the session); but if this project names a wiki the user is NOT A MEMBER of, every call fails the same way and `/mcp` does not grant membership (`commonground status` says which wiki, and whether this machine can reach it). Assert neither diagnosis on a guess.";
+function citeClause(plural) {
+  return plural ? "Cite the wiki and pageId you relied on; don't assert wiki facts no page backs." : "Cite the pageIds you relied on; don't assert wiki facts no page backs.";
+}
+function captureClause(plural, mode) {
+  const into = plural ? "into a wiki" : "into it";
+  const how = mode === "local" ? " (it writes files in the clone; `/commonground:push` publishes)" : "";
+  return `To capture something ${into}, use \`/commonground:ingest\`${how}.`;
+}
+var CHARTER_FILE_NOTE = "its charter page `wiki-charter.md` (older wikis: `company/wiki-charter.md`) says in full when to consult it and what does not belong there";
+var CHARTER_PAGE_NOTE = "`wiki-charter` is the charter page, which says in full when to consult a wiki and what does not belong there";
+function localParagraph(count) {
+  if (count === 1) {
+    return `This project reads the CommonGround wiki below, a local clone on this machine (CommonGround names its folder at session start; if that is not in context, \`commonground status\` prints it). When a question touches its subject, start at its \`index.md\` (the catalog) and open only the pages you need; ${CHARTER_FILE_NOTE}. ${citeClause(false)} ${captureClause(false, "local")}`;
+  }
+  return `This project reads ${count} CommonGround wikis, each a local clone on this machine (CommonGround names each clone's folder at session start; if that is not in context, \`commonground status <wiki>\` prints it). When a question touches a wiki's subject, start at that wiki's \`index.md\` (its catalog) and open only the pages you need; ${CHARTER_FILE_NOTE}. ${citeClause(true)} ` + captureClause(true, "local");
+}
+function mcpParagraph(count, primaryLabel) {
+  if (count === 1) {
+    return `This project reads the CommonGround wiki below through the CommonGround MCP connector: \`get_index\` is its catalog, \`search\` finds pages, \`get_page\` reads one in full, and ${CHARTER_PAGE_NOTE}. Load context on demand; don't read everything. ${citeClause(false)} ${captureClause(false, "mcp")} ${CONNECTOR_HEALTH_RULE}`;
+  }
+  return `This project reads ${count} CommonGround wikis through the CommonGround MCP connector: \`search\` and \`get_index\` answer from every wiki it reads, grouped by wiki (each group carries \`wiki.teamId\`); pass that id as \`wiki\` to \`get_page\`, or to any tool, to address one wiki, and a call that names no \`wiki\` addresses the primary, ${primaryLabel}. ${CHARTER_PAGE_NOTE}. Load context on demand; don't read everything. ${citeClause(true)} ${captureClause(true, "mcp")} ` + CONNECTOR_HEALTH_RULE;
+}
 function cloneRouterRule(voice, naming) {
-  const v = wikiVoice(voice?.audience);
+  const name = sanitizeName(fenceSafe(naming?.name));
+  const who = name ? `the CommonGround wiki **"${name}"**` : "a CommonGround wiki";
   return `${ROUTER_START}${modeMarker("local")}
-## CommonGround \u2014 context wiki (auto-managed by the sync agent)
+## CommonGround wiki (this folder is the working copy)
 
-This folder is ${v.possessive} CommonGround ${v.noun}${nameTag(naming)} \u2014 the working copy. The hosted repo is
-what the team shares; \`/commonground:push\` is how work here becomes theirs. ${v.when}
+This folder is ${who} (${kindOf(voice)}): the working copy; \`/commonground:push\` publishes it.
 
-- Start at \`index.md\` (the catalog) and open only the pages you need \u2014 load context on demand.${briefBullet(voice)}${excludesBullet(voice)}${coverageBullet(voice, naming)}${boundaryBullet(voice)}
-${v.cite}
-- Raw inputs are under \`sources/\`; the change history is the wiki's git history. (SER-220 retired
-  \`log.md\`; the maintainer skill in this same folder says never to write it, and this block used to
-  say to read it.)
-- To curate (ingest / edit / lint / seed), use the maintainer skill in \`.commonground/maintainer-skill/\`.
-- **Curation edits the files here \u2014 never the CommonGround MCP write tools.** \`save_page\`,
-  \`stage_sources\` and \`save_charter\` write the team's hosted wiki directly, skipping this copy
-  and the publish step. Nothing reaches the team until \`/commonground:push\`.
+- ${triggerClause(voice, naming?.name)}
+- Start at \`index.md\` (the catalog) and open only the pages you need; \`wiki-charter.md\` says in full
+  when to consult this wiki and what does not belong here. ${citeClause(false)}
+- Raw inputs live under \`sources/\`; the change history is the wiki's git history (never write \`log.md\`).
+- To curate (ingest / edit / lint / seed), use the maintainer skill in \`.commonground/maintainer-skill/\`:
+  every edit is a file here, and nothing is published until \`/commonground:push\`.
 
-Do not edit inside this block \u2014 the sync agent regenerates it. Put your own notes outside it.
+Do not edit inside this block: the sync agent regenerates it. Put your own notes outside it.
 ${ROUTER_END}`;
 }
 var CLONE_ROUTER_RULE = cloneRouterRule();
-function mcpRouterRule(voice, naming) {
-  const v = wikiVoice(voice?.audience);
+function projectRule(mode, wikis) {
+  const plural = wikis.length > 1;
+  const heading = mode === "local" ? plural ? "## CommonGround wikis (local clones)" : "## CommonGround wiki (local clone)" : plural ? "## CommonGround wikis (via the CommonGround plugin)" : "## CommonGround wiki (via the CommonGround plugin)";
+  const primary = wikis[0];
+  const paragraph = mode === "local" ? localParagraph(wikis.length) : mcpParagraph(wikis.length, wikiLabel2(primary.teamId, primary.name));
+  const lines = wikis.map((w, i) => wikiLine(w, plural && i === 0)).join("\n");
   return `${ROUTER_START}
-## CommonGround \u2014 context wiki (via the CommonGround plugin)
+${heading}
 ${STRANGER_ESCAPE}
-${capitalize(v.possessive)} CommonGround ${v.noun}${nameTag(naming)} is available in this session through the
-CommonGround MCP connector. ${v.when}
+${paragraph}
 
-- Use the CommonGround tools \u2014 \`get_index\` (the catalog), \`search\` (find pages), \`get_page\`
-  (read one in full). Load context on demand; don't read everything.${briefBullet(voice)}${excludesBullet(voice)}${coverageBullet(voice, naming)}${boundaryBullet(voice)}
-${v.cite}
-${CURATION_POSTURE}
-- **There is no local copy in this project, so every write is immediately shared.** \`save_page\`,
-  \`stage_sources\` and \`save_charter\` commit straight to the hosted wiki \u2014 the moment one lands,
-  it is what everyone else's Claude reads. Show what you intend to write and get an explicit yes
-  before each write; there is no staging step to undo it in.
-- If the connector needs authentication \u2014 or its CommonGround tools stop appearing mid-session,
-  which a plugin update can cause \u2014 run \`/mcp\` to (re)connect and complete the browser sign-in, or
-  restart the session. ${CONNECTOR_HEALTH_RULE} \`commonground pull [wiki]\` still reads the wiki
-  meanwhile \u2014 it authenticates as the signed-in device rather than through the connector \u2014 so offer
-  it (it writes a readable copy of the wiki to disk, so ask first).
-- To curate, use the CommonGround maintainer skill / \`/commonground:*\` commands. Admins and
-  curators can write; a member's \`tools/list\` simply carries no write tools, and their path is
-  \`suggest_change\`. Don't pre-emptively tell anyone they lack access \u2014 the tools you were given
-  are the answer.
+${lines}
 
-Do not edit inside this block \u2014 CommonGround regenerates it. Put your own notes outside it.
+${ROUTER_BOUNDARY}
+
+Do not edit inside this block: CommonGround regenerates it. Put your own notes outside it.
 ${ROUTER_END}`;
-}
-function localRouterRule(voice, naming) {
-  const v = wikiVoice(voice?.audience);
-  return `${ROUTER_START}
-## CommonGround \u2014 context wiki (local clone)
-${STRANGER_ESCAPE}
-${capitalize(v.possessive)} CommonGround ${v.noun}${nameTag(naming)} is cloned on this machine. That clone is
-**the working copy for this project** \u2014 the hosted repo is what the team shares, and
-\`/commonground:push\` is how work here becomes theirs. ${v.when}
-
-- **Where the clone is depends on the machine, so ask rather than assume:**
-  \`commonground status\` prints \`Your wiki folder: \u2026\`. It is deliberately not written here \u2014
-  this file is committed, and everyone who clones this repo keeps their wiki somewhere different.
-  Start at \`index.md\` in that folder (the catalog) and open only the pages you need.${briefBullet(voice)}${excludesBullet(voice)}${coverageBullet(voice, naming)}${boundaryBullet(voice)}
-${v.cite}
-${CURATION_POSTURE}
-- Raw inputs are under \`sources/\`; the change history is the wiki's git history. Use
-  \`/commonground:pull\` to get the team's latest and \`/commonground:push\` to publish your changes
-  (it commits for you \u2014 pass \`--message\` saying what the session did).
-- **Curation writes FILES in that clone \u2014 never the CommonGround MCP write tools.** Do not call
-  \`save_page\`, \`stage_sources\` or \`save_charter\` in this project: they write the team's hosted
-  wiki directly, skipping the user's review and the publish step. Ingesting, editing, linting,
-  seeding and chartering all mean editing files in the wiki folder \u2014 so an ingest asked for here
-  is a file write, never a refusal. Nothing reaches the team until \`/commonground:push\`, which
-  previews and asks first.
-- **Read from the clone too** \u2014 it is current with the user's own unpushed work, which the hosted
-  wiki is not. The one thing the clone genuinely cannot hold is the suggestions queue
-  (\`list_suggestions\` / \`suggest_change\` / \`resolve_suggestion\`), which lives server-side
-  because it carries messages from people who have no write access to the repo.
-- Curating locally needs no particular role \u2014 it is the user's own copy. Only **publishing** is
-  admin/curator (\`/commonground:push\` reports this rather than failing).
-
-Do not edit inside this block \u2014 CommonGround regenerates it. Put your own notes outside it.
-${ROUTER_END}`;
-}
-function sectionLabel(w) {
-  const name = sanitizeName(fenceSafe(w.name));
-  return name ? `"${name}"` : `wiki ${w.teamId}`;
-}
-function wikiSection(w, primary) {
-  const v = wikiVoice(w.voice?.audience);
-  const naming = { name: w.name ?? null };
-  const bullets = `${briefBullet(w.voice)}${excludesBullet(w.voice)}${coverageBullet(w.voice, naming)}${boundaryBullet(w.voice)}`;
-  return `### ${sectionLabel(w)} \u2014 ${v.possessive} CommonGround ${v.noun}${primary ? " (the primary)" : ""}
-
-${v.when}${bullets}
-${v.cite}`;
-}
-function introLabel(w) {
-  const v = wikiVoice(w.voice?.audience);
-  return `${sectionLabel(w)} (${v.possessive} ${v.noun})`;
-}
-var WHICH_WIKI_RULE = "Each wiki describes itself below \u2014 consult the one whose subject a question is about, and cite the wiki alongside the pageId. When something the user asks you to capture could belong to either wiki, ask which, and say where you wrote it.";
-function mcpRouterRuleForSet(primary, also) {
-  const all = [primary, ...also];
-  return `${ROUTER_START}
-## CommonGround \u2014 context wikis (via the CommonGround plugin)
-${STRANGER_ESCAPE}
-This project reads ${all.length} CommonGround wikis through the CommonGround MCP connector:
-${all.map(introLabel).join("; ")}. ${WHICH_WIKI_RULE}
-
-- Use the CommonGround tools \u2014 \`get_index\` (the catalog), \`search\` (find pages), \`get_page\`
-  (read one in full). \`search\` and \`get_index\` answer from EVERY wiki this project reads, grouped
-  by wiki \u2014 each group carries \`wiki.teamId\` and \`wiki.name\`; pass that \`wiki.teamId\` as \`wiki\`
-  to \`get_page\` for a page from that group, or to any tool to address one wiki in particular. A
-  call that names no \`wiki\` addresses the primary, ${sectionLabel(primary)}. Load context on demand;
-  don't read everything.
-
-${all.map((w, i) => wikiSection(w, i === 0)).join("\n\n")}
-
-${CURATION_POSTURE}
-- **There is no local copy in this project, so every write is immediately shared.** \`save_page\`,
-  \`stage_sources\` and \`save_charter\` commit straight to the hosted wiki \u2014 the moment one lands,
-  it is what everyone else's Claude reads. Show what you intend to write and get an explicit yes
-  before each write; there is no staging step to undo it in. A write that names no \`wiki\` lands in
-  the primary \u2014 pass \`wiki\` (the team id) to write into another wiki this project reads.
-- If the connector needs authentication \u2014 or its CommonGround tools stop appearing mid-session,
-  which a plugin update can cause \u2014 run \`/mcp\` to (re)connect and complete the browser sign-in, or
-  restart the session. ${CONNECTOR_HEALTH_RULE} \`commonground pull [wiki]\` still reads a wiki
-  meanwhile \u2014 it authenticates as the signed-in device rather than through the connector \u2014 so offer
-  it (it writes a readable copy of the wiki to disk, so ask first).
-- To curate, use the CommonGround maintainer skill / \`/commonground:*\` commands. Admins and
-  curators can write; a member's \`tools/list\` simply carries no write tools, and their path is
-  \`suggest_change\`. Don't pre-emptively tell anyone they lack access \u2014 the tools you were given
-  are the answer.
-
-Do not edit inside this block \u2014 CommonGround regenerates it. Put your own notes outside it.
-${ROUTER_END}`;
-}
-function localRouterRuleForSet(primary, also) {
-  const all = [primary, ...also];
-  return `${ROUTER_START}
-## CommonGround \u2014 context wikis (local clones)
-${STRANGER_ESCAPE}
-This project reads ${all.length} CommonGround wikis, each cloned on this machine:
-${all.map(introLabel).join("; ")}. Those clones are **the working copies for this project** \u2014 the
-hosted repos are what each wiki's readers share, and \`/commonground:push\` is how work here becomes
-theirs. ${WHICH_WIKI_RULE}
-
-- **Where each clone is depends on the machine, so ask rather than assume:**
-  \`commonground status\` prints \`Your wiki folder: \u2026\` for the primary, ${sectionLabel(primary)}, and a
-  folder for every other wiki this project reads. They are deliberately not written here \u2014 this
-  file is committed, and everyone who clones this repo keeps their wikis somewhere different.
-  Start at \`index.md\` in a wiki's folder (its catalog) and open only the pages you need. Bare
-  \`commonground\` verbs address the primary; name another wiki to act on it (\`commonground pull
-  <wiki>\`, \`commonground lint <wiki>\`).
-
-${all.map((w, i) => wikiSection(w, i === 0)).join("\n\n")}
-
-${CURATION_POSTURE}
-- Raw inputs are under each wiki's \`sources/\`; the change history is that wiki's git history. Use
-  \`/commonground:pull\` to get the latest and \`/commonground:push\` to publish your changes, per
-  wiki (it commits for you \u2014 pass \`--message\` saying what the session did).
-- **Curation writes FILES in the right wiki's clone \u2014 never the CommonGround MCP write tools.** Do
-  not call \`save_page\`, \`stage_sources\` or \`save_charter\` in this project: they write the hosted
-  wikis directly, skipping the user's review and the publish step. Ingesting, editing, linting,
-  seeding and chartering all mean editing files in the wiki folder the material belongs to \u2014 so an
-  ingest asked for here is a file write, never a refusal. Nothing reaches anyone else until
-  \`/commonground:push\`, which previews and asks first.
-- **Read from the clones too** \u2014 they are current with the user's own unpushed work, which the hosted
-  wikis are not. The one thing a clone genuinely cannot hold is the suggestions queue
-  (\`list_suggestions\` / \`suggest_change\` / \`resolve_suggestion\`), which lives server-side
-  because it carries messages from people who have no write access to the repo.
-- Curating locally needs no particular role \u2014 it is the user's own copy. Only **publishing** is
-  admin/curator (\`/commonground:push\` reports this rather than failing).
-
-Do not edit inside this block \u2014 CommonGround regenerates it. Put your own notes outside it.
-${ROUTER_END}`;
-}
-function capitalize(s) {
-  return s.charAt(0).toUpperCase() + s.slice(1);
 }
 var TEAM_MARKER_RE = /<!-- commonground:team:([^\s>]+) -->/;
 function teamMarker(teamId) {
@@ -14793,15 +14653,9 @@ function teamMarker(teamId) {
 <!-- commonground:team:${teamId} -->` : "";
 }
 function routerRuleForMode(mode, opts = {}) {
-  const naming = { name: opts.name ?? null };
   const also = opts.also ?? [];
-  let rule;
-  if (also.length === 0) {
-    rule = mode === "local" ? localRouterRule(opts.voice, naming) : mcpRouterRule(opts.voice, naming);
-  } else {
-    const primary = { teamId: opts.teamId ?? "", voice: opts.voice, name: opts.name };
-    rule = mode === "local" ? localRouterRuleForSet(primary, also) : mcpRouterRuleForSet(primary, also);
-  }
+  const primary = { teamId: opts.teamId ?? "", voice: opts.voice, name: opts.name };
+  const rule = projectRule(mode, [primary, ...also]);
   return rule.replace(ROUTER_START, `${ROUTER_START}${teamMarker(opts.teamId)}${alsoMarkers(also.map((a) => a.teamId))}${modeMarker(mode)}`);
 }
 function parseRouterBlock(claudeMd) {
@@ -15145,6 +14999,27 @@ async function injectTooling(deps, teamId, dir) {
   const profile = await readTeamProfile(teamId, deps.configHome);
   await injectAll(dir, { name: profile.wikiName ?? null });
 }
+async function wikiNamesFor(deps, teamIds) {
+  const names = /* @__PURE__ */ new Map();
+  const missing = [];
+  for (const id of teamIds) {
+    const cached = (await readTeamProfile(id, deps.configHome)).wikiName?.trim();
+    names.set(id, cached || null);
+    if (!cached)
+      missing.push(id);
+  }
+  if (missing.length === 0)
+    return names;
+  const { listings } = await availableWikis(deps);
+  for (const id of missing) {
+    const name = listings.find((l) => l.teamId === id)?.wikiName?.trim();
+    if (!name)
+      continue;
+    names.set(id, name);
+    await writeTeamProfile(id, { wikiName: name }, deps.configHome);
+  }
+  return names;
+}
 async function initProject(deps, opts) {
   const { mode, teamId, projectDir } = opts;
   const clonePaths = {
@@ -15161,12 +15036,13 @@ async function initProject(deps, opts) {
   const bindings = /* @__PURE__ */ new Map();
   for (const id of [teamId, ...alsoIds])
     bindings.set(id, await bindingFor(deps, id));
+  const names = await wikiNamesFor(deps, [teamId, ...alsoIds]);
   if (mode === "local") {
-    const primary2 = await connectLocalWiki(deps, teamId, bindings.get(teamId), clonePaths[teamId], opts.onClone);
+    const primary2 = await connectLocalWiki(deps, teamId, bindings.get(teamId), names.get(teamId) ?? null, clonePaths[teamId], opts.onClone);
     const also2 = [];
     const sections2 = [];
     for (const id of alsoIds) {
-      const w = await connectLocalWiki(deps, id, bindings.get(id), clonePaths[id], opts.onClone);
+      const w = await connectLocalWiki(deps, id, bindings.get(id), names.get(id) ?? null, clonePaths[id], opts.onClone);
       also2.push({ teamId: id, clonePath: w.dir, cloned: w.cloned, ...w.cloned ? {} : { standing: w.standing } });
       sections2.push({ teamId: id, voice: w.voice, name: w.name });
     }
@@ -15185,11 +15061,11 @@ async function initProject(deps, opts) {
       dropped
     };
   }
-  const primary = await readMcpWiki(deps, teamId);
+  const primary = await readMcpWiki(deps, teamId, names.get(teamId) ?? null);
   const also = [];
   const sections = [];
   for (const id of alsoIds) {
-    const w = await readMcpWiki(deps, id);
+    const w = await readMcpWiki(deps, id, names.get(id) ?? null);
     also.push({ teamId: id, ...w.voiceFail ? { voiceFail: w.voiceFail } : {} });
     sections.push({ teamId: id, voice: w.voice, name: w.name });
   }
@@ -15204,7 +15080,7 @@ async function initProject(deps, opts) {
     dropped
   };
 }
-async function connectLocalWiki(deps, teamId, binding, path, onClone) {
+async function connectLocalWiki(deps, teamId, binding, name, path, onClone) {
   if (path) {
     const existing = await resolveClonePath(teamId, deps.configHome, deps.dataHome);
     if (await pathExists2(existing)) {
@@ -15221,13 +15097,11 @@ async function connectLocalWiki(deps, teamId, binding, path, onClone) {
   }
   const standing = cloned ? null : await standingAgainstHosted(deps, teamId);
   const voice = await charterVoiceFromWiki(dir);
-  const name = (await readTeamProfile(teamId, deps.configHome)).wikiName ?? null;
   return { dir, cloned, standing, voice, name };
 }
-async function readMcpWiki(deps, teamId) {
+async function readMcpWiki(deps, teamId, name) {
   const read = deps.backend.fetchCharter ? await deps.backend.fetchCharter(teamId) : { fail: "unsupported" };
   const voice = "charter" in read ? read.charter : null;
-  const name = (await readTeamProfile(teamId, deps.configHome)).wikiName ?? null;
   return { voice, name, ..."fail" in read ? { voiceFail: read.fail } : {} };
 }
 async function standingAgainstHosted(deps, teamId) {
@@ -16321,8 +16195,9 @@ connector will answer here for whichever wiki it was authorised for, not ${sever
   }
 }
 var COMMITTED_DISCLOSURE = `Both files are normally committed, so what they contain reaches anyone who clones this repo:
-CLAUDE.md carries each wiki's id and quotes its charter's brief and anti-scope; settings.json
-carries the ids. No file paths and nothing secret \u2014 your sign-in lives elsewhere.
+CLAUDE.md carries each wiki's id and name, the first sentence of its charter's brief and its
+category list; settings.json carries the ids. No file paths and nothing secret \u2014 your sign-in
+lives elsewhere.
 `;
 function formatVoiceFail(r) {
   switch (r.voiceFail) {
@@ -16605,7 +16480,7 @@ function deleteWarning(deletions, v) {
   if (!deletions?.length)
     return "";
   return `  \u26A0 REMOVES ${pageCount(deletions.length)} from ${v.wiki}: ${deletions.map((p) => p.page).join(", ")}
-    ${capitalize2(v.removalImpact)}. Past versions stay in history, but the page goes away.
+    ${capitalize(v.removalImpact)}. Past versions stay in history, but the page goes away.
 `;
 }
 function unparseableLines(pages, indent) {
@@ -16618,7 +16493,7 @@ function placeholderNote(unparseable) {
   return `  \u26A0 ${unparseable.length} page(s) went out as "(unparseable)" placeholders \u2014 listed, but nothing can read them:
 ${unparseableLines(unparseable, "    ")}`;
 }
-function capitalize2(s) {
+function capitalize(s) {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 var MAX_PRINTED_IDS = 5;
@@ -16840,7 +16715,7 @@ ${removed}${placeholderNote(r.unparseable)}`;
     }
     case "blocked":
       return `${r.teamId}: ${v.remoteMoved} (${r.behind} change(s)) \u2014 nothing was published.
-  ${capitalize2(v.theirs)}: ${formatReceipt(r.incoming ?? []) || "(none)"}
+  ${capitalize(v.theirs)}: ${formatReceipt(r.incoming ?? []) || "(none)"}
   Yours: ${formatReceipt(r.pages ?? []) || "(none)"}
   Keep YOUR version of any overlapping pages: commonground push --mine
   Take the published version instead (yours saved first): commonground pull --take-remote

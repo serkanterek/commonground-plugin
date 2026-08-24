@@ -1,6 +1,6 @@
 ---
-description: Point this project at your CommonGround wiki — sign in, pick a wiki, done. Works the first time and every time after, and a project can read more than one wiki.
-argument-hint: "[wiki] [mcp|local] [--also|--drop]"
+description: "Connect this project to one of your wikis, or add a second beside it. Sign in, pick a wiki, done; run it again any time."
+argument-hint: "which wiki? blank means I'll list yours; say \"also\" to add it alongside"
 ---
 
 Aim the current project at a CommonGround wiki so this session can consult it. Work through these
@@ -144,8 +144,9 @@ appears, and can say otherwise. Ask it as a confirm-or-override, never as an ope
   `commonground import` instead, which is the right tool for "I already have notes there".
 - **Don't ask this in MCP mode** — there is no folder, and `--path` is rejected there.
 - If the wiki is **already cloned**, `--path` is refused by design (it would strand the old folder,
-  unpublished work and all). Moving an existing folder is `commonground relocate <folder> [wiki]`,
-  which moves the files, remembers the new spot, and updates this project's `./CLAUDE.md`.
+  unpublished work and all). To move an existing folder, offer to run `commonground relocate
+  <folder> [wiki]` for them — it moves the files, remembers the new spot, and updates this
+  project's `./CLAUDE.md`.
 - An existing folder is **connected, not refreshed** — see step 5. Local mode is safe to pick for a
   user who already has a clone: nothing in it moves.
 
@@ -165,6 +166,16 @@ settled — don't pass `--mode` or a bare wiki name beside the flag:
 - a project reads at most five wikis; the CLI says so at the sixth.
 Skip `commonground use` on an add or a drop: the machine-wide default is about the primary, and the
 primary did not move.
+
+**Re-pointing without a new wiki — a REPAIR, not a choice.** When the ask is to re-point or
+refresh this project as it stands (a hook said the binding could not be recorded, the connector
+serves a different wiki than the project names, or the block carries another machine's clone
+path), run `commonground init --refresh` — it re-records every wiki this project already names
+and replaces nothing (add `--mode local` only for the foreign-clone-path case, which re-clones
+here). Never a bare `init <wiki>` for a repair: on a project that reads several wikis that
+resets the set to that one wiki. There is nothing to ask the user here — no decision is being
+made, only the recorded facts re-recorded — so run it, relay the receipt, and remind them a
+session restart applies it.
 
 **After a bare `init <wiki>` on a project that read several wikis, relay the line about what it
 no longer reads.** Replacing the set is the bare verb's meaning and the receipt names what fell out;

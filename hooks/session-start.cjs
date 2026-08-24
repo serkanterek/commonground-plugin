@@ -160,12 +160,10 @@ function updateNotice(state) {
  * each can keep its own register.
  */
 const CONNECTOR_HEALTH_CLAUSE =
-  'If the CommonGround tools are not actually available in this session, say so plainly rather ' +
-  'than answering from assumption. That is usually a CONNECTION problem, which `/mcp` or a session ' +
-  'restart fixes — but not always: if this project names a wiki the user is not a member of, every ' +
-  'call fails the same way and re-authorising cannot fix it, because `/mcp` does not grant ' +
-  'membership. Check which wiki this project names before asserting either diagnosis; never tell ' +
-  'them they lack access on a guess, and never rule it out on one either.';
+  'If the CommonGround tools are missing, say so rather than answering from assumption: usually ' +
+  'a reconnect (`/mcp`) or a session restart fixes it, but a wiki the user is not a member of ' +
+  'fails the same way and `/mcp` cannot grant membership — check which wiki this project names ' +
+  'before asserting either diagnosis.';
 
 /**
  * WHERE THIS PROJECT'S WRITES LAND — the one thing the connector cannot tell Claude (SER-184).
@@ -330,9 +328,9 @@ function bindingRepairClause(cwd, mode) {
     return (
       head +
       `It could NOT be recorded: this project's .claude/settings.json isn't valid JSON, so it was ` +
-      'left untouched rather than overwritten. Nothing will fix this on its own — TELL THE USER, ' +
-      `and that repairing that file (or running "commonground init --refresh" after) is what ends ` +
-      `it. ${consequence}.`
+      'left untouched rather than overwritten. Nothing will fix this on its own — TELL THE USER ' +
+      'and OFFER the repair: fix that file (you can do that for them), then re-point the project ' +
+      `(/commonground:point) and restart the session. ${consequence}.`
     );
   }
   if (done && (done.outcome === 'written' || done.outcome === 'unchanged')) {
@@ -350,8 +348,8 @@ function bindingRepairClause(cwd, mode) {
   return (
     head +
     'It could not be recorded automatically this session, so nothing has changed yet. TELL THE ' +
-    `USER, and that "commonground init --refresh" in this project followed by a restart fixes it. ` +
-    `${consequence}.`
+    'USER, and OFFER to re-point the project for them (/commonground:point, which re-records ' +
+    `every wiki this project names) — a session restart then applies it. ${consequence}.`
   );
 }
 
@@ -381,9 +379,10 @@ function foreignClonePathClause(cwd, mode) {
     `This project's CLAUDE.md names a wiki folder at ${stated}, and there is nothing there on this ` +
     'machine — that block was written on someone else\'s, and committed with their path in it. Do ' +
     'NOT try to read or create that folder: it is not this machine\'s wiki, and creating it would ' +
-    'make an empty directory look like a wiki. TELL THE USER, and that "commonground init --mode ' +
-    'local" here gives this machine its own clone and rewrites the block to stop naming a path at ' +
-    'all. Until then, answer from what you have and say the wiki was not consulted.'
+    'make an empty directory look like a wiki. TELL THE USER, and OFFER to point the project ' +
+    'again in local mode for them (/commonground:point) — that gives this machine its own clone ' +
+    'and rewrites the block to stop naming a path at all. Until then, answer from what you have ' +
+    'and say the wiki was not consulted.'
   );
 }
 
@@ -552,7 +551,10 @@ async function main() {
   // going to say instead of displacing it — and the silent path never calls `emit` at all, so it
   // can't turn a quiet session into a talking one.
   const emit = (...parts) =>
-    lib.emitContext('SessionStart', [...parts, stranded].filter(Boolean).join(' '));
+    lib.emitContext(
+      'SessionStart',
+      [...parts, lib.audiencePreferenceNote(), stranded].filter(Boolean).join(' '),
+    );
   const initialized = lib.isInitialized(cwd);
 
   if (!initialized) {

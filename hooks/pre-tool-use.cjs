@@ -98,17 +98,17 @@ function wrongWikiVerdict(cwd) {
     reason:
       `Refused: this project is set up for CommonGround wiki ${bound}, but the connector has been ` +
       `told to serve ${serving}. Reading would answer from a wiki this project isn't about, which ` +
-      `is worse than not answering — it looks like it worked. Run "commonground init --refresh" ` +
-      `here (it re-records what this project's CLAUDE.md names, every wiki of it), then restart ` +
-      'the session.',
+      `is worse than not answering — it looks like it worked. Ask Claude to re-point this project ` +
+      `(/commonground:point — it re-records what this project's CLAUDE.md names, every wiki of ` +
+      'it), then restart the session.',
     instruction:
       'This project and the CommonGround connector name different wikis, so every wiki answer here ' +
       'would come from the wrong one. Do NOT retry the tool and do not work around it with another ' +
-      'source. Tell the user plainly which two wikis disagree, and that "commonground init ' +
-      '--refresh" in this project followed by a session restart fixes it — never "commonground ' +
-      `init ${bound}", which would reset the set of wikis this project reads to that one alone. ` +
-      'Answer the rest of their question from what you already have, saying the wiki was not ' +
-      'consulted.',
+      'source. Tell the user plainly which two wikis disagree, and OFFER to fix it for them: run ' +
+      '"commonground init --refresh" in this project (it re-records the whole set; never ' +
+      `"commonground init ${bound}", which would reset the set of wikis this project reads to ` +
+      'that one alone), and say a session restart then applies it. Answer the rest of their ' +
+      'question from what you already have, saying the wiki was not consulted.',
   };
 }
 

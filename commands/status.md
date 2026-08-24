@@ -1,5 +1,6 @@
 ---
-description: Show what CommonGround is and where this project stands — connection, your team + role, the wiki's state, and what to do next
+description: "Where you stand with CommonGround: signed in or not, which wiki this project reads, your role, sync state, and what to do next."
+argument-hint: "nothing needed; name a wiki to ask about that one"
 ---
 
 Orient the user in CommonGround: what it is (briefly, if they're new to it here), whether this
@@ -7,8 +8,9 @@ project is connected, and what to do next. Adapt to what's true — don't run st
 
 ## 1. Connection + identity
 
-Run `commonground status`. Report whether the user is signed in, the team, their role, and
-(local-clone mode) the sync state / any divergence.
+Run `commonground status` — with `$ARGUMENTS` as the wiki when it names one, bare otherwise (the
+project's own binding resolves it). Report whether the user is signed in, the team, their role,
+and (local-clone mode) the sync state / any divergence.
 
 **Lead with the mode**, because it decides where this project's work lands:
 
@@ -17,8 +19,9 @@ Run `commonground status`. Report whether the user is signed in, the team, their
   may curate, and nothing is published until `/commonground:push` — that's when a shared wiki reaches
   the team, or a personal one reaches the user's other machines and Chat sessions. If the CLI reports
   unpublished work, say so — that's the user's own thinking, not yet shared. If they'd rather the
-  folder lived somewhere else, that's `commonground relocate <folder>` — it moves the files and
-  repoints this project's `./CLAUDE.md`. (Never move the folder for them with `mv`: the recorded
+  folder lived somewhere else, offer to move it for them — you run `commonground relocate
+  <folder>`, which moves the files and repoints this project's `./CLAUDE.md`. (Never move the
+  folder with `mv`: the recorded
   location and the router block would both go stale, and the next command would clone a second copy.)
 - **MCP mode** — say there's no local copy, so every write via `save_page` is immediately live — for
   the whole team on a shared wiki, for the user's other Claude sessions on a personal one.
@@ -40,8 +43,9 @@ the line names the command that addresses the one they are standing in. Never sw
 relay it as the second half of "which wiki": the wiki above is the **primary** — what a bare
 `commonground` verb and a tool call that names no `wiki` address — and the others are read beside it
 (`search` and `get_index` answer from all of them; `commonground pull <wiki>` / `lint <wiki>` and the
-`wiki` argument address one). Their own sync standing is one `commonground status <wiki>` away; say
-so rather than guessing it. Adding or dropping one is `/commonground:point <wiki> --also` / `--drop`.
+`wiki` argument address one). Their own sync standing is one `commonground status <wiki>` run
+away; offer to check it rather than guessing. Adding or dropping one is `/commonground:point`
+(they just say add or drop).
 
 **Bound to a wiki this machine can't reach.** If the output says `This project is bound to <id>,
 which this machine has no sign-in for`, that outranks the line above it — lead with it. Say the two

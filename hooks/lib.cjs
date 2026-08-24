@@ -1053,8 +1053,23 @@ function emitContext(hookEventName, additionalContext) {
   );
 }
 
+/**
+ * The developer opt-in (SER-288/289): `COMMONGROUND_AUDIENCE=terminal` in the user's own settings
+ * `env` flips the bundled CLI back to command-line phrasing, and this one sentence tells Claude to
+ * match it. Chat-first stays the default — the note renders ONLY when the user asked for the
+ * terminal, so everyone else pays zero tokens for it.
+ */
+function audiencePreferenceNote(env = process.env) {
+  const pref = String(env.COMMONGROUND_AUDIENCE || '')
+    .trim()
+    .toLowerCase();
+  if (pref !== 'terminal') return '';
+  return 'This user prefers the terminal: name the `commonground` verb beside each step you take or offer.';
+}
+
 module.exports = {
   ROUTER_MARKER,
+  audiencePreferenceNote,
   CONFIG_DIR,
   foldForMatching,
   CREDENTIALS_FILE,

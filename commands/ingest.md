@@ -1,6 +1,6 @@
 ---
-description: Capture anything into the CommonGround wiki — talk it through, paste notes or a transcript, point at a doc/URL, or record a decision — turned into schema-correct pages
-argument-hint: "[optional: a path, a URL, pasted text, or just start talking]"
+description: "Capture something into your wiki: a thought, pasted notes, a transcript, a doc or link, a decision. It becomes proper, findable pages."
+argument-hint: "what to capture: tell me, paste it, or give me a path or link"
 ---
 
 Ingest is **the** way to add or update the wiki. Feed it anything — a thought you say out loud,

@@ -1,6 +1,6 @@
 ---
 name: maintainer
-description: Read from and curate a CommonGround wiki — a curated, version-controlled knowledge base for a team or a single user. Use when the user wants to answer from their CommonGround context (team, product, or personal), seed a new wiki, ingest anything into it (notes, docs, transcripts, URLs, decisions), check its health, or bridge it into claude.ai Chat. Produces schema-correct markdown pages; runs entirely in the user's own Claude session on their own tokens (CommonGround spends none).
+description: Read from and curate a CommonGround wiki, a curated, version-controlled knowledge base for a team or a single user. Use when the user wants to answer from their CommonGround context (team, product, or personal), seed a new wiki, ingest anything into it (notes, docs, transcripts, URLs, decisions), check its health, or bridge it into claude.ai Chat. Produces schema-correct markdown pages; runs entirely in the user's own Claude session on their own tokens (CommonGround spends none).
 user-invocable: false
 ---
 
@@ -188,7 +188,12 @@ personal wiki: there is nothing to partition, and `company` on somebody's own no
    `/commonground:push`, which commits for the user, so never ask them to run git or say the word
    "commit". Publishing needs an admin/curator role; a member's edits stay in their clone as real
    work, and `suggest_change` is how they reach the team. In MCP mode, persist via the write tools.
-7. **The wiki belongs to its audience.** Read the charter (`wiki-charter`, or `company/wiki-charter` on an older wiki) when present.
+7. **The user is in a Claude session — keep them there.** Never tell them to open a terminal or
+   type a shell command; say what they can ask you for (or name the slash command) and run the
+   verb yourself, with consent where it writes. Name a command line to the user only when they
+   asked for it, or when the session context says they prefer the terminal
+   (`COMMONGROUND_AUDIENCE=terminal`).
+8. **The wiki belongs to its audience.** Read the charter (`wiki-charter`, or `company/wiki-charter` on an older wiki) when present.
    **just-me** → nothing is off-topic or "too personal"; personal and subjective material is
    in-scope by definition — never suggest removing content for shareability. **my-team /
    whole-company** → a sensitivity concern is **flag-and-ask**, never an auto-remove and never a

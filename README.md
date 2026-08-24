@@ -54,21 +54,21 @@ Run that in any repo, any time you want to aim somewhere else — it is the same
 first run and after.
 
 **A project can read more than one wiki.** Your personal wiki beside your team's, a product wiki
-beside the company's — `/commonground:point <wiki> --also` adds one alongside what the project
-already reads (`--drop` takes it back out). Claude then answers from all of them at once, each wiki
-speaking for what it covers, and says which one a fact came from.
+beside the company's — tell `/commonground:point` to *also* read a wiki and it is added alongside
+what the project already reads (say *drop* to take one back out). Claude then answers from all of
+them at once, each wiki speaking for what it covers, and says which one a fact came from.
 
 ## Commands
 
 | Command | What it does |
 |---|---|
-| `/commonground:seed` | Fill the wiki — guided interview, or import an existing markdown folder. Signs you in and asks which wiki, so it works before anything is set up |
-| `/commonground:point` | Aim this project at one of your wikis (MCP or local-clone mode) — first time and every time after; `--also` / `--drop` let one project read several |
-| `/commonground:ingest` | Capture anything into the wiki: notes, a transcript, a doc or URL, a decision |
-| `/commonground:lint` | Health check — stale/orphan/broken-citation pages, coverage gaps, open suggestions |
+| `/commonground:seed` | Fill your wiki: charters it with you, then builds it from an interview or imports your notes. Signs you in and asks which wiki, so it works before anything is set up |
+| `/commonground:point` | Connect this project to one of your wikis, or add a second beside it — first time and every time after |
+| `/commonground:ingest` | Capture something into the wiki: a thought, notes, a transcript, a doc or link, a decision |
+| `/commonground:lint` | Health-check the wiki: open suggestions, stale or orphan pages, broken citations, coverage gaps |
 | `/commonground:status` | Where you stand: connection, which wiki and why, role, and what to do next |
-| `/commonground:pull` | *(local-clone mode)* Get the latest into your local copy |
-| `/commonground:push` | *(local-clone mode)* Publish your changes |
+| `/commonground:pull` | *(local-clone mode)* Bring the latest published pages into your local folder |
+| `/commonground:push` | *(local-clone mode)* Publish your changes, after showing exactly what goes out |
 
 ## Two ways to connect
 
@@ -113,9 +113,15 @@ signs you out.
 ## The bundled CLI
 
 The plugin ships a bundled `commonground` CLI on the Bash tool's PATH — no separate install. The
-slash commands drive it for you; you can also run it directly (`commonground status`,
-`commonground lint`, `commonground coverage`, `commonground pull`, `commonground push`).
-`commonground help` lists everything.
+slash commands drive it for you: by default you never need to type a command, and Claude phrases
+every next step as something you can ask it for.
+
+**Prefer the terminal?** You can also run the CLI directly (`commonground status`,
+`commonground lint`, `commonground coverage`, `commonground pull`, `commonground push`;
+`commonground help` lists everything). And if you'd rather Claude named the command lines too,
+set `COMMONGROUND_AUDIENCE=terminal` in your own `~/.claude/settings.json` under `env` — the
+CLI's next-step hints and Claude's phrasing both follow it. With it unset, a Claude session
+defaults to chat-first.
 
 ## Troubleshooting
 

@@ -1,6 +1,6 @@
 ---
-description: Bootstrap (or top up) your CommonGround wiki — a guided seeding arc that charters the wiki (who it's for, what it holds), then builds from scratch or imports an existing markdown folder
-argument-hint: "[wiki] [folder to import]"
+description: "Fill your wiki. Charters it with you (who it's for, what it holds), then builds it from an interview or imports your notes. Re-run any time to fill gaps."
+argument-hint: "which wiki? add a folder of notes to import if you have one"
 ---
 
 Take the user from *an empty wiki* to *a populated, useful one*. This is the onboarding arc: it
@@ -494,7 +494,8 @@ Import **copies**; it never adopts the folder. So, in this order:
 4. Offer the convergence choice when they imported a folder they actually work in: **repoint their
    editor** at the wiki folder (plain markdown — it opens in Obsidian or any editor; the path is in
    this project's `./CLAUDE.md`) so there is one copy again, or **keep working in the original** and
-   accept that every change needs another `commonground import` to reach the wiki. Their call; just don't leave it unsaid.
+   accept that every change needs another import run — which you do for them, on request — to
+   reach the wiki. Their call; just don't leave it unsaid.
 
 That leads into step 6.
 

@@ -1,5 +1,6 @@
 ---
-description: Get the latest into your local wiki clone — shows what's coming, and never overwrites your own work without asking
+description: "Bring the latest published pages into your local wiki folder. Shows what's coming first and never overwrites your work without asking."
+argument-hint: "nothing needed; name a wiki if this project reads several"
 ---
 
 Bring this project's local CommonGround clone up to date with the hosted wiki. **Everyone can
@@ -28,7 +29,8 @@ a clash it stops and asks.
 > wiki and "blocked" for the team wiki are two different situations, and only one of them needs a
 > decision. The same per-wiki rule holds for `/commonground:push`.
 
-Run `commonground pull` and report the outcome in plain language:
+Run `commonground pull` — passing `$ARGUMENTS` as the wiki when it names one, bare otherwise
+(the project's own binding resolves it) — and report the outcome in plain language:
 
 - **A `Heads up: you are inside the folder of …` line first** — the user is standing inside one
   wiki's clone while the pull addressed another. Nothing wrong happened, but relay both halves
@@ -38,8 +40,9 @@ Run `commonground pull` and report the outcome in plain language:
 - **Cloned** — first time. The CLI prints `Creating your wiki folder at <path>` *before* it makes
   anything, so the user is never surprised by a new directory. **Relay that path** — it is where
   their team's context now lives, and it's the folder they'd open in an editor. Then offer to answer
-  a question from it. If they'd rather it lived somewhere else, that's `commonground relocate
-  <folder>`, which moves the files and updates this project's `./CLAUDE.md`.
+  a question from it. If they'd rather it lived somewhere else, offer to move it for them — you
+  run `commonground relocate <folder>`, which moves the files and updates this project's
+  `./CLAUDE.md`.
 - **Up to date** — nothing incoming. If it also mentions **unpublished changes**, tell the user
   they have local work that hasn't been published and offer `/commonground:push`.
 - **Updated** — it fast-forwarded. Report the pages that came in, by name (the CLI prints the

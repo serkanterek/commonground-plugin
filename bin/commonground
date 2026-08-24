@@ -7406,6 +7406,71 @@ var AgentError = class extends Error {
   }
 };
 
+// ../../apps/sync-agent/dist/audience.js
+function audienceOf(env = process.env) {
+  const pref = (env.COMMONGROUND_AUDIENCE ?? "").trim().toLowerCase();
+  if (pref === "terminal")
+    return "terminal";
+  if (pref === "claude" || pref === "chat")
+    return "claude";
+  return env.CLAUDECODE ? "claude" : "terminal";
+}
+function byAudience(terminal, claude, env) {
+  return audienceOf(env) === "claude" ? claude : terminal;
+}
+var VERBS = {
+  pull: { terminal: 'run "commonground pull"', claude: "offer /commonground:pull" },
+  push: { terminal: 'run "commonground push"', claude: "offer /commonground:push" },
+  status: { terminal: 'run "commonground status"', claude: "offer /commonground:status" },
+  lint: { terminal: 'run "commonground lint"', claude: "offer /commonground:lint" },
+  point: { terminal: 'run "commonground init <wiki>"', claude: "offer /commonground:point" },
+  "point-refresh": {
+    terminal: 'run "commonground init --refresh"',
+    claude: "offer to re-point this project (/commonground:point)"
+  },
+  "point-also": {
+    terminal: 'run "commonground init --also <wiki>"',
+    claude: "offer /commonground:point (adding a wiki)"
+  },
+  "point-drop": {
+    terminal: 'run "commonground init --drop <wiki>"',
+    claude: "offer /commonground:point (dropping a wiki)"
+  },
+  "seed-import": {
+    terminal: 'run "commonground import <dir>"',
+    claude: "offer /commonground:seed with that folder"
+  },
+  login: { terminal: 'run "commonground login"', claude: "offer to sign them in again" },
+  use: { terminal: 'run "commonground use <wiki>"', claude: "offer to switch the active wiki" },
+  relocate: {
+    terminal: 'run "commonground relocate <folder>"',
+    claude: "offer to move the folder for them"
+  },
+  resolve: {
+    terminal: 'run "commonground resolve <keep-local|take-remote|save-as-draft>"',
+    claude: "offer to resolve it: keep the user's version, take the published version, or save the user's work as a draft"
+  },
+  "pull-take-remote": {
+    terminal: 'run "commonground pull --take-remote"',
+    claude: "offer to take the published version (the user's work is saved as a draft first)"
+  },
+  "push-allow-deletes": {
+    terminal: 'run "commonground push --allow-deletes"',
+    claude: "offer to re-run the publish allowing the removals"
+  },
+  "push-mine": {
+    terminal: 'run "commonground push --mine"',
+    claude: "offer to publish keeping the user's version of the overlapping pages"
+  },
+  "clear-stale-credential": {
+    terminal: 'run "commonground status --clear-stale-credential"',
+    claude: "offer to clear the stale sign-in copy"
+  }
+};
+function ask(verb, env) {
+  return VERBS[verb][audienceOf(env)];
+}
+
 // ../../apps/sync-agent/dist/config.js
 var AGENT_CONFIG_DIR = ".commonground";
 var CREDENTIALS_FILE = "credentials.json";
@@ -7638,7 +7703,7 @@ async function validateClonePath(candidate, configHome = agentConfigHome(), data
     const entries = await (0, import_promises.readdir)(target);
     if (entries.length > 0) {
       const sample = entries.slice(0, 3).join(", ");
-      throw new AgentError(`${target} isn't empty (${sample}${entries.length > 3 ? ", \u2026" : ""}) \u2014 a wiki clone needs an empty or new folder. To bring existing notes IN, clone somewhere new and use "commonground import ${target}".`);
+      throw new AgentError(`${target} isn't empty (${sample}${entries.length > 3 ? ", \u2026" : ""}) \u2014 a wiki clone needs an empty or new folder. To bring existing notes IN, ` + byAudience(`clone somewhere new and use "commonground import ${target}".`, `clone somewhere new, then offer /commonground:seed with ${target} (it imports).`));
     }
   } catch (e) {
     if (e instanceof AgentError)
@@ -7718,7 +7783,7 @@ async function readStoreFile(path) {
   } catch (e) {
     if (isMissing(e))
       return null;
-    throw new StoreFileError(`can't read your CommonGround sign-in at ${path} (${e.message}) \u2014 fix or delete that file, then run "commonground login"`, "unreadable");
+    throw new StoreFileError(`can't read your CommonGround sign-in at ${path} (${e.message}) \u2014 fix or delete that file, then ${byAudience('run "commonground login"', "offer to sign them in again")}`, "unreadable");
   }
   let parsed;
   try {
@@ -7728,7 +7793,7 @@ async function readStoreFile(path) {
   }
   const teams = parsed?.teams;
   if (!teams || typeof teams !== "object") {
-    throw new StoreFileError(`your CommonGround sign-in at ${path} is corrupt \u2014 fix or delete that file, then run "commonground login"`, "corrupt");
+    throw new StoreFileError(`your CommonGround sign-in at ${path} is corrupt \u2014 fix or delete that file, then ${byAudience('run "commonground login"', "offer to sign them in again")}`, "corrupt");
   }
   return { store: parsed, raw, adoptable };
 }
@@ -7856,12 +7921,12 @@ function notLoggedIn(teamId, configHome) {
   const elsewhere = envDir("COMMONGROUND_CONFIG_HOME", "") && (0, import_node_path.resolve)(home) !== (0, import_node_path.resolve)(defaultConfigHome()) && (0, import_node_fs.existsSync)(storePath(defaultConfigHome())) ? ` (a sign-in also exists at ${storePath(defaultConfigHome())}, but COMMONGROUND_CONFIG_HOME points at ${home})` : "";
   const empty = ` (no credentials at ${store})`;
   if (!teamId)
-    return new AgentError(`no team logged in \u2014 run "commonground login" first${empty}${elsewhere}`);
+    return new AgentError(`no team logged in \u2014 ${byAudience('run "commonground login" first', "offer to sign them in")}${empty}${elsewhere}`);
   const others = heldWikis(home).filter((id) => id !== teamId);
   if (others.length === 0) {
-    return new AgentError(`not logged in for team "${teamId}" \u2014 run "commonground login"${empty}${elsewhere}`);
+    return new AgentError(`not logged in for team "${teamId}" \u2014 ${byAudience('run "commonground login"', "offer to sign them in")}${empty}${elsewhere}`);
   }
-  return new AgentError(`not logged in to wiki "${teamId}" \u2014 this machine IS signed in to CommonGround, just not to that wiki (it holds: ${others.join(", ")}). If you are a member of it, "commonground login" adds it; if you are not, an admin of that wiki has to invite you \u2014 logging in again cannot grant membership. (sign-ins are stored at ${store})${elsewhere}`);
+  return new AgentError(`not logged in to wiki "${teamId}" \u2014 this machine IS signed in to CommonGround, just not to that wiki (it holds: ${others.join(", ")}). If you are a member of it, ${byAudience('"commonground login" adds it', "signing in again adds it")}; if you are not, an admin of that wiki has to invite you \u2014 logging in again cannot grant membership. (sign-ins are stored at ${store})${elsewhere}`);
 }
 
 // ../../apps/sync-agent/dist/transport.js
@@ -8058,11 +8123,11 @@ async function crossWikiBinding(backend, teamId, configHome, dataHome) {
 function probeError(teamId, fail) {
   switch (fail) {
     case "unsupported":
-      return new AgentError(`this machine has no sign-in for wiki "${teamId}", and this CommonGround server predates one sign-in reaching every wiki \u2014 asked anyway, it would quietly answer for a different wiki, which is worse than this error. Run "commonground login" to sign in for ${teamId} directly.`);
+      return new AgentError(`this machine has no sign-in for wiki "${teamId}", and this CommonGround server predates one sign-in reaching every wiki \u2014 asked anyway, it would quietly answer for a different wiki, which is worse than this error. ${byAudience(`Run "commonground login" to sign in for ${teamId} directly.`, `Offer to sign them in for ${teamId} directly.`)}`);
     case "stale-signin":
-      return new AgentError(`this machine has no sign-in for wiki "${teamId}", and every sign-in it does hold is no longer valid \u2014 you may have left those wikis, or the device was revoked. Run "commonground login" to sign in again.`);
+      return new AgentError(`this machine has no sign-in for wiki "${teamId}", and every sign-in it does hold is no longer valid \u2014 you may have left those wikis, or the device was revoked. ${byAudience('Run "commonground login" to sign in again.', "Offer to sign them in again.")}`);
     case "unreachable":
-      return new AgentError(`this machine has no sign-in for wiki "${teamId}", and CommonGround could not be reached to confirm your membership there. Try again when you are online, or run "commonground login" to sign in for ${teamId} directly.`);
+      return new AgentError(`this machine has no sign-in for wiki "${teamId}", and CommonGround could not be reached to confirm your membership there. Try again when you are online, or ${byAudience(`run "commonground login" to sign in for ${teamId} directly.`, `offer to sign them in for ${teamId} directly.`)}`);
   }
 }
 var HttpSyncBackend = class {
@@ -14623,7 +14688,7 @@ function wikiLine(w, primary) {
 var STRANGER_ESCAPE = `
 > Not using CommonGround? Ignore this section; nothing else in this file depends on it.
 `;
-var CONNECTOR_HEALTH_RULE = "If the CommonGround tools are missing, that is USUALLY a connection problem (`/mcp` reconnects, or restart the session); but if this project names a wiki the user is NOT A MEMBER of, every call fails the same way and `/mcp` does not grant membership (`commonground status` says which wiki, and whether this machine can reach it). Assert neither diagnosis on a guess.";
+var CONNECTOR_HEALTH_RULE = "If the CommonGround tools are missing, that is USUALLY a connection problem (`/mcp` reconnects, or restart the session); but a wiki the user is NOT A MEMBER of fails the same way, and `/mcp` does not grant membership; `/commonground:status` tells the two apart. Assert neither diagnosis on a guess.";
 function citeClause(plural) {
   return plural ? "Cite the wiki and pageId you relied on; don't assert wiki facts no page backs." : "Cite the pageIds you relied on; don't assert wiki facts no page backs.";
 }
@@ -14636,15 +14701,15 @@ var CHARTER_FILE_NOTE = "its charter page `wiki-charter.md` (older wikis: `compa
 var CHARTER_PAGE_NOTE = "`wiki-charter` is the charter page, which says in full when to consult a wiki and what does not belong there";
 function localParagraph(count) {
   if (count === 1) {
-    return `This project reads the CommonGround wiki below, a local clone on this machine (CommonGround names its folder at session start; if that is not in context, \`commonground status\` prints it). When a question touches its subject, start at its \`index.md\` (the catalog) and open only the pages you need; ${CHARTER_FILE_NOTE}. ${citeClause(false)} ${captureClause(false, "local")}`;
+    return `This project reads the CommonGround wiki below, a local clone on this machine (its folder is named at session start; \`commonground status\` prints it on demand). When a question touches its subject, start at its \`index.md\` (the catalog) and open only the pages you need; ${CHARTER_FILE_NOTE}. ${citeClause(false)} ${captureClause(false, "local")}`;
   }
-  return `This project reads ${count} CommonGround wikis, each a local clone on this machine (CommonGround names each clone's folder at session start; if that is not in context, \`commonground status <wiki>\` prints it). When a question touches a wiki's subject, start at that wiki's \`index.md\` (its catalog) and open only the pages you need; ${CHARTER_FILE_NOTE}. ${citeClause(true)} ` + captureClause(true, "local");
+  return `This project reads ${count} CommonGround wikis, each a local clone on this machine (each clone's folder is named at session start; \`commonground status <wiki>\` prints it on demand). When a question touches a wiki's subject, start at that wiki's \`index.md\` (its catalog) and open only the pages you need; ${CHARTER_FILE_NOTE}. ${citeClause(true)} ` + captureClause(true, "local");
 }
 function mcpParagraph(count, primaryLabel) {
   if (count === 1) {
     return `This project reads the CommonGround wiki below through the CommonGround MCP connector: \`get_index\` is its catalog, \`search\` finds pages, \`get_page\` reads one in full, and ${CHARTER_PAGE_NOTE}. Load context on demand; don't read everything. ${citeClause(false)} ${captureClause(false, "mcp")} ${CONNECTOR_HEALTH_RULE}`;
   }
-  return `This project reads ${count} CommonGround wikis through the CommonGround MCP connector: \`search\` and \`get_index\` answer from every wiki it reads, grouped by wiki (each group carries \`wiki.teamId\`); pass that id as \`wiki\` to \`get_page\`, or to any tool, to address one wiki, and a call that names no \`wiki\` addresses the primary, ${primaryLabel}. ${CHARTER_PAGE_NOTE}. Load context on demand; don't read everything. ${citeClause(true)} ${captureClause(true, "mcp")} ` + CONNECTOR_HEALTH_RULE;
+  return `This project reads ${count} CommonGround wikis through the CommonGround MCP connector: \`search\` and \`get_index\` answer from every wiki it reads, and a call that names no \`wiki\` addresses the primary, ${primaryLabel} (the connector's own tools say how to address another). ${CHARTER_PAGE_NOTE}. Load context on demand; don't read everything. ${citeClause(true)} ${captureClause(true, "mcp")} ` + CONNECTOR_HEALTH_RULE;
 }
 function cloneRouterRule(voice, naming, teamId) {
   const name = sanitizeName(fenceSafe(naming?.name));
@@ -14876,7 +14941,7 @@ function sourceNote(source) {
       return "";
     case "stale-signin":
       return `  (Listed from this machine's sign-ins, which are NO LONGER VALID \u2014 you may have left those wikis,
-  or the device was revoked. A wiki you joined recently may be missing; "commonground login" refreshes it.)
+  or the device was revoked. A wiki you joined recently may be missing; ${byAudience('"commonground login" refreshes it.', "signing in again refreshes it.")})
 `;
     case "unsupported":
       return `  (Listed from this machine's sign-ins \u2014 this CommonGround server cannot list your memberships, so a
@@ -14884,7 +14949,7 @@ function sourceNote(source) {
 `;
     case "unreachable":
       return `  (Listed from this machine's sign-ins \u2014 CommonGround could not be reached, so a wiki you
-  joined recently may be missing. "commonground use" again when you're online.)
+  joined recently may be missing. ${byAudience(`"commonground use" again when you're online.`, `List again when you're online.`)})
 `;
   }
 }
@@ -14951,7 +15016,7 @@ async function waitDeviceLogin(deps, budgetMs) {
   const now = deps.now ?? Date.now;
   const pending = await readPendingLogin(deps.configHome, now());
   if (!pending) {
-    throw new AgentError('no device login is in progress (or it expired) \u2014 start one with "commonground login --start"');
+    throw new AgentError(`no device login is in progress (or it expired) \u2014 ${byAudience('start one with "commonground login --start"', "start the sign-in again")}`);
   }
   const giveUpAt = Math.min(now() + budgetMs, pending.expiresAtMs);
   while (now() < giveUpAt) {
@@ -15025,10 +15090,10 @@ async function browserLogin(deps) {
     if (err === "access_denied")
       throw new AgentError("device authorization was denied");
     if (err === "expired_token")
-      throw new AgentError('the authorization expired \u2014 run "commonground login" again');
+      throw new AgentError(`the authorization expired \u2014 ${byAudience('run "commonground login" again', "start the sign-in again")}`);
     throw new AgentError(`device authorization failed (${err ?? res.status})`);
   }
-  throw new AgentError('timed out waiting for authorization \u2014 run "commonground login" again');
+  throw new AgentError(`timed out waiting for authorization \u2014 ${byAudience('run "commonground login" again', "start the sign-in again")}`);
 }
 var MAX_WIKIS_PER_PROJECT = 5;
 async function injectTooling(deps, teamId, dir) {
@@ -15064,7 +15129,7 @@ async function initProject(deps, opts) {
   };
   const alsoIds = (opts.also ?? []).filter((id, i, all) => id !== teamId && all.indexOf(id) === i);
   if (1 + alsoIds.length > MAX_WIKIS_PER_PROJECT) {
-    throw new AgentError(`a project reads at most ${MAX_WIKIS_PER_PROJECT} wikis \u2014 this would make ${1 + alsoIds.length}. Drop one first ("commonground init --drop <wiki>").`);
+    throw new AgentError(`a project reads at most ${MAX_WIKIS_PER_PROJECT} wikis \u2014 this would make ${1 + alsoIds.length}. Drop one first ${byAudience('("commonground init --drop <wiki>")', "(offer /commonground:point, dropping a wiki)")}.`);
   }
   const before = await detectRouterBlock(projectDir);
   const after = /* @__PURE__ */ new Set([teamId, ...alsoIds]);
@@ -15120,7 +15185,7 @@ async function connectLocalWiki(deps, teamId, binding, name, path, onClone) {
   if (path) {
     const existing = await resolveClonePath(teamId, deps.configHome, deps.dataHome);
     if (await pathExists2(existing)) {
-      throw new AgentError(`this wiki is already cloned at ${existing} \u2014 to move it, run "commonground relocate ${path} ${teamId}" (which moves the folder and updates this project's CLAUDE.md), not "init --path"`);
+      throw new AgentError(`this wiki is already cloned at ${existing} \u2014 ` + byAudience(`to move it, run "commonground relocate ${path} ${teamId}" (which moves the folder and updates this project's CLAUDE.md), not "init --path"`, `to move it, offer to relocate it for them (that moves the folder and updates this project's CLAUDE.md); "init --path" cannot`));
     }
     await setClonePath(teamId, await validateClonePath(path, deps.configHome, deps.dataHome), deps.configHome);
   }
@@ -15184,7 +15249,7 @@ async function relocateClone(deps, opts) {
   const binding = await bindingFor(deps, teamId);
   const from = await resolveClonePath(teamId, deps.configHome, deps.dataHome);
   if (!await pathExists2(from)) {
-    throw new AgentError(`there is no wiki folder to move \u2014 nothing is cloned for this team yet. Run "commonground init --mode local --path <folder> ${teamId}" to clone it where you want it.`);
+    throw new AgentError(`there is no wiki folder to move \u2014 nothing is cloned for this team yet. ` + byAudience(`Run "commonground init --mode local --path <folder> ${teamId}" to clone it where you want it.`, `Offer /commonground:point in local mode, naming the folder, to clone it where they want it.`));
   }
   const to = await validateClonePath(opts.to, deps.configHome, deps.dataHome);
   if (to === from)
@@ -15376,9 +15441,12 @@ async function normalizeAndReindex(dir, sourceDir, teamId, today) {
     await (0, import_promises5.writeFile)((0, import_node_path6.join)(dir, f.relPath), f.content, "utf8");
   if (result.skipped.length > 0) {
     const lines = result.skipped.map((s) => `  ${s.relPath}: ${s.reason}`).join("\n");
-    process.stderr.write(`commonground import: left ${result.skipped.length} file(s) unnormalized (couldn't build valid frontmatter):
+    process.stderr.write(
+      // audience:terminal-ok — program-name prefix on stderr, not a suggestion
+      `commonground import: left ${result.skipped.length} file(s) unnormalized (couldn't build valid frontmatter):
 ${lines}
-`);
+`
+    );
   }
   const lossy = result.files.filter((f) => f.loss !== void 0).map((f) => ({ relPath: f.relPath, loss: f.loss }));
   if (lossy.length > 0) {
@@ -15389,16 +15457,22 @@ ${lines}
     replaced: ${f.loss.replaced.join(", ")}` : "";
       return `  ${f.relPath}${dropped}${replaced}`;
     }).join("\n");
-    process.stderr.write(`commonground import: ${lossy.length} page(s) lost frontmatter detail on the way in:
+    process.stderr.write(
+      // audience:terminal-ok — program-name prefix on stderr, not a suggestion
+      `commonground import: ${lossy.length} page(s) lost frontmatter detail on the way in:
 ${lines}
-`);
+`
+    );
   }
   const unparseable = await rebuildIndex(dir);
   if (unparseable.length > 0) {
     const lines = unparseable.map((u) => `  ${u.relPath}: ${u.reason}`).join("\n");
-    process.stderr.write(`commonground import: ${unparseable.length} page(s) don't parse \u2014 listed in the catalog as "(unparseable)":
+    process.stderr.write(
+      // audience:terminal-ok — program-name prefix on stderr, not a suggestion
+      `commonground import: ${unparseable.length} page(s) don't parse \u2014 listed in the catalog as "(unparseable)":
 ${lines}
-`);
+`
+    );
   }
   const normalized = result.files.filter((f) => f.action === "normalized").length;
   return { normalized, skipped: result.skipped.length, lossy };
@@ -15648,7 +15722,7 @@ async function push(deps, teamId, opts = {}) {
   const binding = await bindingFor(deps, teamId);
   const dir = await resolveClonePath(teamId, deps.configHome, deps.dataHome);
   if (!await pathExists2(dir))
-    throw new AgentError(`no local clone for "${teamId}" \u2014 run "commonground pull" first`);
+    throw new AgentError(`no local clone for "${teamId}" \u2014 ${byAudience('run "commonground pull" first', "pull it first (offer /commonground:pull)")}`);
   const origin = await deps.backend.remoteAccess(teamId);
   if (!can(binding.role, "wiki:edit")) {
     let pages;
@@ -15774,7 +15848,7 @@ async function exportWiki(deps, teamId, opts = {}) {
   const binding = await bindingFor(deps, teamId);
   const dir = await resolveClonePath(teamId, deps.configHome, deps.dataHome);
   if (!await pathExists2(dir))
-    throw new AgentError(`no local clone for "${teamId}" \u2014 run "commonground pull" first`);
+    throw new AgentError(`no local clone for "${teamId}" \u2014 ${byAudience('run "commonground pull" first', "pull it first (offer /commonground:pull)")}`);
   const out = opts.out ?? (0, import_node_path6.join)(deps.dataHome, `${teamId}-wiki.tar`);
   await archiveHead(dir, out);
   return { path: out };
@@ -15823,7 +15897,7 @@ async function resolveDivergence(deps, teamId, choice, opts = {}) {
   const binding = await bindingFor(deps, teamId);
   const dir = await resolveClonePath(teamId, deps.configHome, deps.dataHome);
   if (!await pathExists2(dir))
-    throw new AgentError(`no local clone for "${teamId}" \u2014 run "commonground pull" first`);
+    throw new AgentError(`no local clone for "${teamId}" \u2014 ${byAudience('run "commonground pull" first', "pull it first (offer /commonground:pull)")}`);
   if (choice === "keep-local") {
     return { teamId, choice };
   }
@@ -15840,14 +15914,14 @@ async function lint(deps, teamId) {
   const binding = await bindingFor(deps, teamId);
   const dir = await resolveClonePath(teamId, deps.configHome, deps.dataHome);
   if (!await pathExists2(dir))
-    throw new AgentError(`no local clone for "${teamId}" \u2014 run "commonground pull" first`);
+    throw new AgentError(`no local clone for "${teamId}" \u2014 ${byAudience('run "commonground pull" first', "pull it first (offer /commonground:pull)")}`);
   return { ...await localLint(dir), clonePath: dir };
 }
 async function coverage(deps, teamId) {
   const binding = await bindingFor(deps, teamId);
   const dir = await resolveClonePath(teamId, deps.configHome, deps.dataHome);
   if (!await pathExists2(dir))
-    throw new AgentError(`no local clone for "${teamId}" \u2014 run "commonground pull" first`);
+    throw new AgentError(`no local clone for "${teamId}" \u2014 ${byAudience('run "commonground pull" first', "pull it first (offer /commonground:pull)")}`);
   await refreshTeamProfile(deps, teamId, binding.token);
   return {
     ...await localCoverage(dir, await readTeamProfile(teamId, deps.configHome)),
@@ -15858,7 +15932,7 @@ async function normalizeRetiredKeys(deps, teamId, opts = {}) {
   const binding = await bindingFor(deps, teamId);
   const dir = await resolveClonePath(teamId, deps.configHome, deps.dataHome);
   if (!await pathExists2(dir))
-    throw new AgentError(`no local clone for "${teamId}" \u2014 run "commonground pull" first`);
+    throw new AgentError(`no local clone for "${teamId}" \u2014 ${byAudience('run "commonground pull" first', "pull it first (offer /commonground:pull)")}`);
   const files = [];
   const unreadable = [];
   const pageFiles = (await walkMarkdown(dir, (relPath, reason) => {
@@ -15908,138 +15982,6 @@ async function pathExists2(path) {
   }
 }
 
-// ../../apps/sync-agent/dist/format.js
-var PAGE_SYMBOL = {
-  added: "+",
-  modified: "~",
-  deleted: "-",
-  renamed: "~"
-};
-function formatReceipt(pages) {
-  return pages.map((p) => `${PAGE_SYMBOL[p.kind]} ${p.page}`).join(" \xB7 ");
-}
-function pageCount(n) {
-  return `${n} page${n === 1 ? "" : "s"}`;
-}
-function deleteWarning(deletions, v) {
-  if (!deletions?.length)
-    return "";
-  return `  \u26A0 REMOVES ${pageCount(deletions.length)} from ${v.wiki}: ${deletions.map((p) => p.page).join(", ")}
-    ${capitalize(v.removalImpact)}. Past versions stay in history, but the page goes away.
-`;
-}
-function unparseableLines(pages, indent) {
-  return pages.map((p) => `${indent}${p.relPath}: ${p.reason}
-`).join("");
-}
-function placeholderNote(unparseable) {
-  if (!unparseable?.length)
-    return "";
-  return `  \u26A0 ${unparseable.length} page(s) went out as "(unparseable)" placeholders \u2014 listed, but nothing can read them:
-${unparseableLines(unparseable, "    ")}`;
-}
-function capitalize(s) {
-  return s.charAt(0).toUpperCase() + s.slice(1);
-}
-function formatPush(r, v, who) {
-  const label = wikiLabel(who);
-  switch (r.action) {
-    case "preview": {
-      const pages = r.pages ?? [];
-      const broken = r.unparseable?.length ? `  \u26A0 ${r.unparseable.length} page(s) don't parse, so the catalog can't describe them:
-` + unparseableLines(r.unparseable, "    ") + `    Publishing stops until they're fixed (or "commonground push --allow-unparseable").
-` : "";
-      const catalog = r.catalogRefresh ? `  The wiki catalog (index.md) is out of date with this clone's pages \u2014 publishing
-  refreshes it. (It is machine-owned; a plugin update can correct its format.)
-` : "";
-      if (!pages.length)
-        return r.catalogRefresh ? `${label}: no page changes in ${r.clonePath}, but the catalog needs a refresh.
-${catalog}${broken}  Nothing published yet \u2014 run "commonground push" to publish the corrected catalog.
-` : `${label}: nothing to publish in ${r.clonePath}.
-${broken}`;
-      const conflict = r.behind ? `  Heads up: ${v.wiki} moved (${r.behind} change(s)): ${formatReceipt(r.incoming ?? []) || "(none)"}
-` : "";
-      return `${label}: would publish ${pageCount(pages.length)} from ${r.clonePath}: ${formatReceipt(pages)}
-` + catalog + conflict + broken + deleteWarning(r.deletions, v) + `  Nothing published yet \u2014 run "commonground push" to confirm.
-`;
-    }
-    case "needs-delete-confirm":
-      return `${label}: this would publish ${pageCount((r.pages ?? []).length)} from ${r.clonePath}: ${formatReceipt(r.pages ?? [])}
-` + deleteWarning(r.deletions, v) + // On the --mine path the replay has already happened and the branch now sits on top of the
-      // hosted tip, so the retry is a plain --allow-deletes; re-passing --mine would be a no-op.
-      (r.draftBranch ? `  Your pre-merge state is saved on ${r.draftBranch}.
-` : "") + `  Nothing was published. To go ahead including the removal(s):
-    commonground push --allow-deletes
-`;
-    case "needs-unparseable-fix": {
-      const broken = r.unparseable ?? [];
-      return `${label}: ${broken.length} page(s) don't parse \u2014 nothing was published.
-` + unparseableLines(broken, "  ") + `  These would be invisible in the wiki catalog. Fix them, or publish as-is:
-    commonground push --allow-unparseable
-`;
-    }
-    case "read-only": {
-      const pages = r.pages ?? [];
-      return `${label}: your role is read-only \u2014 publishing is admins/curators only.
-` + (pages.length ? `  Your work is safe in ${r.clonePath} \u2014 it just isn't shared yet.
-  Unpublished here: ${formatReceipt(pages)}
-  To get it to ${v.reaches}, file it as a suggestion for a curator to fold in.
-` : "");
-    }
-    case "nothing-to-push":
-      return `${label}: nothing to publish in ${r.clonePath}.
-`;
-    case "pushed": {
-      const pages = r.pages ?? [];
-      const contentPages = pages.filter((p) => p.path !== "index.md");
-      if (r.catalogRefresh && contentPages.length === 0 && !r.deletions?.length) {
-        return `Refreshed the wiki catalog for ${label} \u2014 no page content changed.
-  (A plugin update corrected the catalog format; index.md now matches this clone's pages.)
-` + placeholderNote(r.unparseable);
-      }
-      const removed = r.deletions?.length ? `  Removed from ${v.wiki}: ${r.deletions.map((p) => p.page).join(", ")}
-` : "";
-      return pages.length ? `Published ${pageCount(pages.length)} from ${r.clonePath} to ${label}: ${formatReceipt(pages)}
-${removed}${placeholderNote(r.unparseable)}` : `Published ${r.ahead} change(s) from ${r.clonePath} to ${label}.
-${removed}${placeholderNote(r.unparseable)}`;
-    }
-    case "blocked":
-      return `${label}: ${v.remoteMoved} (${r.behind} change(s)) \u2014 nothing was published.
-  ${capitalize(v.theirs)}: ${formatReceipt(r.incoming ?? []) || "(none)"}
-  Yours (in ${r.clonePath}): ${formatReceipt(r.pages ?? []) || "(none)"}
-  Keep YOUR version of any overlapping pages: commonground push --mine
-  Take the published version instead (yours saved first): commonground pull --take-remote
-`;
-    case "published-mine": {
-      const pages = r.pages ?? [];
-      return `Published your version to ${label}${pages.length ? `: ${formatReceipt(pages)}` : ""}
-` + (r.deletions?.length ? `  Removed from ${v.wiki}: ${r.deletions.map((p) => p.page).join(", ")}
-` : "") + placeholderNote(r.unparseable) + (r.draftBranch ? `  Your pre-merge state is saved on ${r.draftBranch}.
-` : "");
-    }
-  }
-}
-function formatUse(picked, bound, opts = {}) {
-  const head = `Active wiki is now ${wikiLabel(picked)} (you: ${picked.role}).
-`;
-  const radius = `  Every commonground command run in a project that has not named a wiki now answers for
-  ${wikiLabel(picked)} \u2014 on this whole machine, not just in this folder.
-`;
-  const boundId = typeof bound === "string" ? bound : bound?.teamId;
-  const boundName = typeof bound === "string" ? bound : bound ? wikiLabel(bound) : "";
-  const stays = boundId && boundId !== picked.teamId ? `  THIS project stays on ${boundName} \u2014 it is bound to that wiki, and a project's own binding
-  always wins, so a switch can never silently retarget a project that named its wiki.
-  To move this project too: commonground init ${picked.teamId}
-` : "";
-  return head + radius + stays + (opts.firstMulti ? multiWikiNotice() : "");
-}
-function multiWikiNotice() {
-  return `  You now have more than one wiki on this machine. Point each project at its wiki once \u2014
-  /commonground:point in Claude, or "commonground init <wiki>" \u2014 and the active pointer
-  stops mattering for it. (Said once; it will not repeat.)
-`;
-}
-
 // ../../apps/sync-agent/dist/team-resolve.js
 var import_node_fs3 = require("node:fs");
 var import_node_path7 = require("node:path");
@@ -16065,7 +16007,7 @@ async function resolveWiki(deps, arg, projectDir = process.cwd()) {
     return { teamId: wikis[0], via: "sole", ...unreachable };
   const cached = await listWikis(deps.configHome, deps.dataHome);
   const label = (id) => wikiLabel(cached.find((l) => l.teamId === id) ?? { teamId: id });
-  throw new AgentError(`more than one wiki available \u2014 say which: ${wikis.map(label).join(", ")}. (Choose one for this machine with "commonground use", or bind THIS project to one with "commonground init <wiki>" \u2014 after either, these commands resolve on their own.)` + (bound ? ` This project IS bound to ${bound}, but this machine has no sign-in for that wiki, so it is not one of the choices above \u2014 that is a membership question, not a login one: if you should have access, its admin has to invite you.` : ""));
+  throw new AgentError(`more than one wiki available \u2014 say which: ${wikis.map(label).join(", ")}. ` + byAudience(`(Choose one for this machine with "commonground use", or bind THIS project to one with "commonground init <wiki>" \u2014 after either, these commands resolve on their own.)`, `(Bind THIS project to one \u2014 offer /commonground:point \u2014 and these commands resolve on their own.)`) + (bound ? ` This project IS bound to ${bound}, but this machine has no sign-in for that wiki, so it is not one of the choices above \u2014 that is a membership question, not a login one: if you should have access, its admin has to invite you.` : ""));
 }
 function honourableIn(deps, held) {
   let member = null;
@@ -16128,8 +16070,9 @@ function why(choice) {
 function describeWikiChoice(choice, label, alsoLabels = []) {
   const bound = choice.unreachable;
   const also = choice.via === "project" && alsoLabels.length ? `  This project also reads: ${alsoLabels.join(", ")} \u2014 bare commands address the wiki above;
-  name one of these to act on it (commonground pull <wiki>, commonground lint <wiki>).
-` : "";
+` + byAudience(`  name one of these to act on it (commonground pull <wiki>, commonground lint <wiki>).
+`, `  name one of these to act on it (/commonground:pull <wiki>, /commonground:lint <wiki>).
+`) : "";
   const head = (!bound && choice.via === "sole" ? "" : `  Wiki: ${label} \u2014 ${why(choice)}.
 `) + also;
   if (!bound)
@@ -16137,8 +16080,9 @@ function describeWikiChoice(choice, label, alsoLabels = []) {
   return head + `  This project is bound to ${bound}, which this machine has no sign-in for \u2014 so the wiki
   above is what answers here, not the one the project names. That is a MEMBERSHIP question,
   not a login one: if you should have access, an admin of ${bound} has to invite you.
-  To point this project at a wiki you do hold instead: commonground init ${choice.teamId}
-`;
+` + byAudience(`  To point this project at a wiki you do hold instead: commonground init ${choice.teamId}
+`, `  To point this project at a wiki you do hold instead, offer /commonground:point ${choice.teamId}
+`);
 }
 function canon(p) {
   const abs = (0, import_node_path7.resolve)(p);
@@ -16194,8 +16138,9 @@ async function knownClones(deps) {
 }
 function describeCloneMismatch(hit, resolvedLabel, verb) {
   return `  Heads up: you are inside the folder of ${wikiLabel(hit)}, but this command addressed ${resolvedLabel}.
-  To act on the wiki you are standing in, name it: commonground ${verb} ${hit.teamId}
-`;
+` + byAudience(`  To act on the wiki you are standing in, name it: commonground ${verb} ${hit.teamId}
+`, `  To act on the wiki you are standing in, name it: /commonground:${verb} ${hit.teamId}
+`);
 }
 async function cloneMismatchNote(deps, resolvedTeamId, verb, cwd = process.cwd()) {
   const clones = await knownClones(deps);
@@ -16204,6 +16149,228 @@ async function cloneMismatchNote(deps, resolvedTeamId, verb, cwd = process.cwd()
     return "";
   const resolved = clones.find((c) => c.teamId === resolvedTeamId) ?? { teamId: resolvedTeamId };
   return describeCloneMismatch(hit, wikiLabel(resolved), verb);
+}
+
+// ../../apps/sync-agent/dist/format.js
+var PAGE_SYMBOL = {
+  added: "+",
+  modified: "~",
+  deleted: "-",
+  renamed: "~"
+};
+function formatReceipt(pages) {
+  return pages.map((p) => `${PAGE_SYMBOL[p.kind]} ${p.page}`).join(" \xB7 ");
+}
+function pageCount(n) {
+  return `${n} page${n === 1 ? "" : "s"}`;
+}
+function deleteWarning(deletions, v) {
+  if (!deletions?.length)
+    return "";
+  return `  \u26A0 REMOVES ${pageCount(deletions.length)} from ${v.wiki}: ${deletions.map((p) => p.page).join(", ")}
+    ${capitalize(v.removalImpact)}. Past versions stay in history, but the page goes away.
+`;
+}
+function unparseableLines(pages, indent) {
+  return pages.map((p) => `${indent}${p.relPath}: ${p.reason}
+`).join("");
+}
+function placeholderNote(unparseable) {
+  if (!unparseable?.length)
+    return "";
+  return `  \u26A0 ${unparseable.length} page(s) went out as "(unparseable)" placeholders \u2014 listed, but nothing can read them:
+${unparseableLines(unparseable, "    ")}`;
+}
+function capitalize(s) {
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+function formatPush(r, v, who) {
+  const label = wikiLabel(who);
+  switch (r.action) {
+    case "preview": {
+      const pages = r.pages ?? [];
+      const broken = r.unparseable?.length ? `  \u26A0 ${r.unparseable.length} page(s) don't parse, so the catalog can't describe them:
+` + unparseableLines(r.unparseable, "    ") + `    Publishing stops until they're fixed ${byAudience('(or "commonground push --allow-unparseable")', "(or, with an explicit go-ahead, publishing as-is)")}.
+` : "";
+      const catalog = r.catalogRefresh ? `  The wiki catalog (index.md) is out of date with this clone's pages \u2014 publishing
+  refreshes it. (It is machine-owned; a plugin update can correct its format.)
+` : "";
+      if (!pages.length)
+        return r.catalogRefresh ? `${label}: no page changes in ${r.clonePath}, but the catalog needs a refresh.
+${catalog}${broken}  Nothing published yet \u2014 ${ask("push")} to publish the corrected catalog.
+` : `${label}: nothing to publish in ${r.clonePath}.
+${broken}`;
+      const conflict = r.behind ? `  Heads up: ${v.wiki} moved (${r.behind} change(s)): ${formatReceipt(r.incoming ?? []) || "(none)"}
+` : "";
+      return `${label}: would publish ${pageCount(pages.length)} from ${r.clonePath}: ${formatReceipt(pages)}
+` + catalog + conflict + broken + deleteWarning(r.deletions, v) + `  Nothing published yet \u2014 ${ask("push")} to confirm.
+`;
+    }
+    case "needs-delete-confirm":
+      return `${label}: this would publish ${pageCount((r.pages ?? []).length)} from ${r.clonePath}: ${formatReceipt(r.pages ?? [])}
+` + deleteWarning(r.deletions, v) + // On the --mine path the replay has already happened and the branch now sits on top of the
+      // hosted tip, so the retry is a plain --allow-deletes; re-passing --mine would be a no-op.
+      (r.draftBranch ? `  Your pre-merge state is saved on ${r.draftBranch}.
+` : "") + `  Nothing was published. To go ahead including the removal(s):
+` + byAudience(`    commonground push --allow-deletes
+`, `    ${ask("push-allow-deletes")}
+`);
+    case "needs-unparseable-fix": {
+      const broken = r.unparseable ?? [];
+      return `${label}: ${broken.length} page(s) don't parse \u2014 nothing was published.
+` + unparseableLines(broken, "  ") + `  These would be invisible in the wiki catalog. Fix them, or publish as-is:
+` + byAudience(`    commonground push --allow-unparseable
+`, `    (offer to publish as-is; it needs their explicit go-ahead)
+`);
+    }
+    case "read-only": {
+      const pages = r.pages ?? [];
+      return `${label}: your role is read-only \u2014 publishing is admins/curators only.
+` + (pages.length ? `  Your work is safe in ${r.clonePath} \u2014 it just isn't shared yet.
+  Unpublished here: ${formatReceipt(pages)}
+  To get it to ${v.reaches}, file it as a suggestion for a curator to fold in.
+` : "");
+    }
+    case "nothing-to-push":
+      return `${label}: nothing to publish in ${r.clonePath}.
+`;
+    case "pushed": {
+      const pages = r.pages ?? [];
+      const contentPages = pages.filter((p) => p.path !== "index.md");
+      if (r.catalogRefresh && contentPages.length === 0 && !r.deletions?.length) {
+        return `Refreshed the wiki catalog for ${label} \u2014 no page content changed.
+  (A plugin update corrected the catalog format; index.md now matches this clone's pages.)
+` + placeholderNote(r.unparseable);
+      }
+      const removed = r.deletions?.length ? `  Removed from ${v.wiki}: ${r.deletions.map((p) => p.page).join(", ")}
+` : "";
+      return pages.length ? `Published ${pageCount(pages.length)} from ${r.clonePath} to ${label}: ${formatReceipt(pages)}
+${removed}${placeholderNote(r.unparseable)}` : `Published ${r.ahead} change(s) from ${r.clonePath} to ${label}.
+${removed}${placeholderNote(r.unparseable)}`;
+    }
+    case "blocked":
+      return `${label}: ${v.remoteMoved} (${r.behind} change(s)) \u2014 nothing was published.
+  ${capitalize(v.theirs)}: ${formatReceipt(r.incoming ?? []) || "(none)"}
+  Yours (in ${r.clonePath}): ${formatReceipt(r.pages ?? []) || "(none)"}
+` + byAudience(`  Keep YOUR version of any overlapping pages: commonground push --mine
+  Take the published version instead (yours saved first): commonground pull --take-remote
+`, `  Two ways out, the user's call: ${ask("push-mine")}, or ${ask("pull-take-remote")}.
+`);
+    case "published-mine": {
+      const pages = r.pages ?? [];
+      return `Published your version to ${label}${pages.length ? `: ${formatReceipt(pages)}` : ""}
+` + (r.deletions?.length ? `  Removed from ${v.wiki}: ${r.deletions.map((p) => p.page).join(", ")}
+` : "") + placeholderNote(r.unparseable) + (r.draftBranch ? `  Your pre-merge state is saved on ${r.draftBranch}.
+` : "");
+    }
+  }
+}
+function formatUse(picked, bound, opts = {}) {
+  const head = `Active wiki is now ${wikiLabel(picked)} (you: ${picked.role}).
+`;
+  const radius = `  Every commonground command run in a project that has not named a wiki now answers for
+  ${wikiLabel(picked)} \u2014 on this whole machine, not just in this folder.
+`;
+  const boundId = typeof bound === "string" ? bound : bound?.teamId;
+  const boundName = typeof bound === "string" ? bound : bound ? wikiLabel(bound) : "";
+  const stays = boundId && boundId !== picked.teamId ? `  THIS project stays on ${boundName} \u2014 it is bound to that wiki, and a project's own binding
+  always wins, so a switch can never silently retarget a project that named its wiki.
+` + byAudience(`  To move this project too: commonground init ${picked.teamId}
+`, `  To move this project too, offer /commonground:point ${picked.teamId}
+`) : "";
+  return head + radius + stays + (opts.firstMulti ? multiWikiNotice() : "");
+}
+function multiWikiNotice() {
+  return `  You now have more than one wiki on this machine. Point each project at its wiki once
+` + byAudience(`  ("commonground init <wiki>", or /commonground:point in Claude) \u2014 and the active pointer
+`, `  (/commonground:point) \u2014 and the active pointer
+`) + `  stops mattering for it. (Said once; it will not repeat.)
+`;
+}
+function formatVoiceFail(r) {
+  switch (r.voiceFail) {
+    case "unreachable":
+      return `The block was written WITHOUT your wiki's charter voice \u2014 CommonGround could not be
+reached to fetch it. Everything works; ${byAudience(`run "commonground init --refresh" when you're
+online to re-render it in the charter's own voice.`, `a re-point (/commonground:point) when you're
+online re-renders it in the charter's own voice.`)}
+`;
+    case "unsupported":
+      return `The block was written WITHOUT your wiki's charter voice \u2014 this CommonGround server does
+not serve the charter to the CLI yet. Everything works; once the server updates,
+${byAudience('"commonground init --refresh"', "a re-point (/commonground:point)")} re-renders it in the charter's own voice.
+`;
+    case "stale-signin":
+      return `The block was written WITHOUT your wiki's charter voice \u2014 the sign-in used was not
+accepted. ${byAudience('"commonground login", then "commonground init --refresh" re-renders it.', "Signing in again and re-pointing (/commonground:point) re-renders it.")}
+`;
+    default:
+      return "";
+  }
+}
+function legacyCredentialNote(state, deps) {
+  if (!state)
+    return "";
+  const legacy = legacyStorePath(deps.dataHome);
+  switch (state) {
+    case "live":
+      return `Heads-up: your sign-in is still stored inside your wiki folder (${legacy}) instead of at ${storePath(deps.configHome)}. Until it moves, deleting or moving the wiki folder would sign you out. ${byAudience('Run "commonground login" to move it now', "Offer to sign them in again, which moves it")} \u2014 and if it stays put after that, ${deps.configHome} isn't writable, which is the one thing that keeps the move from completing on its own.
+`;
+    case "redundant":
+      return `Note: an old copy of your sign-in is left over at ${legacy}. It is no longer used \u2014 ${byAudience('run "commonground status --clear-stale-credential"', "offer to clear it (the clear-stale-credential path)")} to remove it.
+`;
+    case "divergent":
+      return `Note: an older sign-in file at ${legacy} holds a credential this machine no longer uses. It is not read, and CommonGround will not delete it for you. ${byAudience('Run "commonground login" to consolidate', "Offer to sign them in again, which consolidates it")}, or remove that file yourself.
+`;
+    case "unreadable":
+      return `Note: ${legacy} exists but can't be read, so CommonGround can't tell whether it still holds a sign-in \u2014 it is left alone rather than removed. ${byAudience('If that file is yours, "chmod 600" makes it readable again; otherwise remove it yourself.', "It stays put until the user makes it readable or removes it themselves.")}
+`;
+    case "unusable":
+      return `Note: ${legacy} is not a usable CommonGround sign-in. It is ignored \u2014 ${byAudience('run "commonground status --clear-stale-credential"', "offer to clear it (the clear-stale-credential path)")} to remove it.
+`;
+  }
+}
+function formatStatus(s, deps, mode = null, choice = null, profile = {}, alsoLabels = []) {
+  return formatSyncState(s, mode, profile) + whichWiki(s, choice, profile, alsoLabels) + whereItLives(s, mode) + legacyCredentialNote(s.legacyCredential, deps);
+}
+function whichWiki(s, choice, profile, alsoLabels = []) {
+  if (!choice)
+    return "";
+  return describeWikiChoice(choice, wikiLabel({ teamId: s.teamId, ...profile }), alsoLabels);
+}
+function whereItLives(s, mode) {
+  if (mode === "mcp")
+    return "";
+  return s.state === "not-cloned" ? `  Your wiki folder would be created at ${s.clonePath}.
+` : `  Your wiki folder: ${s.clonePath}
+`;
+}
+function formatSyncState(s, mode = null, profile = {}) {
+  const who = `${profile.wikiName?.trim() || s.teamId} (you: ${s.role})`;
+  switch (s.state) {
+    case "not-cloned":
+      return mode === "mcp" ? `${who}: signed in. This project reads the wiki through the CommonGround connector \u2014 no local clone, by design.
+` : `${who}: not cloned \u2014 ${ask("pull")}.
+`;
+    case "up-to-date":
+      return `${who}: up to date.
+`;
+    case "behind": {
+      const incoming = s.changedPages.length ? ` Incoming: ${formatReceipt(s.changedPages)}.` : "";
+      return `${who}: ${s.behind} commit(s) behind \u2014 ${ask("pull")}.${incoming}
+`;
+    }
+    case "ahead":
+      return `${who}: ${s.ahead} local commit(s)${s.dirty ? " + uncommitted edits" : ""} to publish \u2014 ${ask("push")}.
+`;
+    case "diverged":
+      return `${who}: DIVERGED (${s.ahead} ahead, ${s.behind} behind${s.dirty ? ", uncommitted edits" : ""}).
+  Incoming: ${formatReceipt(s.changedPages) || "(none)"}
+` + byAudience(`  Resolve: commonground resolve <keep-local|take-remote|save-as-draft>
+`, `  Offer to resolve it: keep the user's version, take the published version, or save
+  the user's work as a draft.
+`);
+  }
 }
 
 // ../../apps/sync-agent/dist/cli.js
@@ -16452,26 +16619,6 @@ CLAUDE.md carries each wiki's id and name, the first sentence of its charter's b
 category list; settings.json carries the ids. No file paths and nothing secret \u2014 your sign-in
 lives elsewhere.
 `;
-function formatVoiceFail(r) {
-  switch (r.voiceFail) {
-    case "unreachable":
-      return `The block was written WITHOUT your wiki's charter voice \u2014 CommonGround could not be
-reached to fetch it. Everything works; run "commonground init --refresh" when you're
-online to re-render it in the charter's own voice.
-`;
-    case "unsupported":
-      return `The block was written WITHOUT your wiki's charter voice \u2014 this CommonGround server does
-not serve the charter to the CLI yet. Everything works; once the server updates,
-"commonground init --refresh" re-renders it in the charter's own voice.
-`;
-    case "stale-signin":
-      return `The block was written WITHOUT your wiki's charter voice \u2014 the sign-in used was not
-accepted. "commonground login", then "commonground init --refresh" re-renders it.
-`;
-    default:
-      return "";
-  }
-}
 function formatInit(r) {
   const wrote = `Wrote the CommonGround router block into ${r.projectDir}/CLAUDE.md.`;
   const set2 = r.also.length ? ` \u2014 this project now reads ${1 + r.also.length} wikis` : "";
@@ -16505,13 +16652,13 @@ function formatAlso(r) {
 function formatDropped(r) {
   if (r.dropped.length === 0)
     return "";
-  return `This project no longer reads ${r.dropped.join(", ")}` + (r.mode === "local" ? " (the folder is untouched)" : "") + ` \u2014 "commonground init --also <wiki>" adds one back.
+  return `This project no longer reads ${r.dropped.join(", ")}` + (r.mode === "local" ? " (the folder is untouched)" : "") + ` \u2014 ${byAudience('"commonground init --also <wiki>"', "/commonground:point (adding it)")} adds one back.
 `;
 }
 function formatInitStanding(s) {
   if (!s)
     return `  Couldn't reach the hosted wiki to compare \u2014 nothing was changed either way.
-  Run "commonground status" when you're back online.
+  ${byAudience(`Run "commonground status" when you're back online.`, `Offer /commonground:status when they're back online.`)}
 `;
   const dirty = s.dirty ? ", plus uncommitted edits" : "";
   const incoming = s.changedPages.length ? `
@@ -16522,15 +16669,15 @@ function formatInitStanding(s) {
 `;
     case "behind":
       return `  The hosted wiki is ${s.behind} commit(s) ahead of your folder.${incoming}
-  Run "commonground pull" when you want them \u2014 this init did not.
+  ${byAudience(`Run "commonground pull" when you want them \u2014 this init did not.`, `Offer /commonground:pull when they want them \u2014 this init did not pull.`)}
 `;
     case "ahead":
       return `  Your folder is ${s.ahead} commit(s) ahead of the hosted wiki${dirty} \u2014 unpublished work.
-  Publish it with "commonground push" when you're ready \u2014 this init did not.
+  ${byAudience(`Publish it with "commonground push" when you're ready \u2014 this init did not.`, `Offer /commonground:push when they're ready \u2014 this init did not publish.`)}
 `;
     case "diverged":
       return `  You and the hosted wiki have both moved: ${s.ahead} local commit(s) ahead, ${s.behind} behind${dirty}.${incoming}
-  Nothing was reconciled. "commonground status" shows the options.
+  Nothing was reconciled. ${byAudience('"commonground status"', "/commonground:status")} shows the options.
 `;
     // A clone we just found on disk cannot report itself uncloned; a future state would rather say
     // nothing here than have this formatter invent a reassurance for a case it doesn't know.
@@ -16557,45 +16704,16 @@ function formatImport(r, v) {
   if (r.nothingToImport)
     return `${r.sourceDir} added nothing new to ${r.teamId} \u2014 nothing was published.
 ` + importCaveats(r) + importConvergence(r);
-  const tail = r.synced?.action === "pushed" ? ` Published to ${v.wiki}.` : r.synced?.action === "local-only" ? " Committed locally (your role is read-only, so nothing was published)." : r.synced?.action === "diverged" ? ` NOTE: ${v.wiki} diverged \u2014 run "commonground status" to resolve.` : "";
+  const tail = r.synced?.action === "pushed" ? ` Published to ${v.wiki}.` : r.synced?.action === "local-only" ? " Committed locally (your role is read-only, so nothing was published)." : r.synced?.action === "diverged" ? ` NOTE: ${v.wiki} diverged \u2014 ${ask("status")} to resolve.` : "";
   const normalized = r.normalized ? ` Normalized frontmatter on ${r.normalized} page(s).` : "";
-  const skipped = r.skipped ? ` ${r.skipped} file(s) couldn't be normalized (imported as-is) \u2014 "commonground push" names them before publishing.` : "";
+  const skipped = r.skipped ? ` ${r.skipped} file(s) couldn't be normalized (imported as-is) \u2014 ${byAudience('"commonground push"', "publishing (/commonground:push)")} names them before publishing.` : "";
   const blocked = r.synced?.action === "blocked-deletes" ? ` Committed locally, NOT published \u2014 the pending changes also REMOVE ${pageCount((r.synced.deletions ?? []).length)} from ${v.wiki}${r.synced.deletions?.length ? ` (${r.synced.deletions.map((p) => p.page).join(", ")})` : ""}.
-  Review with "commonground push --dry-run", then publish with:
+` + byAudience(`  Review with "commonground push --dry-run", then publish with:
     commonground push --allow-deletes
-` : "";
+`, `  Show the preview (push --dry-run), then ${ask("push-allow-deletes")}.
+`) : "";
   return `Imported ${r.imported} file(s) from ${r.sourceDir} into ${r.teamId}.${tail}${normalized}${skipped}
 ` + blocked + importCaveats(r) + importConvergence(r);
-}
-function legacyCredentialNote(state, deps) {
-  if (!state)
-    return "";
-  const legacy = legacyStorePath(deps.dataHome);
-  switch (state) {
-    case "live":
-      return `Heads-up: your sign-in is still stored inside your wiki folder (${legacy}) instead of at ${storePath(deps.configHome)}. Until it moves, deleting or moving the wiki folder would sign you out. Run "commonground login" to move it now \u2014 and if it stays put after that, ${deps.configHome} isn't writable, which is the one thing that keeps the move from completing on its own.
-`;
-    case "redundant":
-      return `Note: an old copy of your sign-in is left over at ${legacy}. It is no longer used \u2014 run "commonground status --clear-stale-credential" to remove it.
-`;
-    case "divergent":
-      return `Note: an older sign-in file at ${legacy} holds a credential this machine no longer uses. It is not read, and CommonGround will not delete it for you. Run "commonground login" to consolidate, or remove that file yourself.
-`;
-    case "unreadable":
-      return `Note: ${legacy} exists but can't be read, so CommonGround can't tell whether it still holds a sign-in \u2014 it is left alone rather than removed. If that file is yours, "chmod 600" makes it readable again; otherwise remove it yourself.
-`;
-    case "unusable":
-      return `Note: ${legacy} is not a usable CommonGround sign-in. It is ignored \u2014 run "commonground status --clear-stale-credential" to remove it.
-`;
-  }
-}
-function formatStatus(s, deps, mode = null, choice = null, profile = {}, alsoLabels = []) {
-  return formatSyncState(s, mode, profile) + whichWiki(s, choice, profile, alsoLabels) + whereItLives(s, mode) + legacyCredentialNote(s.legacyCredential, deps);
-}
-function whichWiki(s, choice, profile, alsoLabels = []) {
-  if (!choice)
-    return "";
-  return describeWikiChoice(choice, wikiLabel({ teamId: s.teamId, ...profile }), alsoLabels);
 }
 function formatWikiList(listings, activeId, boundId, alsoIds = []) {
   return listings.map((l) => {
@@ -16618,38 +16736,6 @@ function formatWikiList(listings, activeId, boundId, alsoIds = []) {
     return `  ${l.teamId === activeId ? "*" : " "} ${wikiLabel(l)} [you: ${l.role}]${suffix}
 `;
   }).join("");
-}
-function whereItLives(s, mode) {
-  if (mode === "mcp")
-    return "";
-  return s.state === "not-cloned" ? `  Your wiki folder would be created at ${s.clonePath}.
-` : `  Your wiki folder: ${s.clonePath}
-`;
-}
-function formatSyncState(s, mode = null, profile = {}) {
-  const who = `${profile.wikiName?.trim() || s.teamId} (you: ${s.role})`;
-  switch (s.state) {
-    case "not-cloned":
-      return mode === "mcp" ? `${who}: signed in. This project reads the wiki through the CommonGround connector \u2014 no local clone, by design.
-` : `${who}: not cloned \u2014 run "commonground pull".
-`;
-    case "up-to-date":
-      return `${who}: up to date.
-`;
-    case "behind": {
-      const incoming = s.changedPages.length ? ` Incoming: ${formatReceipt(s.changedPages)}.` : "";
-      return `${who}: ${s.behind} commit(s) behind \u2014 run "commonground pull".${incoming}
-`;
-    }
-    case "ahead":
-      return `${who}: ${s.ahead} local commit(s)${s.dirty ? " + uncommitted edits" : ""} to publish \u2014 run "commonground push".
-`;
-    case "diverged":
-      return `${who}: DIVERGED (${s.ahead} ahead, ${s.behind} behind${s.dirty ? ", uncommitted edits" : ""}).
-  Incoming: ${formatReceipt(s.changedPages) || "(none)"}
-  Resolve: commonground resolve <keep-local|take-remote|save-as-draft>
-`;
-  }
 }
 function formatSync(r, v) {
   switch (r.action) {
@@ -16675,13 +16761,14 @@ function formatSync(r, v) {
       return `${r.teamId}: ${r.ahead} local change(s) kept as read-only drafts (members can't publish).
 `;
     case "diverged":
-      return `${r.teamId} has diverged (${r.ahead} ahead, ${r.behind} behind) \u2014 run "commonground status" to resolve. Nothing was changed.
+      return `${r.teamId} has diverged (${r.ahead} ahead, ${r.behind} behind) \u2014 ${ask("status")} to resolve. Nothing was changed.
 `;
     case "blocked-deletes":
       return `${r.teamId}: nothing was published \u2014 the pending changes REMOVE pages from ${v.wiki}.
-` + deleteWarning(r.deletions, v) + `  Review them with "commonground push --dry-run", then confirm with:
+` + deleteWarning(r.deletions, v) + byAudience(`  Review them with "commonground push --dry-run", then confirm with:
     commonground push --allow-deletes
-`;
+`, `  Show the preview (push --dry-run), then ${ask("push-allow-deletes")}.
+`);
   }
 }
 function teamArg(rest) {
@@ -16697,7 +16784,7 @@ function formatPull(r, v) {
       return `Wiki cloned at ${r.clonePath}.
 `;
     case "up-to-date":
-      return r.ahead > 0 || r.dirty ? `${r.teamId}: already up to date \u2014 you have unpublished changes ("commonground push").
+      return r.ahead > 0 || r.dirty ? `${r.teamId}: already up to date \u2014 you have unpublished changes (${byAudience('"commonground push"', "to publish: /commonground:push")}).
 ` : `${r.teamId}: already up to date.
 `;
     case "fast-forwarded": {
@@ -16709,9 +16796,11 @@ function formatPull(r, v) {
     case "blocked":
       return `${r.teamId}: ${r.behind} incoming change(s), but you have local work that would be overwritten (${r.ahead} unpublished${r.dirty ? " + uncommitted edits" : ""}). Nothing was changed.
   Incoming: ${formatReceipt(r.pages ?? []) || "(none)"}
-  Publish yours first: commonground push
+` + byAudience(`  Publish yours first: commonground push
   Or take the published version (your work is saved first): commonground pull --take-remote
-`;
+`, `  Publish the user's local work first: ${ask("push")}.
+  Or ${ask("pull-take-remote")}.
+`);
     case "took-remote":
       return `${r.teamId}: adopted the published version` + (r.draftBranch ? ` \u2014 your local work is saved on ${r.draftBranch}.
 ` : ".\n");
@@ -16820,7 +16909,7 @@ ${fix}`;
   return `${head}${broken}${groups}${red}${structure}`;
 }
 function formatCoverage(r) {
-  const basis = r.chartered ? "against this wiki's charter" : `against the default "${r.shape}" shape template` + (r.assumed ? ' (no cached team profile \u2014 run "commonground pull" to refresh)' : "");
+  const basis = r.chartered ? "against this wiki's charter" : `against the default "${r.shape}" shape template` + (r.assumed ? ` (no cached team profile \u2014 ${ask("pull")} to refresh)` : "");
   const head = `${r.clonePath} \u2014 ${r.progress.done}/${r.progress.total} section(s) complete, ${basis}.
 `;
   const open2 = r.rows.filter((s) => s.status === "empty" || s.status === "partial");
@@ -16862,14 +16951,15 @@ ${tail}`;
       return `${r.clonePath} \u2014 ${r.rewrites.length} page(s) carry a key CommonGround has retired. Nothing was changed.
 ` + retiredKeyLines(r) + tail + `  Removed by name, from an explicit list: ${retiredKeyList()}.
   Every key not on that list stays exactly as it is \u2014 an imported vault's own frontmatter is not ours to delete.
-  To go ahead:
+` + byAudience(`  To go ahead:
     commonground normalize --drop-retired-keys --apply
-`;
+`, `  To go ahead, with their explicit OK, re-run with --apply.
+`);
     case "applied":
       return `Removed retired keys from ${r.rewrites.length} page(s) in ${r.clonePath}.
 ` + retiredKeyLines(r) + tail + // Editing the clone is not publishing (SER-184) — and `push` previews and confirms on its
       // own, so pointing at it is a handoff rather than an instruction to bulldoze ahead.
-      `  Nothing was published \u2014 run "commonground push" when you want the team to have it.
+      `  Nothing was published \u2014 ${ask("push")} when you want the team to have it.
 `;
   }
 }
@@ -16882,7 +16972,7 @@ async function clearStaleCredential() {
     return;
   }
   if (state !== "redundant" && state !== "unusable") {
-    throw new AgentError(state === "live" ? `refusing to remove ${legacy} \u2014 that file IS your sign-in on this machine, so removing it would sign you out. Run "commonground login" to move it instead.` : state === "unreadable" ? `refusing to remove ${legacy} \u2014 CommonGround can't read that file, so it can't prove it isn't your only sign-in. Make it readable ("chmod 600 ${legacy}") and run this again, or remove it yourself.` : `refusing to remove ${legacy} \u2014 CommonGround can't prove that file is unused (it may hold a sign-in ${storePath()} doesn't), so it isn't ours to destroy. Run "commonground login" to consolidate, or remove that file yourself.`);
+    throw new AgentError(state === "live" ? `refusing to remove ${legacy} \u2014 that file IS your sign-in on this machine, so removing it would sign you out. ${byAudience('Run "commonground login" to move it instead.', "Offer to sign them in again, which moves it instead.")}` : state === "unreadable" ? `refusing to remove ${legacy} \u2014 CommonGround can't read that file, so it can't prove it isn't your only sign-in. ${byAudience(`Make it readable ("chmod 600 ${legacy}") and run this again, or remove it yourself.`, "It stays put until the user makes it readable or removes it themselves.")}` : `refusing to remove ${legacy} \u2014 CommonGround can't prove that file is unused (it may hold a sign-in ${storePath()} doesn't), so it isn't ours to destroy. ${byAudience('Run "commonground login" to consolidate', "Offer to sign them in again to consolidate")}, or remove that file yourself.`);
   }
   try {
     await (0, import_promises6.unlink)(legacy);
@@ -16910,14 +17000,15 @@ async function main(argv) {
       if (rest.includes("--start")) {
         const p = await startDeviceLogin(deviceLoginDeps());
         process.stdout.write(`Open ${p.verificationUri} and enter ${p.userCode}.
-Then run "commonground login --wait" (the code is valid for about ${Math.round(p.expiresInSec / 60)} minutes).
+${byAudience('Then run "commonground login --wait"', "Once they say they've approved it, check again")} (the code is valid for about ${Math.round(p.expiresInSec / 60)} minutes).
 `);
         return;
       }
       if (rest.includes("--wait")) {
         const result = await waitDeviceLogin(deviceLoginDeps(true), WAIT_BUDGET_MS);
         if (result === "pending") {
-          process.stdout.write('Still waiting for approval in the browser. Run "commonground login --wait" again once you have approved it.\n');
+          process.stdout.write(`Still waiting for approval in the browser. ${byAudience('Run "commonground login --wait" again once you have approved it.', "Not an error \u2014 check again once they say they've approved it.")}
+`);
           return;
         }
         process.stdout.write(`Logged in to team ${result.teamId} as ${result.role} (user ${result.userId}).
@@ -16943,10 +17034,13 @@ Then run "commonground login --wait" (the code is valid for about ${Math.round(p
       const query = rest.find((a) => !a.startsWith("-"));
       if (!query) {
         process.stdout.write(`Your wikis:
-${formatWikiList(listings, active, boundId, alsoIds)}
+${formatWikiList(listings, active, boundId, alsoIds)}` + byAudience(`
 Switch with "commonground use <wiki>" \u2014 a name or an id, and a unique prefix of
 either is enough.
-${sourceNote(source)}`);
+`, `
+To switch, say which wiki \u2014 a name or an id, and a unique prefix of either is
+enough.
+`) + sourceNote(source));
         return;
       }
       const hits = matchWiki(listings, query);
@@ -16974,7 +17068,7 @@ ${formatWikiList(hits, active, boundId, alsoIds)}Say which one \u2014 the full n
       if (also || drop) {
         const detected = await detectRouterBlock(projectDir);
         if (!detected?.teamId) {
-          throw new AgentError(`this project isn't pointed at a wiki yet, so there is nothing to ${also ? "add to" : "drop from"} \u2014 point it first: commonground init [--mode mcp|local] <wiki>`);
+          throw new AgentError(`this project isn't pointed at a wiki yet, so there is nothing to ${also ? "add to" : "drop from"} \u2014 ` + byAudience("point it first: commonground init [--mode mcp|local] <wiki>", "point it first (/commonground:point <wiki>)"));
         }
         const primary = detected.teamId;
         const current = detected.alsoTeamIds;
@@ -16996,7 +17090,7 @@ ${formatWikiList(hits, active, boundId, alsoIds)}Say which one \u2014 the full n
         }
         const id = await resolveTeamId(deps, drop, projectDir);
         if (id === primary) {
-          throw new AgentError(current.length ? `${id} is this project's PRIMARY wiki \u2014 the one bare commands and bare connector calls address. Point the project at another wiki first ("commonground init <wiki>", which replaces the set), then add the others back with --also.` : `${id} is the only wiki this project reads; a project reads at least one. To read a different wiki instead: commonground init <wiki>.`);
+          throw new AgentError(current.length ? `${id} is this project's PRIMARY wiki \u2014 the one bare commands and bare connector calls address. Point the project at another wiki first ${byAudience('("commonground init <wiki>", which replaces the set)', "(/commonground:point <wiki>, which replaces the set)")}, then add the others back${byAudience(" with --also", "")}.` : `${id} is the only wiki this project reads; a project reads at least one. To read a different wiki instead${byAudience(": commonground init <wiki>", ", offer /commonground:point <wiki>")}.`);
         }
         if (!current.includes(id))
           throw new AgentError(`this project does not read ${id} \u2014 nothing to drop.`);
@@ -17016,7 +17110,7 @@ ${formatWikiList(hits, active, boundId, alsoIds)}Say which one \u2014 the full n
       if (refresh) {
         const detected = await detectRouterBlock(projectDir);
         if (!detected) {
-          throw new AgentError("no CommonGround router block in ./CLAUDE.md \u2014 initialize first: commonground init [--mode mcp|local]");
+          throw new AgentError(byAudience("no CommonGround router block in ./CLAUDE.md \u2014 initialize first: commonground init [--mode mcp|local]", "no CommonGround router block in ./CLAUDE.md \u2014 point it first (/commonground:point)"));
         }
         effectiveMode = detected.mode;
         alsoIds = detected.alsoTeamIds;

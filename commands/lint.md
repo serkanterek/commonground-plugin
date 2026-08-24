@@ -1,5 +1,6 @@
 ---
-description: Check the health of the CommonGround wiki — inbound suggestions, stale / orphan / broken-citation / thin-summary / redundant-summary / category-tag issues, retired frontmatter keys, coverage gaps, and referenced-but-unwritten pages (detection only — no silent fixes)
+description: "Health-check your wiki: open suggestions, stale or orphan pages, broken citations, thin or redundant summaries, category-tag issues, retired keys, coverage gaps. Reports only, changes nothing."
+argument-hint: "nothing needed; name a wiki if you mean one in particular"
 ---
 
 Give the CommonGround wiki a full health check — what **people have asked for**, what's **wrong**

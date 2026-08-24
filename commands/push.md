@@ -1,5 +1,6 @@
 ---
-description: Publish your local wiki changes — previews exactly what will be published and asks before anything lands
+description: "Publish the changes in your local wiki folder. Shows exactly what will go out and asks before anything lands."
+argument-hint: "a line on what changed and why; I'll ask if you skip it"
 ---
 
 Publish this project's local CommonGround clone to the published wiki. This is **the** outward-facing
@@ -99,7 +100,8 @@ the push, not after, so the user gets one question and one dialog rather than fo
 
 Run `commonground push --message "<what this session did>"` — one session-scale
 sentence saying what changed and why, which becomes the commit message and is the only record of
-your reasoning that outlives the session. Never restate what the diff shows ("updated pages"). It
+your reasoning that outlives the session. If `$ARGUMENTS` carries the user's own line about what
+changed, that IS the message (don't ask again); if it names a wiki, pass that wiki to the verb. Never restate what the diff shows ("updated pages"). It
 publishes and reports the receipt (the pages published) — unless it comes back
 **needs-delete-confirm** (§3) or **needs-unparseable-fix** (§3b), in which case nothing was
 published and that section takes over. If this publishes a change someone asked

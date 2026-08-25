@@ -12321,6 +12321,21 @@ var EnvSchema = external_exports.object({
   CLERK_SECRET_KEY: external_exports.string().optional(),
   /** The browser app origin allowed to call this api (CORS) + Clerk `azp` check. */
   WEB_ORIGIN: external_exports.string().url().optional(),
+  /**
+   * Prelaunch provisioning gate (SER-293): comma-separated emails allowed to create an
+   * org/wiki via `POST /orgs`. UNSET (or blank) → open, today's behavior — dev, tests and the
+   * E2E harness never set it. Gates PROVISIONING only: never reads, never sign-in, and
+   * invitation acceptance stays exempt (an invite is an explicit grant by an existing admin).
+   */
+  LAUNCH_ALLOWLIST_EMAILS: external_exports.string().optional(),
+  /**
+   * Rate-limit keying (SER-295): set to `true` ONLY when this api sits behind Cloudflare with
+   * the origin restricted to Cloudflare's network — then `cf-connecting-ip` is authoritative
+   * (Cloudflare overwrites any client copy) and becomes the bucket key. Unset/false → the key
+   * comes from `request.ip` under `trustProxy`, which is the caller as the platform edge
+   * recorded it. Today the `api` record is DNS-only (grey), so this stays unset.
+   */
+  TRUST_CF_CONNECTING_IP: external_exports.enum(["true", "false"]).optional().transform((v) => v === "true"),
   // --- invitation email (SER-264) — optional, and absent is a SUPPORTED production mode rather
   // than a broken one: with no provider configured the invite is still issued and its link still
   // works, the admin just carries it themselves (the MVP behaviour SER-179 shipped). Both vars are
@@ -16467,6 +16482,8 @@ async function buildDeps() {
   };
 }
 function openBrowser(url) {
+  if (process.env.COMMONGROUND_NO_BROWSER)
+    return;
   let safe;
   try {
     const parsed = new URL(url);
@@ -16478,11 +16495,14 @@ function openBrowser(url) {
   }
   const cmd = process.platform === "darwin" ? "open" : process.platform === "win32" ? "start" : "xdg-open";
   try {
-    (0, import_node_child_process3.spawn)(cmd, [safe], {
+    const child = (0, import_node_child_process3.spawn)(cmd, [safe], {
       stdio: "ignore",
       detached: true,
       shell: process.platform === "win32"
-    }).unref();
+    });
+    child.on("error", () => {
+    });
+    child.unref();
   } catch {
   }
 }

@@ -648,15 +648,37 @@ function updateNoticePath() {
   return path.join(configHome(), 'update-notice.json');
 }
 
-/** The newest version we have already told this person about, or null (SER-225). */
-function lastAnnouncedRelease() {
+/** The whole update-notice record, or `{}` — one reader so the two fields can never clobber. */
+function readUpdateState() {
   try {
     const raw = JSON.parse(fs.readFileSync(updateNoticePath(), 'utf8'));
-    const v = raw && raw.announced;
-    return typeof v === 'string' && v ? v : null;
+    return raw && typeof raw === 'object' ? raw : {};
   } catch {
-    return null;
+    return {};
   }
+}
+
+/**
+ * MERGE a patch into the record. Merging rather than overwriting is load-bearing since SER-296:
+ * `announced` and the release-check cache live in the same file, and the announce write happens on
+ * a different code path from the check write — an overwrite would drop whichever one it did not
+ * know about, silently re-arming a fetch or a notice that had already happened.
+ */
+function writeUpdateState(patch) {
+  try {
+    const p = updateNoticePath();
+    fs.mkdirSync(path.dirname(p), { recursive: true, mode: 0o700 });
+    fs.writeFileSync(p, JSON.stringify({ ...readUpdateState(), ...patch }), { mode: 0o600 });
+    fs.chmodSync(p, 0o600); // `mode` is ignored when overwriting an existing file
+  } catch {
+    /* best-effort */
+  }
+}
+
+/** The newest version we have already told this person about, or null (SER-225). */
+function lastAnnouncedRelease() {
+  const v = readUpdateState().announced;
+  return typeof v === 'string' && v ? v : null;
 }
 
 /**
@@ -672,13 +694,75 @@ function lastAnnouncedRelease() {
  * a far better failure than a hook that throws.
  */
 function markReleaseAnnounced(version) {
-  try {
-    const p = updateNoticePath();
-    fs.mkdirSync(path.dirname(p), { recursive: true, mode: 0o700 });
-    fs.writeFileSync(p, JSON.stringify({ announced: version }), { mode: 0o600 });
-  } catch {
-    /* best-effort */
-  }
+  writeUpdateState({ announced: version });
+}
+
+/** How long a release verdict is trusted. Releases are rare; a drifted machine can wait half a day. */
+const RELEASE_TTL_MS = 12 * 60 * 60 * 1000;
+/** How long a FAILED check is remembered, so an outage costs one request per session-storm, not one per session. */
+const RELEASE_FAILURE_TTL_MS = 30 * 60 * 1000;
+
+/**
+ * Is this machine behind the published plugin, as far as we can tell? `{ latest }` or null (SER-296).
+ *
+ * ## Why this exists rather than a cache of what `/wiki/state` said
+ *
+ * SER-296 originally proposed replaying the last `latest` the server told us on the paths that
+ * cannot reach it. That is a NO-OP: `markReleaseAnnounced` fires the moment the server names a
+ * version, so the cached value always equals the announced one and the notice always skips. A
+ * replay can only repeat what a resolved session already said. The unbound paths need a SOURCE, so
+ * this asks an endpoint that needs no token, no team and no project.
+ *
+ * ## Why the server returns the verdict
+ *
+ * Nothing here compares versions. `isBehind` is numeric rather than lexicographic for a reason that
+ * is easy to get wrong twice (`0.6.10` sorts BEFORE `0.6.9` as a string), and this file is
+ * dependency-free CommonJS that cannot import the tested copy — exactly the shape that needed a
+ * drift guard for the credential and clone-path readers. Asking for the answer avoids the mirror.
+ *
+ * THROTTLED, because the caller runs on paths that fire in every project on the machine. The record
+ * is keyed by the running version: if the plugin changed since the check, the verdict is about a
+ * build we are no longer running and is discarded rather than trusted.
+ *
+ * Fail-open and silent throughout — null means "we do not know", which renders as SILENCE and never
+ * as "you are up to date".
+ */
+async function releaseVerdict(nowMs = Date.now(), timeoutMs = 1500) {
+  const running = pluginVersion();
+  if (!running) return null; // unreadable manifest — we cannot say anything true about being behind
+  const state = readUpdateState();
+  const fresh =
+    typeof state.checkedAt === 'number' &&
+    state.checkedFor === running &&
+    nowMs - state.checkedAt < (state.latest ? RELEASE_TTL_MS : RELEASE_FAILURE_TTL_MS);
+  if (fresh) return state.behind && state.latest ? { latest: state.latest } : null;
+
+  const answer = await fetchPublicJson('/plugin/latest', timeoutMs);
+  const latest = answer && typeof answer.latest === 'string' ? answer.latest : null;
+  const behind = Boolean(answer && answer.behind && latest);
+  // Record the attempt either way: a failure that is not remembered is a failure repeated on every
+  // session for as long as the outage lasts.
+  writeUpdateState({ checkedAt: nowMs, checkedFor: running, latest, behind });
+  return behind ? { latest } : null;
+}
+
+/**
+ * Refresh the throttle from an answer we already have (SER-296).
+ *
+ * The resolved SessionStart path learns the same fact from `/wiki/state` as part of a read it makes
+ * anyway. Recording it here means a later session on an unbound path does not spend a request
+ * re-asking a question that was answered minutes ago. Free, and it keeps one notion of "when did we
+ * last check" rather than two.
+ */
+function rememberReleaseCheck(latest, nowMs = Date.now()) {
+  const running = pluginVersion();
+  if (!running) return;
+  writeUpdateState({
+    checkedAt: nowMs,
+    checkedFor: running,
+    latest: typeof latest === 'string' && latest ? latest : null,
+    behind: Boolean(latest),
+  });
 }
 
 /**
@@ -892,6 +976,26 @@ function writeVersionMarker(sessionId, version) {
  * user belongs to, so the SessionStart hook can read an also-wiki's state with the same token it
  * holds for the primary (SER-278). Never an authorization: the server re-checks membership.
  */
+/**
+ * GET a PUBLIC json read with no credential at all (SER-296) — the sibling of {@link fetchJson} for
+ * the paths that hold no device token. Declares the client like every other call, because the whole
+ * point of the one route this serves is to answer a question about that version.
+ */
+async function fetchPublicJson(pathname, timeoutMs) {
+  if (typeof fetch !== 'function') return null;
+  const ac = new AbortController();
+  const timer = setTimeout(() => ac.abort(), timeoutMs);
+  try {
+    const res = await fetch(`${apiBase()}${pathname}`, { headers: clientHeader(), signal: ac.signal });
+    if (!res || !res.ok) return null;
+    return await res.json();
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function fetchJson(pathname, binding, timeoutMs, headers) {
   if (typeof fetch !== 'function') return null; // very old Node without global fetch → skip
   const ac = new AbortController();
@@ -1100,6 +1204,9 @@ module.exports = {
   hasWelcomed,
   lastAnnouncedRelease,
   markReleaseAnnounced,
+  releaseVerdict,
+  rememberReleaseCheck,
+  fetchPublicJson,
   updateNoticePath,
   markWelcomed,
   verbatimBlock,

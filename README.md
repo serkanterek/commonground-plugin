@@ -34,6 +34,30 @@ To update by hand instead:
 
 Restart Claude Code afterwards — an update stages immediately but only applies on restart.
 
+### Rolling it out to a team
+
+Add the marketplace once in the repo instead of asking everyone to type it. In the project's
+`.claude/settings.json`:
+
+```json
+{
+  "extraKnownMarketplaces": {
+    "commonground-plugins": {
+      "source": { "source": "github", "repo": "serkanterek/commonground-plugin" }
+    }
+  }
+}
+```
+
+Anyone who trusts the folder gets the marketplace with no further prompt. They still install the
+plugin themselves (`/plugin install commonground@commonground-plugins`); adding a marketplace does
+not install anything from it.
+
+If your organization uses **managed settings**, put `"autoUpdate": true` on that same entry there.
+That turns auto-update on for everyone at once, which is worth doing: it is off by default for
+third-party marketplaces, and it is the only thing that reaches somebody who has stopped paying
+attention. Everything else depends on them reading a message.
+
 Then **fill your wiki**, from any project — it doesn't need to be set up first:
 
 ```
@@ -95,13 +119,21 @@ Both hooks are dependency-free, fail-open (a hiccup never breaks your session), 
 per-run permission prompt — so here is the complete list of what they read and write.
 
 - **SessionStart** injects wiki context and tells Claude where this project's writes may land. It
-  writes two `0600` files into the credential home (`COMMONGROUND_CONFIG_HOME`, default
-  `~/.commonground`): a team keyword cache and a marker recording the running plugin build.
+  writes only `0600` files, all into the credential home (`COMMONGROUND_CONFIG_HOME`, default
+  `~/.commonground`): a team keyword cache, a marker recording the running plugin build, a
+  first-install marker, and a record of the last release it checked for and told you about.
 - **SessionStart also completes one credential move.** Before v0.4.1 the device token was stored
   *inside* the wiki folder, so moving the folder you open in Obsidian silently signed you out. The
   hook relocates it to `<COMMONGROUND_CONFIG_HOME>/credentials.json` by an exclusive hard link (so a
   concurrent sign-in can never be overwritten), fsyncs, and only then removes the old file. Anything
   unexpected aborts the move and leaves the original exactly where it is.
+- **SessionStart makes one network call, to CommonGround and nowhere else.** Normally that is the
+  read that fetches your wiki's state. In a project you have not pointed at a wiki — or on a machine
+  that is signed out — there is no wiki to read, so instead it asks whether a newer plugin has been
+  published, at most about twice a day and sending nothing but the version you are running. That is
+  the only way a machine in that state ever learns an update exists, because Claude Code shows no
+  update indicator and leaves auto-update off for third-party marketplaces. A session that is silent
+  altogether stays silent: nothing is sent from a machine that has never signed in.
 - **UserPromptSubmit** reads the keyword cache and the version marker. It writes nothing and makes
   no network call.
 - **Neither hook ever reads, writes or deletes wiki page content.** A team's clone is read only for

@@ -129,6 +129,22 @@ function updateNotice(state) {
   const latest = state?.active?.pluginUpdate?.latest;
   // Absent means either "current" or "we could not tell", and both are silence. The server never
   // sends this field to say you are up to date.
+  //
+  // Refresh the release-check throttle from what we were just told (SER-296), whether or not we go
+  // on to say anything: this read already answered the question the unbound paths spend a request
+  // asking, so a later session on one of those paths does not have to ask it again.
+  lib.rememberReleaseCheck(latest || null);
+  return releaseNotice(latest);
+}
+
+/**
+ * The notice for `latest`, or '' — the ONE renderer, shared by both sources (SER-296).
+ *
+ * Extracted rather than duplicated because the once-per-release bookkeeping has to be shared too. A
+ * second copy that forgot to consult `lastAnnouncedRelease` would turn "said once" into "said every
+ * session on the paths that could least afford the noise", and it would be invisible in review.
+ */
+function releaseNotice(latest) {
   if (!latest || lib.lastAnnouncedRelease() === latest) return '';
   lib.markReleaseAnnounced(latest);
   const running = lib.pluginVersion();
@@ -140,6 +156,29 @@ function updateNotice(state) {
       'Then restart Claude Code — an update stages right away but only applies on restart.\n' +
       "(To stop having to do this: /plugin → Marketplaces → commonground-plugins → Enable auto-update.)",
   );
+}
+
+/**
+ * The same notice, for a session that never reaches a resolved state read (SER-296).
+ *
+ * Three branches return before that read — the project was never pointed, the machine is signed out
+ * or ambiguous between wikis, and the read failed — and a machine that only ever lands in them
+ * could never learn a release happened. Nothing else tells it: Claude Code shows no update
+ * indicator, and auto-update is off by default for third-party marketplaces.
+ *
+ * Deliberately NOT used on the degraded branch. There we tried to reach the API and could not, so
+ * asking it a second question would be a second thing to wait for and the same answer.
+ *
+ * Bounded and fail-open: `releaseVerdict` throttles to roughly two requests a day per machine and
+ * returns null on anything it cannot establish, which renders as silence.
+ */
+async function offlineUpdateNotice() {
+  try {
+    const verdict = await lib.releaseVerdict();
+    return verdict ? releaseNotice(verdict.latest) : '';
+  } catch {
+    return ''; // a version nudge is never worth a failed session start
+  }
 }
 
 /**
@@ -581,7 +620,9 @@ async function main() {
         );
         return;
       }
-      emit(claudeFacing);
+      // Signed in, but this project was never pointed — so no state read happens below and this is
+      // the only place a machine in that shape can be told a release shipped (SER-296).
+      emit(claudeFacing, await offlineUpdateNotice());
     }
     return;
   }
@@ -623,7 +664,17 @@ async function main() {
     // pageIds" followed by every tool call failing reads to the user as a permissions problem.
     // The mode rule still applies with no binding: which surface may be written is a property of
     // the PROJECT, not of whether this machine can currently resolve a device token.
-    emit(`${awarenessContext(null)}${hint}`, modeRule(projectMode, null, null, alsoIds), bindingRepair, foreignClone, CONNECTOR_HEALTH_CLAUSE);
+    // Same reasoning as the uninitialized branch (SER-296): no binding means no state read below,
+    // so without this a machine that drifted into being signed out — or into having several wikis
+    // and no active one — could never be told about a release again.
+    emit(
+      `${awarenessContext(null)}${hint}`,
+      modeRule(projectMode, null, null, alsoIds),
+      bindingRepair,
+      foreignClone,
+      await offlineUpdateNotice(),
+      CONNECTOR_HEALTH_CLAUSE,
+    );
     return;
   }
 
@@ -709,6 +760,8 @@ if (require.main === module) {
 module.exports = {
   main,
   awarenessContext,
+  releaseNotice,
+  offlineUpdateNotice,
   modeRule,
   alsoWikiNudges,
   canSeed,

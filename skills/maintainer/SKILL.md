@@ -89,10 +89,12 @@ help them read, answer, and file `suggest_change`.
   `commonground pull [wiki]` as a read-only fallback — it authenticates as the signed-in device
   rather than through the connector. Ask before running it: it writes the wiki to disk in a project
   that chose not to have local files.
-  **The exception, and it is the one where reconnecting never works:** if this project names a wiki
-  the user is not a member of, every call fails the same way, and `/mcp` cannot grant membership —
-  an admin of that wiki has to invite them. `/commonground:status` tells the two apart. Don't tell
-  the user they lack permissions on a guess, and don't rule it out on one either.
+  **Two exceptions, and reconnecting never works for either:** if this project names a wiki the user
+  is not a member of, every call fails the same way, and `/mcp` cannot grant membership: an admin of
+  that wiki has to invite them. If the wiki's plan does not include the hosted connector, every call
+  is refused by design, and the fix is local mode (`/commonground:point`, choose local), not an
+  invite. `/commonground:status` separates all three. Don't tell the user they lack permissions on a
+  guess, and don't rule it out on one either.
 
 - **Where wikis come from, and what you cannot do.** A wiki is created in the **web app** —
   app.commongroundapp.io, "+ New wiki". There is no command for it and you cannot make one; if the

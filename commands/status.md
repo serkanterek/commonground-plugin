@@ -143,13 +143,23 @@ restart the session, or — asking first, because it writes files — `commongro
 readable copy of the wiki on disk, which authenticates as the signed-in device rather than the
 connector.
 
-**But not always, and this is the one case where the usual advice is a dead end.** If this project
-names a wiki the user is **not a member of**, every connector call 401s in exactly the same way, and
-`/mcp` will never fix it — re-authorising cannot grant membership, so that loop has no exit. Step 1
-is what tells the two apart: a `This project is bound to <id>, which this machine has no sign-in
-for` line, or a `commonground status` that itself fails naming a wiki, means **membership**, and the
-fix is an invite from an admin of that wiki. Don't assert either diagnosis without having looked —
-and don't tell someone they lack access on a guess.
+**But not always, and this is one of two cases where the usual advice is a dead end.** If this
+project names a wiki the user is **not a member of**, every connector call 401s in exactly the same
+way, and `/mcp` will never fix it — re-authorising cannot grant membership, so that loop has no
+exit. Step 1 is what separates this one from a connection problem: a `This project is bound to <id>,
+which this machine has no sign-in for` line, or a `commonground status` that itself fails naming a
+wiki, means **membership**, and the fix is an invite from an admin of that wiki. Don't assert any
+diagnosis without having looked — and don't tell someone they lack access on a guess.
+
+**The other dead end looks identical and needs neither an invite nor a reconnect: the wiki's plan.**
+An individual plan works through the local wiki folder and does not include the hosted connector, so
+on that plan every connector call is refused by design. **Step 1 does not show this one** —
+`commonground status` prints no wiki listing and carries no plan marker, so don't go looking there.
+Two surfaces do carry it: when the server reports the block, the CommonGround notice at the top of
+this session names the plan outright; and the wiki listing that `/commonground:point` fetches (a
+bare `commonground use` prints the same list) marks the wiki `(individual plan)`. The fix is a mode,
+not a repair: run /commonground:point and choose local, which gives this project the wiki as files
+on this machine. Do not send this user around the /mcp loop, and do not call it an outage.
 
 ## 3. Where they stand — show the whole ladder
 

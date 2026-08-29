@@ -197,12 +197,44 @@ async function offlineUpdateNotice() {
  * `CONNECTOR_HEALTH_RULE` in the agent's `injection.ts` (this file is dependency-free CJS and cannot
  * import it); the membership clause is pinned on both sides by tests rather than byte-compared, so
  * each can keep its own register.
+ *
+ * SER-302 adds the third cause, which arrives the same way and exits differently again: a wiki whose
+ * PLAN does not include the hosted connector refuses every call by design, so neither a reconnect nor
+ * an invite ends it. Naming it here keeps the clause honest for every gated user; the one who is
+ * actually gated right now also gets {@link planGateNotice}, which names the fix.
  */
 const CONNECTOR_HEALTH_CLAUSE =
   'If the CommonGround tools are missing, say so rather than answering from assumption: usually ' +
   'a reconnect (`/mcp`) or a session restart fixes it, but a wiki the user is not a member of ' +
-  'fails the same way and `/mcp` cannot grant membership — check which wiki this project names ' +
-  'before asserting either diagnosis.';
+  'fails the same way, and so does a plan that does not include the hosted connector; `/mcp` ' +
+  'cannot grant membership or change a plan. Check which wiki this project names, or ' +
+  '/commonground:status, before asserting any diagnosis.';
+
+/**
+ * THE PLAN GATE, said only to the session it actually gates (SER-302).
+ *
+ * `hostedMcpBlock` is present on `/wiki/state` only when the hosted connector WILL refuse this wiki
+ * for this caller. Its ABSENCE is not "allowed" — an older or dark server never sends it — so the
+ * only safe reading of absent is silence, which is what returning '' here means. The clause above
+ * still names the plan as a possible cause for everyone; this names it as a fact for the one person
+ * currently living it, and gives the fix, which is a different MODE and not a repair.
+ *
+ * DELIBERATELY EXEMPT FROM THE LOUDNESS BUDGET, exactly like CONNECTOR_HEALTH_CLAUSE: it explains a
+ * live failure of this session's own tools, and a session that goes quiet about it leaves Claude
+ * diagnosing an outage that is not one. It is also self-limiting in a way a nudge is not — the field
+ * exists only for gated users in MCP mode, and re-pointing to local removes it at the source.
+ */
+function planGateNotice(state, mode) {
+  if (mode !== 'mcp') return '';
+  const block = state && state.active && state.active.hostedMcpBlock;
+  if (!block || block.reason !== 'plan') return '';
+  return (
+    "This wiki's plan does not include the hosted MCP connector, so the CommonGround tools " +
+    'will be refused in this session; that is the plan, not a connection failure. The fix is ' +
+    'local mode: suggest /commonground:point and choose local, which gives this project the ' +
+    'wiki as files on this machine.'
+  );
+}
 
 /**
  * WHERE THIS PROJECT'S WRITES LAND — the one thing the connector cannot tell Claude (SER-184).
@@ -719,6 +751,7 @@ async function main() {
       modeRule(projectMode, binding.teamId, voiceOf(state), alsoIds),
       bindingRepair,
       foreignClone,
+      planGateNotice(state, projectMode),
       nudge,
       alsoNudges,
       delegatedWelcome(state),
@@ -772,5 +805,6 @@ module.exports = {
   updateNotice,
   bindingRepairClause,
   foreignClonePathClause,
+  planGateNotice,
   CONNECTOR_HEALTH_CLAUSE,
 };

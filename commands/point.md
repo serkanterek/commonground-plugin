@@ -57,7 +57,11 @@ nothing to approve without one, and its button is hidden rather than left dead.
 
 ## 3. Resolve which wiki this project should read
 
-If `$ARGUMENTS` names a wiki, that wins — use it and skip the listing.
+If `$ARGUMENTS` names a wiki, that wins: use it, and **don't stage a choice the user already made**.
+But still run the listing below — it is one fast call — and read the named wiki's row out of it,
+because step 4 picks the mode from the wiki's **plan** and the listing is the only place the plan
+appears. The argument decides WHICH wiki; it never decides to skip learning what plan that wiki is
+on. Don't re-ask which wiki, and don't relay the whole list back: take the row and move on.
 
 **Already pointed, and a different wiki named?** `commonground use` (below) marks the wiki *this
 project* reads and any it *also reads*. When the project already reads A and the user names B
@@ -68,12 +72,15 @@ different decisions with different consequences, and an ambiguous choice that re
 exact failure this step exists to remove. A flag or a plain word in `$ARGUMENTS` ("also", "add",
 "too" / "drop", "stop reading", "remove") answers the question, so don't ask it twice.
 
-Otherwise run `commonground use` with no argument. It lists every wiki the user is a **member** of —
-asked of the server, not of this machine's sign-ins — marks the currently-active one with `*`, marks
-the one **this project** is bound to, and marks any it reaches without a sign-in of its own as
-`covered by your existing sign-in` — same account, nothing separate to log into.
+**The listing, either way.** Run `commonground use` with no argument. It lists every wiki the user is
+a **member** of — asked of the server, not of this machine's sign-ins — marks the currently-active
+one with `*`, marks the one **this project** is bound to, marks any it reaches without a sign-in of
+its own as `covered by your existing sign-in` (same account, nothing separate to log into), and marks
+a wiki on an individual plan `(individual plan)`, which is what step 4 reads.
 
 Relay it in plain language — wiki names, never bare UUIDs.
+
+**When `$ARGUMENTS` named no wiki, the listing is also the choice:**
 
 - **Exactly one wiki** → don't stage a decision that isn't one. Confirm it in a sentence and move on:
   *"Pointing this project at your Acme Handbook wiki."*
@@ -123,12 +130,25 @@ the note names, never a generic "try later":
 Look at `$ARGUMENTS`:
 - `local` → **local-clone mode**: also clone the wiki to a real folder on disk (plain markdown, so it
   opens in Obsidian or any editor; good for offline reading or hands-on curation).
-- anything else (including empty) → **MCP mode** (default): reach the wiki live through the
-  CommonGround MCP connector, no local files. Best for most coding projects.
+- anything else (including empty) → **pick by the wiki's plan**, which step 3's listing already
+  showed you:
+  - **Marked `individual plan`** → **local-clone mode**, and say why in one line: an individual plan
+    works through the wiki folder on this machine, and the hosted connector is part of team plans.
+    Don't offer MCP mode as an equal choice here. If the user asks for it anyway, say plainly that it
+    will be refused on this plan.
+  - **Otherwise** → **MCP mode** (default): reach the wiki live through the CommonGround MCP
+    connector, no local files. Best for most coding projects.
 
-If it's ambiguous and the user hasn't expressed a preference, offer the choice — with the
+**No plan marker means UNKNOWN, and unknown takes the MCP default.** A marker can be absent for two
+different reasons and neither is a fact about the plan: the server is older than this field and sends
+none, or no listing was fetched at all (it was skipped, it fell back to this machine's sign-ins,
+which carry no plan, or it could not be reached). So an absence is never a reason to say anything
+about plans in either direction — not "individual", not "team". It is plain MCP mode, exactly as
+before.
+
+If it's ambiguous and the user hasn't expressed a preference, offer the choice, with the
 `AskUserQuestion` tool (multiple-choice UI) if it's available in this session, otherwise as a plain
-question: **MCP mode (recommended)** / **Local clone** — defaulting to MCP.
+question: **MCP mode (recommended)** / **Local clone**, defaulting to MCP.
 
 **If they chose local, settle the folder in the same breath — one question, with a real default.**
 The folder is named after the wiki (`~/CommonGround/<wiki-name>/`), so the default is already
@@ -242,9 +262,11 @@ answer is indistinguishable from a right one. For MCP
 mode, mention that if the connector needs authentication — or if its tools stop appearing later,
 which a plugin update can cause — they can run `/mcp` to (re)connect or restart the session; missing
 tools are **usually** a connection problem, and `commonground pull [wiki]` still reads the wiki
-without the connector. The exception worth knowing: if this project names a wiki they are not a
-member of, every call fails identically and `/mcp` cannot fix it — that one needs an invite from
-that wiki's admin, and `/commonground:status` is what tells the two apart.
+without the connector. Two exceptions worth knowing: if this project names a wiki they are not a
+member of, every call fails identically and `/mcp` cannot fix it, so that one needs an invite from
+that wiki's admin; and if the wiki's plan does not include the hosted connector, every call is
+refused by design, so that one needs local mode rather than any repair.
+`/commonground:status` is what separates the three.
 
 Then check the wiki's state so you hand off to the right next step — call `get_awareness` (its
 `pageCount`) or `get_coverage`:

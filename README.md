@@ -162,12 +162,23 @@ re-registers a plugin's MCP server whenever the plugin version changes, which te
 connector. Run `/mcp` to reconnect, or restart the session. Meanwhile `commonground pull <team>`
 still reads the wiki: it authenticates as the signed-in device rather than through the connector.
 
-**…but reconnecting keeps not helping.** There is one other way to lose every tool at once: this
-project names a wiki you are not a member of. Reconnecting can't fix that, because signing in again
-doesn't grant membership — an admin of that wiki has to invite you. `/commonground:status` tells the
-two apart: it says which wiki this project is bound to, and whether this machine can reach it.
+**…but reconnecting keeps not helping.** Two other things lose every tool at once, and reconnecting
+fixes neither.
 
-**Upgrading.** Reinstall between sessions rather than mid-task, for the same reason.
+*You're not a member of the wiki this project names.* Every call is refused, and it looks exactly
+like a dropped connection. Signing in again doesn't grant membership: an admin of that wiki has to
+invite you.
+
+*The wiki is on an individual plan.* That plan works through the wiki folder on your own machine,
+and the hosted connector is part of team plans, so every connector call is refused by design.
+Nothing is broken and there's nothing to repair; run `/commonground:point` and choose local, which
+gives this project the wiki as plain files on this machine.
+
+`/commonground:status` sorts out which of the three you're in: it says which wiki this project is
+bound to, whether this machine can reach it, and what the fix actually is.
+
+**Upgrading.** Reinstall between sessions rather than mid-task, for the reason at the top of this
+section: a version change tears the live connector down.
 
 ## Links
 

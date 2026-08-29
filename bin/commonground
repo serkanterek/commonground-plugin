@@ -12313,6 +12313,22 @@ var EnvSchema = external_exports.object({
   MCP_ACCESS_TOKEN_TTL: external_exports.coerce.number().int().positive().default(600),
   /** Authorization-code TTL in seconds (one-time, transient). */
   MCP_AUTH_CODE_TTL: external_exports.coerce.number().int().positive().default(60),
+  /**
+   * Per-plan hosted-MCP gate (SER-301). `true` refuses the hosted connector for any wiki whose org
+   * plan is `individual`: a 403 at `POST /mcp`, a refusal at consent, and a NAMED unreachable when a
+   * project's set declares one. That plan's answer is the local wiki folder, which needs no
+   * connector.
+   *
+   * UNSET means OPEN — today's behaviour, byte for byte — and dev, the suites and the E2E harness
+   * never set it, so nothing in this repo is gated by accident.
+   *
+   * NEVER set in production before plugin 0.14.0 is on the marketplace. This is the SER-261
+   * inversion: for every other pair the server ships first, but a refusal is only diagnosable in the
+   * session that receives it, and the plugin's messaging is what turns "the connector broke" into
+   * "this wiki works as a local folder, here is the command". Arming the flag first ships the
+   * refusal without the sentence that explains it.
+   */
+  MCP_PLAN_GATE: external_exports.enum(["true", "false"]).optional().transform((v) => v === "true"),
   /** Base dir holding per-team wiki clones (`<base>/<teamId>`) the retrieval engine reads. */
   WIKI_REPO_BASE_DIR: external_exports.string().optional(),
   // --- web auth surface (06/07 · SER-39) — optional/stub-first; required only where the
@@ -12321,6 +12337,27 @@ var EnvSchema = external_exports.object({
   CLERK_SECRET_KEY: external_exports.string().optional(),
   /** The browser app origin allowed to call this api (CORS) + Clerk `azp` check. */
   WEB_ORIGIN: external_exports.string().url().optional(),
+  /**
+   * A SECOND allowed CORS origin (SER-299): the marketing site, which is a different host from the
+   * app and posts the request-an-invite form to `POST /waitlist`. Optional, and unset means the
+   * allowed origin list is exactly `WEB_ORIGIN` — today's behaviour, unchanged.
+   *
+   * Deliberately not folded into `WEB_ORIGIN`: that value is also the Clerk `azp` check, which must
+   * name the origin sessions are actually issued to and nothing else.
+   */
+  MARKETING_ORIGIN: external_exports.string().url().optional(),
+  /**
+   * Operator (staff) allow-list (SER-284): comma-separated Clerk user ids permitted to reach
+   * `/admin/*`. UNSET → the admin surface is not mounted at all, which is the correct default for
+   * dev, tests and the E2E harness: an operator surface that exists but is empty is a 403 waiting
+   * to be misconfigured, one that does not exist is a 404.
+   *
+   * Deliberately an ALLOW-LIST of Clerk ids rather than a `Role` value: `Role` is the TENANT's
+   * vocabulary (admin/curator/member, all scoped to one team) and an operator is not a member of
+   * anything. Keeping the two universes apart is what stops an operator identity from ever
+   * satisfying a tenant membership check — see `admin/operator-auth.ts`.
+   */
+  OPERATOR_CLERK_IDS: external_exports.string().optional(),
   /**
    * Prelaunch provisioning gate (SER-293): comma-separated emails allowed to create an
    * org/wiki via `POST /orgs`. UNSET (or blank) → open, today's behavior — dev, tests and the
@@ -12346,7 +12383,15 @@ var EnvSchema = external_exports.object({
    * Sender for invitation email — `Name <invites@domain>` or a bare address. Deliberately NOT
    * `z.string().email()`: the display-name form is the one worth using and it is not a bare address.
    */
-  INVITE_FROM_EMAIL: external_exports.string().optional()
+  INVITE_FROM_EMAIL: external_exports.string().optional(),
+  /**
+   * The Resend Audience the `sync:audience` script mirrors waitlist emails into (SER-299).
+   *
+   * Read by that operator script ONLY — never on a request path. The launch announcement is
+   * composed in Resend Broadcasts, which needs the addresses in an Audience; mirroring them there
+   * is a deliberate act somebody runs, not a third-party write hanging off a public endpoint.
+   */
+  RESEND_AUDIENCE_ID: external_exports.string().optional()
 });
 
 // ../shared/dist/text.js
@@ -14703,7 +14748,7 @@ function wikiLine(w, primary) {
 var STRANGER_ESCAPE = `
 > Not using CommonGround? Ignore this section; nothing else in this file depends on it.
 `;
-var CONNECTOR_HEALTH_RULE = "If the CommonGround tools are missing, that is USUALLY a connection problem (`/mcp` reconnects, or restart the session); but a wiki the user is NOT A MEMBER of fails the same way, and `/mcp` does not grant membership; `/commonground:status` tells the two apart. Assert neither diagnosis on a guess.";
+var CONNECTOR_HEALTH_RULE = "If the CommonGround tools are missing, that is USUALLY a connection problem (`/mcp` reconnects, or restart the session); but a wiki the user is NOT A MEMBER of fails the same way (so does a wiki plan without the hosted connector), and `/mcp` does not grant membership; `/commonground:status` tells them apart. Assert none of these diagnoses on a guess.";
 function citeClause(plural) {
   return plural ? "Cite the wiki and pageId you relied on; don't assert wiki facts no page backs." : "Cite the pageIds you relied on; don't assert wiki facts no page backs.";
 }
@@ -14944,6 +14989,9 @@ async function availableWikis(deps) {
         scopeSlug: w.scopeSlug,
         ...w.shape ? { shape: w.shape } : {},
         ..."audience" in w ? { audience: w.audience ?? null } : {},
+        // SER-302: only ever from the server, and only when it actually said one. The cache has no
+        // plan to fall back to on purpose (see WikiListing.plan) — absent stays absent.
+        ...w.plan ? { plan: w.plan } : {},
         role: local?.role ?? w.role,
         ...local ? {} : { viaOtherSignIn: true }
       };
@@ -16753,7 +16801,8 @@ function formatWikiList(listings, activeId, boundId, alsoIds = []) {
       l.viaOtherSignIn ? "covered by your existing sign-in" : null
     ].filter(Boolean);
     const suffix = marks.length ? ` \u2014 ${marks.join(", ")}` : "";
-    return `  ${l.teamId === activeId ? "*" : " "} ${wikiLabel(l)} [you: ${l.role}]${suffix}
+    const planMark = l.plan === "individual" ? " (individual plan)" : "";
+    return `  ${l.teamId === activeId ? "*" : " "} ${wikiLabel(l)}${planMark} [you: ${l.role}]${suffix}
 `;
   }).join("");
 }

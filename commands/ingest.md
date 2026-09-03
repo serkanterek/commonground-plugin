@@ -63,6 +63,17 @@ In **MCP mode** the gate is on the write itself: a member's `tools/list` simply 
   this), not a permissions problem. Don't tell the user they lack access. Say the connection is
   down, suggest `/mcp` to reconnect or a session restart, and point them at `/commonground:status`.
 
+**A refused write is sometimes the wiki's subscription, not a role.** In either mode, a write that
+comes back with a sentence about the wiki's **team subscription**, or about **payments** that did not
+go through, is a billing state. It is not a dropped connector and not a permissions problem, so
+neither of the two bullets above applies. Stop there: relay the sentence as the server worded it, and
+do not work around it by writing into a different wiki, by switching modes, or by retrying. Nothing
+is deleted, and reading, search, `/commonground:pull` and (in local-clone mode) the folder on this
+machine all keep working, so say that too. The fix is **Billing** in the CommonGround web app, where
+a wiki admin restores the subscription; if the user is not an admin of this wiki, the step is to tell
+one. Offer to hold the capture until then rather than losing it: in local-clone mode it is already
+saved in their own copy.
+
 **What's worth keeping is the wiki's call, not yours.** If a charter page exists
 (`company/wiki-charter` in `get_index`), its audience governs scope: for a **just-me** wiki,
 personal and subjective material is in-scope by definition — never drop or flag content for

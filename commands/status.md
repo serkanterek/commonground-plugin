@@ -161,6 +161,25 @@ bare `commonground use` prints the same list) marks the wiki `(individual plan)`
 not a repair: run /commonground:point and choose local, which gives this project the wiki as files
 on this machine. Do not send this user around the /mcp loop, and do not call it an outage.
 
+**A refusal that names the subscription is billing, and it is the one case that says so itself.**
+When a WRITE comes back with a sentence about the wiki's **team subscription**, or about **payments**
+that did not go through, it is neither of the two above: the connector is healthy, membership is
+fine, and reads are deliberately left open, so `search`, `get_page`, `/commonground:pull` and the
+local folder all still answer. Don't send this user round `/mcp`, and don't send them for an invite.
+
+**Billing has a second shape that looks exactly like the two dead ends above: no tools at all.**
+Adding a NEW connection is itself a write, so while the subscription is blocking the connector's
+consent is refused and no tools are ever granted. Missing tools are still **usually** a connection
+problem, but if this project was pointed at the wiki in MCP mode while the block was on, the empty
+toolset is Billing too, and neither `/mcp` nor an invite ends it. What separates it: the wiki's
+reads answer through `/commonground:pull` and the local folder, and the CommonGround notice at the
+top of this session names the block outright when the server reports it.
+
+Two surfaces carry it: the refusal itself, worded by the server, and the CommonGround notice at the
+top of this session when the server reports the block. The fix is **Billing** in the CommonGround web
+app, where a wiki admin restores the subscription; a member's step is to tell a wiki admin. Nothing
+is deleted while it is blocked, and the git history is untouched, so say that as well.
+
 ## 3. Where they stand — show the whole ladder
 
 This is the ONE place that shows everything, because it is the one place the user explicitly asked.

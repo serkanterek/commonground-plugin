@@ -538,6 +538,17 @@ Persist every confirmed page:
 - **MCP mode:** `save_page` per page (CAS-guarded; re-read + retry on conflict) — each one is
   immediately live for the team.
 
+**If a save or a publish comes back refused over the wiki's subscription, stop the persist step
+there.** A sentence about the wiki's **team subscription**, or about **payments** that did not go
+through, is a billing state: not a connection fault, not a role gate, and not something a retry or a
+different wiki gets around. Relay it as the server worded it, say by name what landed before it and
+what did not, and never re-route the remaining pages into another wiki or another mode to get them
+written. Nothing already in the wiki is deleted, and reading, search and `/commonground:pull` keep
+working. The fix is **Billing** in the CommonGround web app, where a wiki admin restores the
+subscription; if the user is not an admin of this wiki, the step is to tell one. In local-clone mode
+the pages are already safe in their own copy, so say that before anything else, and offer to resume
+seeding once it is back.
+
 Close with a short, encouraging, **audience-aware** status:
 - **just-me:** "Your wiki is live — N of M sections covered. Your Claude now starts every session
   from your own context."

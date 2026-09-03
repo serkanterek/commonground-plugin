@@ -12391,7 +12391,39 @@ var EnvSchema = external_exports.object({
    * composed in Resend Broadcasts, which needs the addresses in an Audience; mirroring them there
    * is a deliberate act somebody runs, not a third-party write hanging off a public endpoint.
    */
-  RESEND_AUDIENCE_ID: external_exports.string().optional()
+  RESEND_AUDIENCE_ID: external_exports.string().optional(),
+  // --- billing (SER-260/261) — optional, and absent is a SUPPORTED mode rather than a broken one.
+  // With no Stripe key the `billing/` module is not composed at all: the two session routes and the
+  // webhook are not mounted, no Stripe client is constructed, and every entitlement is byte-
+  // identical to today whatever the `Subscription` rows say.
+  /** Stripe secret key (`sk_test_…` / `sk_live_…`). Absent → the billing surface is omitted. */
+  STRIPE_SECRET_KEY: external_exports.string().optional(),
+  /**
+   * Stripe webhook signing secret (`whsec_…`) for THIS deployment's endpoint. Test and live
+   * endpoints have separate secrets; the environment is a property of the deployment, never of a
+   * row. Absent → the webhook route is not mounted, because a receiver that cannot verify a
+   * signature is an unauthenticated write endpoint.
+   */
+  STRIPE_WEBHOOK_SECRET: external_exports.string().optional(),
+  /**
+   * Billing enforcement gate (SER-261). `true` refuses WRITES for a `team`-stamped org whose
+   * subscription state is blocking (decision 16's verdict table): a coded 403 at the enumerated
+   * service doors, a plain-text 403 on git push, a named refusal over MCP, `billingBlock` on the
+   * orientation DTO. Reads, git fetch and pull, the connector's reads, every revoke and every
+   * listing are never gated.
+   *
+   * UNSET means OPEN — today's behaviour, byte for byte, whatever the `Subscription` rows say — and
+   * dev, the suites and the E2E harness never set it.
+   *
+   * Like `MCP_PLAN_GATE` and `TRUST_CF_CONNECTING_IP`, the only accepted literals are `true` and
+   * `false`: `1`, `TRUE` and `yes` fail `EnvSchema.parse` at boot and take the api down, so leave
+   * it unset rather than spelling "off" any other way.
+   *
+   * NEVER set before plugin 0.15.0 (SER-314) is on the marketplace. Same inversion SER-301/302
+   * used: on the FLAG, not on the merge — a refusal is only diagnosable in the session that
+   * receives it, and the plugin's copy is what turns "it broke" into "the subscription lapsed".
+   */
+  BILLING_GATE: external_exports.enum(["true", "false"]).optional().transform((v) => v === "true")
 });
 
 // ../shared/dist/text.js
@@ -15621,6 +15653,51 @@ async function cloneFresh(deps, teamId, dir, origin, onClone) {
   await cloneRepo(origin.url, dir, origin.env);
   await injectTooling(deps, teamId, dir);
 }
+function refusedWithHttp403(stderr) {
+  return /the requested url returned error: 403|rpc failed;\s*http 403/i.test(stderr);
+}
+function authHeaderOf(origin) {
+  const count = Number.parseInt(origin.env.GIT_CONFIG_COUNT ?? "", 10);
+  if (!Number.isInteger(count))
+    return void 0;
+  for (let i = 0; i < count; i++) {
+    if (origin.env[`GIT_CONFIG_KEY_${i}`] !== `http.${origin.url}.extraHeader`)
+      continue;
+    const header = /^authorization:\s*(.+)$/i.exec(origin.env[`GIT_CONFIG_VALUE_${i}`] ?? "");
+    return header?.[1];
+  }
+  return void 0;
+}
+async function pushRefusalReason(origin) {
+  const authorization = authHeaderOf(origin);
+  if (!authorization)
+    return null;
+  try {
+    const res = await fetch(`${origin.url}/info/refs?service=git-receive-pack`, {
+      headers: { authorization, ...clientHeader() }
+    });
+    if (res.status !== 403)
+      return null;
+    if (!(res.headers.get("content-type") ?? "").startsWith("text/plain"))
+      return null;
+    const body = (await res.text()).trim();
+    return body && body.length <= 1e3 ? body : null;
+  } catch {
+    return null;
+  }
+}
+async function publishBranch(dir, branch, origin) {
+  try {
+    await pushBranch(dir, branch, origin.env);
+  } catch (e) {
+    if (!(e instanceof GitError) || !refusedWithHttp403(e.stderr))
+      throw e;
+    const reason = await pushRefusalReason(origin);
+    if (!reason)
+      throw e;
+    throw new AgentError(reason);
+  }
+}
 async function sync(deps, teamId, opts = {}) {
   const binding = await bindingFor(deps, teamId);
   const dir = await resolveCloneTarget(deps, teamId, binding.token);
@@ -15665,7 +15742,7 @@ async function sync(deps, teamId, opts = {}) {
           deletions
         };
       }
-      await pushBranch(dir, branch, origin.env);
+      await publishBranch(dir, branch, origin);
       return {
         teamId,
         clonePath: dir,
@@ -15888,7 +15965,7 @@ async function push(deps, teamId, opts = {}) {
       draftBranch
     };
   }
-  await pushBranch(dir, branch, origin.env);
+  await publishBranch(dir, branch, origin);
   return {
     teamId,
     clonePath: dir,

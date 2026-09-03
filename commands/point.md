@@ -262,11 +262,16 @@ answer is indistinguishable from a right one. For MCP
 mode, mention that if the connector needs authentication — or if its tools stop appearing later,
 which a plugin update can cause — they can run `/mcp` to (re)connect or restart the session; missing
 tools are **usually** a connection problem, and `commonground pull [wiki]` still reads the wiki
-without the connector. Two exceptions worth knowing: if this project names a wiki they are not a
+without the connector. Three exceptions worth knowing: if this project names a wiki they are not a
 member of, every call fails identically and `/mcp` cannot fix it, so that one needs an invite from
-that wiki's admin; and if the wiki's plan does not include the hosted connector, every call is
-refused by design, so that one needs local mode rather than any repair.
-`/commonground:status` is what separates the three.
+that wiki's admin; if the wiki's plan does not include the hosted connector, every call is
+refused by design, so that one needs local mode rather than any repair; and if the wiki's **team
+subscription** is blocking, the consent this command is about to ask for is refused as well, so no
+connector is added and the tools never appear at all. That last one is **Billing**, not a reconnect
+and not a missing invitation: a wiki admin restores the subscription under Billing in the
+CommonGround web app, nothing is deleted while it is blocked, and reading, `/commonground:pull` and
+the local wiki folder answer throughout.
+`/commonground:status` is what separates the four.
 
 Then check the wiki's state so you hand off to the right next step — call `get_awareness` (its
 `pageCount`) or `get_coverage`:

@@ -237,6 +237,88 @@ function planGateNotice(state, mode) {
 }
 
 /**
+ * THE BILLING BLOCK, said only to the session it actually blocks (SER-314).
+ *
+ * `billingBlock` is present on `/wiki/state` only when a WRITE in this wiki would actually be
+ * refused for a billing reason. Its absence is read exactly like {@link planGateNotice}'s: an older
+ * server, or one running the gate dark, sends nothing, so absent means "not blocked, or we could
+ * not tell" and never "your subscription is fine". Returning '' is the only safe reading, and it is
+ * what makes this shippable before `BILLING_GATE` is ever armed.
+ *
+ * WHY THE HOOK HAS TO CARRY IT. The refusal is only legible in the session that receives it, and
+ * every channel it can arrive through disguises it. A JSON door answers 403 with a code; a
+ * connector write tool answers an `isError` result; and a git push used to lose the sentence on
+ * the way, because this CLI never showed git's stderr (since SER-314 the CLI fetches the refusal
+ * itself, but this hook speaks BEFORE any push is tried). Without this line, the most likely
+ * diagnosis Claude reaches for is an outage or a permissions problem, and the two fixes it then
+ * offers (reconnect, ask for access) cannot work.
+ *
+ * RENDERS IN BOTH MODES, unlike the plan gate, because both modes have a write to lose: in
+ * local-clone mode the refused act is publishing, and editing files carries on; in MCP mode it is
+ * the connector's write tools, and an ALREADY CONSENTED connection's reads carry on. Naming the act
+ * is most of the value — the user whose `/commonground:push` just failed is not helped by a general
+ * statement about writes.
+ *
+ * The MCP arm also carries the FOURTH shape of missing tools, which is why it says more than its
+ * local sibling. Granting a NEW connector is itself a write (`routes/oauth.ts` refuses `/oauth/
+ * consent` with the same coded 403 while the block lasts), so a session that points in MCP mode
+ * during a block never gets a connector at all and has NO CommonGround tools — the exact symptom
+ * `CONNECTOR_HEALTH_CLAUSE` above attributes to a connection, a membership or a plan, and the exact
+ * user its three fixes cannot help. The sentence lives here rather than in that clause on purpose:
+ * the clause is always-on and 409 chars against a 450 ceiling, and FR-04-24's standing rule sends
+ * prose away from always-on surfaces, while this notice renders only for the blocked session and is
+ * exempt from the budget. `commands/point.md` and `commands/status.md` carry the same sentence for
+ * the reader who is being sent into that consent, or who is diagnosing after the fact.
+ *
+ * The fix branches on `active.role`, which this DTO has always carried: only an admin holds
+ * `team:manage`, so telling a member to open Billing sends them at a page they cannot act on, and
+ * telling an admin to go and find one wastes the one person who can end it. A role we do not
+ * recognise falls back to a sentence that is true either way rather than guessing.
+ *
+ * DELIBERATELY EXEMPT FROM THE LOUDNESS BUDGET, for the same reason as the plan-gate notice and the
+ * connector-health clause: it explains a live refusal of this session's own tools, and a session
+ * that goes quiet about it leaves Claude diagnosing an outage that is not one. It is self-limiting
+ * in the same way too — the field exists only while the wiki is actually blocked, and paying the
+ * subscription removes it at the source. It is ceilinged in `context-budget.test.ts` beside the
+ * plan-gate notice, since nothing else would ever measure a string that is not always-on.
+ */
+function billingNotice(state, mode) {
+  const block = state && state.active && state.active.billingBlock;
+  const reason = block && block.reason;
+  if (reason !== 'subscription_required' && reason !== 'subscription_unpaid') return '';
+  const required = reason === 'subscription_required';
+  const lead = required
+    ? 'This wiki has no active team subscription, so writes to it are refused this session; that ' +
+      'is billing, not a connection failure.'
+    : 'The last payments for this wiki did not go through, so it is read-only for now; that is ' +
+      'billing, not a connection failure.';
+  // Which ACT is refused here. Anything that is not explicitly a local clone is served by the
+  // connector, the same reading `modeRule` takes of an unmarked project.
+  const act =
+    mode === 'local'
+      ? 'Here the refused act is publishing: /commonground:push is what fails, while editing files ' +
+        'in the local clone and /commonground:pull carry on.'
+      : "Here it is the connector's write tools (`save_page`, `stage_sources`, `save_charter`) " +
+        "that fail, and an existing connection's reads carry on; a new connection to this wiki is " +
+        'refused at consent while the block lasts, so tools missing entirely here are billing too, ' +
+        'not a reconnect and not a missing invitation.';
+  const open =
+    'Nothing has been deleted, reading and search stay open, and revoking credentials and ' +
+    'invitations still works. Do not work around it by writing somewhere else.';
+  const action = required ? 'start or restore the subscription' : 'update the card';
+  const role = state && state.active && state.active.role;
+  const fix =
+    role === 'admin'
+      ? `This user is an admin of this wiki: tell them to open Billing in the CommonGround web app and ${action}.`
+      : role === 'curator' || role === 'member'
+        ? 'This user is not an admin here: tell them to ask a wiki admin to open Billing in the ' +
+          `CommonGround web app and ${action}.`
+        : `A wiki admin ends this under Billing in the CommonGround web app (${action}); if that is ` +
+          'this user, that is the next step.';
+  return `${lead} ${act} ${open} ${fix}`;
+}
+
+/**
  * WHERE THIS PROJECT'S WRITES LAND — the one thing the connector cannot tell Claude (SER-184).
  *
  * The MCP server has no idea a local clone exists: its tools are registered per USER, so in a
@@ -752,6 +834,7 @@ async function main() {
       bindingRepair,
       foreignClone,
       planGateNotice(state, projectMode),
+      billingNotice(state, projectMode),
       nudge,
       alsoNudges,
       delegatedWelcome(state),
@@ -806,5 +889,6 @@ module.exports = {
   bindingRepairClause,
   foreignClonePathClause,
   planGateNotice,
+  billingNotice,
   CONNECTOR_HEALTH_CLAUSE,
 };

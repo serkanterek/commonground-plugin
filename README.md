@@ -177,6 +177,15 @@ gives this project the wiki as plain files on this machine.
 `/commonground:status` sorts out which of the three you're in: it says which wiki this project is
 bound to, whether this machine can reach it, and what the fix actually is.
 
+**If the subscription lapses.** Writing is refused and reading still works. That is a *billing*
+state, not a connection or a membership problem: a wiki whose **team subscription** has ended, or
+whose **payments** stopped going through, goes read-only until it is restored. Nothing is deleted and
+nothing is hidden. Searching the wiki, pulling it to your machine, your local folder and its whole
+git history, and revoking credentials or invitations all keep working; publishing, saving a page and
+inviting people wait. The refusal says so in its own words, and a wiki admin restores it under
+**Billing** in the CommonGround web app. If you're not an admin of that wiki, tell one; there is
+nothing to repair on your side and nothing to reconnect.
+
 **Upgrading.** Reinstall between sessions rather than mid-task, for the reason at the top of this
 section: a version change tears the live connector down.
 

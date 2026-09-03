@@ -121,6 +121,26 @@ page, carrying what they wrote and why it matters — so a curator can fold it i
 real publish path, and it is the difference between their knowledge reaching the team and sitting on
 their disk. Don't offer to make them a curator; that's the admin's call, not a step in this flow.
 
+## 2c. If the publish is refused over the wiki's subscription
+
+If `push` fails with a message about the wiki's **team subscription**, or about **payments** that did
+not go through, that is a **billing** state. It is not a broken connection, not a dropped connector
+and not a role gate, so none of the fixes for those apply. **Nothing was published and nothing was
+lost:** every file is still in the clone, and the wiki's whole history is untouched. Say that first.
+
+- **Relay the server's own sentence.** The refusal carries prose written for this reader and it names
+  the state precisely. Don't compress it into "the push failed".
+- **Never retry the push, and never route the work somewhere else.** Not into another wiki, not
+  through the hosted write tools, not by editing around it. Every publishing path is refused the
+  same way while the subscription is blocking, so a second attempt only spends the user's patience.
+- **Say what still works**, because almost everything does: reading and searching the wiki,
+  `/commonground:pull`, the local folder and its git history, and revoking credentials or
+  invitations. A billing state deletes nothing.
+- **Name the one fix: Billing.** A wiki admin restores the subscription under Billing in the
+  CommonGround web app. If the user is that admin, that is their next step; if they are not, the step
+  is to tell a wiki admin. Their work waits in the clone until then, so offer to leave it there
+  rather than proposing a workaround.
+
 ## 3. If it would REMOVE pages (the deletion guardrail)
 
 Deleting a page is the one change that takes something away rather than adding it, so it never rides

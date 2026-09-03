@@ -96,6 +96,15 @@ help them read, answer, and file `suggest_change`.
   invite. `/commonground:status` separates all three. Don't tell the user they lack permissions on a
   guess, and don't rule it out on one either.
 
+- **If a WRITE comes back refused over the wiki's subscription** (either mode): a sentence about
+  the wiki's **team subscription**, or about **payments** that did not go through, is a **billing**
+  state, not a dropped connector and not a role. It is the one refusal that names itself, so relay it
+  as the server worded it and stop: never retry it, and never write into a different wiki or switch
+  modes to get around it. Reading, search, `/commonground:pull` and the wiki's whole git history are
+  untouched, and a billing state deletes nothing. The fix is **Billing** in the CommonGround web app,
+  where a wiki admin restores the subscription; if the user is not an admin of this wiki, the step is
+  to tell one. In local-clone mode their work is already saved in their own copy, so say that first.
+
 - **Where wikis come from, and what you cannot do.** A wiki is created in the **web app** —
   app.commongroundapp.io, "+ New wiki". There is no command for it and you cannot make one; if the
   user asks for a new wiki, say that plainly and point them there rather than searching for a tool

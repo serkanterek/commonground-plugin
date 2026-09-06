@@ -539,7 +539,7 @@ Persist every confirmed page:
   immediately live for the team.
 
 **If a save or a publish comes back refused over the wiki's subscription, stop the persist step
-there.** A sentence about the wiki's **team subscription**, or about **payments** that did not go
+there.** A sentence about the wiki's **subscription**, or about **payments** that did not go
 through, is a billing state: not a connection fault, not a role gate, and not something a retry or a
 different wiki gets around. Relay it as the server worded it, say by name what landed before it and
 what did not, and never re-route the remaining pages into another wiki or another mode to get them

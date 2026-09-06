@@ -123,7 +123,7 @@ their disk. Don't offer to make them a curator; that's the admin's call, not a s
 
 ## 2c. If the publish is refused over the wiki's subscription
 
-If `push` fails with a message about the wiki's **team subscription**, or about **payments** that did
+If `push` fails with a message about the wiki's **subscription**, or about **payments** that did
 not go through, that is a **billing** state. It is not a broken connection, not a dropped connector
 and not a role gate, so none of the fixes for those apply. **Nothing was published and nothing was
 lost:** every file is still in the clone, and the wiki's whole history is untouched. Say that first.

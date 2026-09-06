@@ -226,7 +226,7 @@ Who may act depends on the mode, not on the finding:
   their own filings and how each was resolved.
 
 **The report itself is a read, so it always works. The FIXES below are writes**, and a write refused
-with a sentence about the wiki's **team subscription**, or about **payments** that did not go
+with a sentence about the wiki's **subscription**, or about **payments** that did not go
 through, is a billing state, not a role and not a broken connector. Relay that sentence as worded and
 stop the triage there; nothing is deleted, the findings still stand, and the fix is **Billing** in
 the CommonGround web app, restored by a wiki admin (if the user is not one, the step is to tell one).

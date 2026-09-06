@@ -288,7 +288,7 @@ function billingNotice(state, mode) {
   if (reason !== 'subscription_required' && reason !== 'subscription_unpaid') return '';
   const required = reason === 'subscription_required';
   const lead = required
-    ? 'This wiki has no active team subscription, so writes to it are refused this session; that ' +
+    ? 'This wiki has no active subscription, so writes to it are refused this session; that ' +
       'is billing, not a connection failure.'
     : 'The last payments for this wiki did not go through, so it is read-only for now; that is ' +
       'billing, not a connection failure.';

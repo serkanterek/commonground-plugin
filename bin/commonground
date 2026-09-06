@@ -12465,6 +12465,12 @@ function can(role, capability) {
   return CAPABILITY_MATRIX[capability].includes(role);
 }
 
+// ../shared/dist/billing/ladder.js
+var PLAN_NAMES = {
+  individual: "Free",
+  team: "Pro"
+};
+
 // ../shared/dist/wiki/charter.js
 var WIKI_AUDIENCES = ["just-me", "my-team", "whole-company"];
 var CHARTER_PAGE_ID = "wiki-charter";
@@ -15024,6 +15030,10 @@ async function availableWikis(deps) {
         // SER-302: only ever from the server, and only when it actually said one. The cache has no
         // plan to fall back to on purpose (see WikiListing.plan) — absent stays absent.
         ...w.plan ? { plan: w.plan } : {},
+        // SER-263: the same rule, tested with `typeof` rather than truthiness. `false` is the whole
+        // point of this field, and `w.hostedConnector ? …` would drop precisely the value the
+        // marker is rendered from.
+        ...typeof w.hostedConnector === "boolean" ? { hostedConnector: w.hostedConnector } : {},
         role: local?.role ?? w.role,
         ...local ? {} : { viaOtherSignIn: true }
       };
@@ -16405,6 +16415,30 @@ ${removed}${placeholderNote(r.unparseable)}`;
     }
   }
 }
+function formatWikiList(listings, activeId, boundId, alsoIds = []) {
+  return listings.map((l) => {
+    const marks = [
+      l.teamId === activeId ? "active" : null,
+      l.teamId === boundId ? "this project" : null,
+      // SER-277: a wiki this project reads BESIDE its primary. Said as a separate mark so the
+      // primary (what bare commands address) and the rest never blur into one word.
+      alsoIds.includes(l.teamId) ? "this project also reads it" : null,
+      // SER-277: the KIND, so `point.md` can tell a personal wiki from a shared one without a
+      // second listing — the proactive "you also have a personal wiki" offer keys on this.
+      resolveVoiceClass(l) === "personal" ? "personal" : null,
+      // SER-241. Reachable through a sign-in minted for another of YOUR wikis — same account,
+      // nothing separate to log into. Invisible when everything works, and the entire explanation
+      // when this one alone fails offline. Worded so it cannot read as a second account: "via
+      // your other sign-in" sent a whole session hunting for one that did not exist (SER-254).
+      l.viaOtherSignIn ? "covered by your existing sign-in" : null
+    ].filter(Boolean);
+    const suffix = marks.length ? ` \u2014 ${marks.join(", ")}` : "";
+    const withheld = typeof l.hostedConnector === "boolean" ? !l.hostedConnector : l.plan === "individual";
+    const planMark = withheld ? ` (${PLAN_NAMES.individual} plan)` : "";
+    return `  ${l.teamId === activeId ? "*" : " "} ${wikiLabel(l)}${planMark} [you: ${l.role}]${suffix}
+`;
+  }).join("");
+}
 function formatUse(picked, bound, opts = {}) {
   const head = `Active wiki is now ${wikiLabel(picked)} (you: ${picked.role}).
 `;
@@ -16859,29 +16893,6 @@ function formatImport(r, v) {
 `) : "";
   return `Imported ${r.imported} file(s) from ${r.sourceDir} into ${r.teamId}.${tail}${normalized}${skipped}
 ` + blocked + importCaveats(r) + importConvergence(r);
-}
-function formatWikiList(listings, activeId, boundId, alsoIds = []) {
-  return listings.map((l) => {
-    const marks = [
-      l.teamId === activeId ? "active" : null,
-      l.teamId === boundId ? "this project" : null,
-      // SER-277: a wiki this project reads BESIDE its primary. Said as a separate mark so the
-      // primary (what bare commands address) and the rest never blur into one word.
-      alsoIds.includes(l.teamId) ? "this project also reads it" : null,
-      // SER-277: the KIND, so `point.md` can tell a personal wiki from a shared one without a
-      // second listing — the proactive "you also have a personal wiki" offer keys on this.
-      resolveVoiceClass(l) === "personal" ? "personal" : null,
-      // SER-241. Reachable through a sign-in minted for another of YOUR wikis — same account,
-      // nothing separate to log into. Invisible when everything works, and the entire explanation
-      // when this one alone fails offline. Worded so it cannot read as a second account: "via
-      // your other sign-in" sent a whole session hunting for one that did not exist (SER-254).
-      l.viaOtherSignIn ? "covered by your existing sign-in" : null
-    ].filter(Boolean);
-    const suffix = marks.length ? ` \u2014 ${marks.join(", ")}` : "";
-    const planMark = l.plan === "individual" ? " (individual plan)" : "";
-    return `  ${l.teamId === activeId ? "*" : " "} ${wikiLabel(l)}${planMark} [you: ${l.role}]${suffix}
-`;
-  }).join("");
 }
 function formatSync(r, v) {
   switch (r.action) {

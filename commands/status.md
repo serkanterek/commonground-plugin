@@ -152,17 +152,19 @@ wiki, means **membership**, and the fix is an invite from an admin of that wiki.
 diagnosis without having looked — and don't tell someone they lack access on a guess.
 
 **The other dead end looks identical and needs neither an invite nor a reconnect: the wiki's plan.**
-An individual plan works through the local wiki folder and does not include the hosted connector, so
-on that plan every connector call is refused by design. **Step 1 does not show this one** —
-`commonground status` prints no wiki listing and carries no plan marker, so don't go looking there.
-Two surfaces do carry it: when the server reports the block, the CommonGround notice at the top of
-this session names the plan outright; and the wiki listing that `/commonground:point` fetches (a
-bare `commonground use` prints the same list) marks the wiki `(individual plan)`. The fix is a mode,
-not a repair: run /commonground:point and choose local, which gives this project the wiki as files
-on this machine. Do not send this user around the /mcp loop, and do not call it an outage.
+Free works through the local wiki folder and does not include the hosted connector, so a wiki the
+connector will not serve refuses every call by design. Read the marker rather than the plan word: a
+paid seat in any wiki keeps the connector on that person's own personal wiki, so a free wiki is not
+always one of these. **Step 1 does not show this one** — `commonground status` prints no wiki
+listing and carries no plan marker, so don't go looking there. Two surfaces do carry it: when the
+server reports the block, the CommonGround notice at the top of this session names the plan
+outright; and the wiki listing that `/commonground:point` fetches (a bare `commonground use` prints
+the same list) marks the wiki `(Free plan)`. The fix is a mode, not a repair: run
+/commonground:point and choose local, which gives this project the wiki as files on this machine.
+Do not send this user around the /mcp loop, and do not call it an outage.
 
 **A refusal that names the subscription is billing, and it is the one case that says so itself.**
-When a WRITE comes back with a sentence about the wiki's **team subscription**, or about **payments**
+When a WRITE comes back with a sentence about the wiki's **subscription**, or about **payments**
 that did not go through, it is neither of the two above: the connector is healthy, membership is
 fine, and reads are deliberately left open, so `search`, `get_page`, `/commonground:pull` and the
 local folder all still answer. Don't send this user round `/mcp`, and don't send them for an invite.

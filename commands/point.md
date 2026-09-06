@@ -76,7 +76,7 @@ exact failure this step exists to remove. A flag or a plain word in `$ARGUMENTS`
 a **member** of — asked of the server, not of this machine's sign-ins — marks the currently-active
 one with `*`, marks the one **this project** is bound to, marks any it reaches without a sign-in of
 its own as `covered by your existing sign-in` (same account, nothing separate to log into), and marks
-a wiki on an individual plan `(individual plan)`, which is what step 4 reads.
+any wiki the hosted connector will not serve this user `(Free plan)`, which is what step 4 reads.
 
 Relay it in plain language — wiki names, never bare UUIDs.
 
@@ -130,21 +130,27 @@ the note names, never a generic "try later":
 Look at `$ARGUMENTS`:
 - `local` → **local-clone mode**: also clone the wiki to a real folder on disk (plain markdown, so it
   opens in Obsidian or any editor; good for offline reading or hands-on curation).
-- anything else (including empty) → **pick by the wiki's plan**, which step 3's listing already
-  showed you:
-  - **Marked `individual plan`** → **local-clone mode**, and say why in one line: an individual plan
-    works through the wiki folder on this machine, and the hosted connector is part of team plans.
-    Don't offer MCP mode as an equal choice here. If the user asks for it anyway, say plainly that it
-    will be refused on this plan.
+- anything else (including empty) → **pick by the marker**, which step 3's listing already showed
+  you:
+  - **Marked `(Free plan)`** → **local-clone mode**, and say why in one line: Free works through the
+    wiki folder on this machine, and the hosted connector comes with Pro. Don't offer MCP mode as an
+    equal choice here. If the user asks for it anyway, say plainly that it will be refused for this
+    wiki.
   - **Otherwise** → **MCP mode** (default): reach the wiki live through the CommonGround MCP
     connector, no local files. Best for most coding projects.
 
-**No plan marker means UNKNOWN, and unknown takes the MCP default.** A marker can be absent for two
-different reasons and neither is a fact about the plan: the server is older than this field and sends
-none, or no listing was fetched at all (it was skipped, it fell back to this machine's sign-ins,
-which carry no plan, or it could not be reached). So an absence is never a reason to say anything
-about plans in either direction — not "individual", not "team". It is plain MCP mode, exactly as
-before.
+**The marker is about REACH, not only about the plan.** A paid seat in any wiki keeps the hosted
+connector on that person's own personal wiki, so someone who pays for a team wiki reads their own
+free personal wiki through the connector too, and it carries no marker. Read the marker, never a
+plan word picked up somewhere else: the server works it out for this user and this wiki, and it has
+already counted their seats.
+
+**No marker means UNKNOWN, and unknown takes the MCP default.** A marker can be absent for reasons
+that are not a fact about the plan: the wiki is served after all, or the server is older than this
+field and sends none, or no listing was fetched at all (it was skipped, it fell back to this
+machine's sign-ins, which carry no plan, or it could not be reached). So an absence is never a
+reason to say anything about plans in either direction, not Free and not Pro. It is plain MCP mode,
+exactly as before.
 
 If it's ambiguous and the user hasn't expressed a preference, offer the choice, with the
 `AskUserQuestion` tool (multiple-choice UI) if it's available in this session, otherwise as a plain
@@ -265,8 +271,8 @@ tools are **usually** a connection problem, and `commonground pull [wiki]` still
 without the connector. Three exceptions worth knowing: if this project names a wiki they are not a
 member of, every call fails identically and `/mcp` cannot fix it, so that one needs an invite from
 that wiki's admin; if the wiki's plan does not include the hosted connector, every call is
-refused by design, so that one needs local mode rather than any repair; and if the wiki's **team
-subscription** is blocking, the consent this command is about to ask for is refused as well, so no
+refused by design, so that one needs local mode rather than any repair; and if the wiki's
+**subscription** is blocking, the consent this command is about to ask for is refused as well, so no
 connector is added and the tools never appear at all. That last one is **Billing**, not a reconnect
 and not a missing invitation: a wiki admin restores the subscription under Billing in the
 CommonGround web app, nothing is deleted while it is blocked, and reading, `/commonground:pull` and

@@ -169,16 +169,18 @@ fixes neither.
 like a dropped connection. Signing in again doesn't grant membership: an admin of that wiki has to
 invite you.
 
-*The wiki is on an individual plan.* That plan works through the wiki folder on your own machine,
-and the hosted connector is part of team plans, so every connector call is refused by design.
-Nothing is broken and there's nothing to repair; run `/commonground:point` and choose local, which
-gives this project the wiki as plain files on this machine.
+*The wiki is on Free, and no paid seat of yours reaches it.* Free works through the wiki folder on
+your own machine, and the hosted connector comes with Pro, so every connector call is refused by
+design. (A paid seat in any wiki does keep the hosted connector on your **own personal** wiki, so
+this is about a wiki none of your seats covers.) Nothing is broken and there's nothing to repair;
+run `/commonground:point` and choose local, which gives this project the wiki as plain files on this
+machine.
 
 `/commonground:status` sorts out which of the three you're in: it says which wiki this project is
 bound to, whether this machine can reach it, and what the fix actually is.
 
 **If the subscription lapses.** Writing is refused and reading still works. That is a *billing*
-state, not a connection or a membership problem: a wiki whose **team subscription** has ended, or
+state, not a connection or a membership problem: a wiki whose **subscription** has ended, or
 whose **payments** stopped going through, goes read-only until it is restored. Nothing is deleted and
 nothing is hidden. Searching the wiki, pulling it to your machine, your local folder and its whole
 git history, and revoking credentials or invitations all keep working; publishing, saving a page and

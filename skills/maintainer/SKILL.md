@@ -97,7 +97,7 @@ help them read, answer, and file `suggest_change`.
   guess, and don't rule it out on one either.
 
 - **If a WRITE comes back refused over the wiki's subscription** (either mode): a sentence about
-  the wiki's **team subscription**, or about **payments** that did not go through, is a **billing**
+  the wiki's **subscription**, or about **payments** that did not go through, is a **billing**
   state, not a dropped connector and not a role. It is the one refusal that names itself, so relay it
   as the server worded it and stop: never retry it, and never write into a different wiki or switch
   modes to get around it. Reading, search, `/commonground:pull` and the wiki's whole git history are

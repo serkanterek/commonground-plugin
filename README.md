@@ -96,9 +96,14 @@ them at once, each wiki speaking for what it covers, and says which one a fact c
 
 ## Two ways to connect
 
-**MCP mode** (the default) — the wiki lives on the server and Claude reaches it live through the
-CommonGround connector. No local files. Best for most coding projects. Writes here go live the moment
-they land — on a shared wiki that means everyone, so Claude asks before each one.
+`/commonground:point` asks which one you want and recommends local: it is faster and cheaper,
+because Claude reads files on disk instead of calling the connector. MCP mode is for when always
+seeing the latest published version, with nothing to pull, matters more. (A wiki on Free works
+through the local folder, so that one is not a question.)
+
+**MCP mode** — the wiki lives on the server and Claude queries it live through the CommonGround
+connector, so it is always current. No local files. Writes here go live the moment they land — on
+a shared wiki that means everyone, so Claude asks before each one.
 
 **Local-clone mode** — a full copy of the wiki on disk in a folder named after it (`~/CommonGround/<wiki-name>/`
 by default; choose your own with `--path`, or move it later with `commonground relocate`), plain markdown

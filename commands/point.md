@@ -127,17 +127,38 @@ the note names, never a generic "try later":
 
 ## 4. Choose a mode — and, for local, where the folder goes
 
-Look at `$ARGUMENTS`:
-- `local` → **local-clone mode**: also clone the wiki to a real folder on disk (plain markdown, so it
-  opens in Obsidian or any editor; good for offline reading or hands-on curation).
-- anything else (including empty) → **pick by the marker**, which step 3's listing already showed
-  you:
-  - **Marked `(Free plan)`** → **local-clone mode**, and say why in one line: Free works through the
-    wiki folder on this machine, and the hosted connector comes with Pro. Don't offer MCP mode as an
-    equal choice here. If the user asks for it anyway, say plainly that it will be refused for this
-    wiki.
-  - **Otherwise** → **MCP mode** (default): reach the wiki live through the CommonGround MCP
-    connector, no local files. Best for most coding projects.
+**Where a project's wiki lives is the user's decision: ASKED, with local recommended, never silently
+defaulted (SER-323).**
+In this order:
+- **Adding (`--also`), dropping (`--drop`) or repairing (`--refresh`)?** The project is already
+  pointed, so its mode is settled and comes from its own router block: don't ask it again, and
+  don't pass `--mode` (the CLI refuses it beside those flags). Skip to step 5. On a local-mode add,
+  the folder question at the end of this step still applies, to the wiki being added.
+- `local` in `$ARGUMENTS` → that is the answer. Don't stage a choice the user already made. `mcp`
+  in `$ARGUMENTS` is the answer only for a wiki that carries no `(Free plan)` marker; on a marked
+  wiki it is answered with the sentence in the next bullet, not obeyed.
+- **Marked `(Free plan)`** → **local-clone mode**, and say why in one line: Free works through the
+  wiki folder on this machine, and the hosted connector comes with Pro. Don't offer MCP mode as an
+  equal choice here. If the user asks for it anyway, say plainly that it will be refused for this
+  wiki.
+- **Otherwise → ask, recommending local.** Use the `AskUserQuestion` tool (multiple-choice UI) if
+  it's available in this session, otherwise a plain question. Two options, local FIRST and marked
+  recommended, and the trade-off stated in the options themselves so the choice is informed:
+  - **Local folder (local-clone mode) (Recommended):** a full copy of the wiki on this machine as
+    plain markdown. Faster and cheaper: Claude reads files on disk, with no connector call and no
+    round trip to the server. Kept in step with `/commonground:pull` and `/commonground:push`, so
+    it shows what was last pulled, and every write is a file you review before it publishes. Works
+    offline; opens in Obsidian or any editor.
+  - **Hosted connector (MCP mode):** Claude queries the server live, so it always sees the latest
+    published version with nothing to pull. Nothing on disk. Needs a session restart and the
+    connector's own consent (`/mcp`).
+
+  The rule of thumb to say out loud: if this machine can run local, run local; MCP is for when
+  being current without pulling matters more, or when no local folder is wanted here. Neither
+  answer changes claude.ai Chat: Chat reaches a wiki through the connector whichever mode this
+  project is in (step 7). Then wait for the answer. A question that resolves itself is the exact
+  failure step 3 refuses for WHICH wiki, and it is how a project's pages once went live on a shared
+  wiki with no review step (the reason `/commonground:seed` asks where pages land, SER-256).
 
 **The marker is about REACH, not only about the plan.** A paid seat in any wiki keeps the hosted
 connector on that person's own personal wiki, so someone who pays for a team wiki reads their own
@@ -145,16 +166,12 @@ free personal wiki through the connector too, and it carries no marker. Read the
 plan word picked up somewhere else: the server works it out for this user and this wiki, and it has
 already counted their seats.
 
-**No marker means UNKNOWN, and unknown takes the MCP default.** A marker can be absent for reasons
+**No marker means UNKNOWN, and unknown means the question.** A marker can be absent for reasons
 that are not a fact about the plan: the wiki is served after all, or the server is older than this
 field and sends none, or no listing was fetched at all (it was skipped, it fell back to this
 machine's sign-ins, which carry no plan, or it could not be reached). So an absence is never a
-reason to say anything about plans in either direction, not Free and not Pro. It is plain MCP mode,
-exactly as before.
-
-If it's ambiguous and the user hasn't expressed a preference, offer the choice, with the
-`AskUserQuestion` tool (multiple-choice UI) if it's available in this session, otherwise as a plain
-question: **MCP mode (recommended)** / **Local clone**, defaulting to MCP.
+reason to say anything about plans in either direction, not Free and not Pro. It is the two-option
+question above, with nothing said about plans.
 
 **If they chose local, settle the folder in the same breath — one question, with a real default.**
 The folder is named after the wiki (`~/CommonGround/<wiki-name>/`), so the default is already
@@ -236,8 +253,10 @@ filesystem path and neither holds a secret; the sign-in lives elsewhere.
 **If the fetch fails, relay what the CLI said and STOP — never work around it.** A failed `init`
 in local mode says why in a sentence: the sign-in is no longer accepted (sign them in again, then
 re-run), git could not present the sign-in (their git is too old; updating it is the fix), git is
-not installed, the server could not be reached, or a folder that is not a wiki is in the way (it
-names the folder; nothing in it was touched). Whatever it says, these are never the answer, and
+not installed (the CLI says how to install it; and if this wiki carried no `(Free plan)` marker,
+offering MCP mode instead is a fair next step, since it needs no git: the other option this step
+offered, not a workaround), the server could not be reached, or a folder that is not a wiki is in
+the way (it names the folder; nothing in it was touched). Whatever it says, these are never the answer, and
 you do not offer them: writing the sign-in into a file, a `.netrc`, a keychain, a git credential
 helper or the wiki's address; and, in local mode, seeding or saving through the MCP write tools
 "instead" (the wiki would fill with pages nobody reviewed, in a project that was told its pages

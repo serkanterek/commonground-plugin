@@ -7361,8 +7361,8 @@ var require_dist = __commonJS({
 // ../../apps/sync-agent/dist/cli.js
 var import_node_child_process3 = require("node:child_process");
 var import_node_fs4 = require("node:fs");
-var import_promises6 = require("node:fs/promises");
-var import_node_path8 = require("node:path");
+var import_promises7 = require("node:fs/promises");
+var import_node_path9 = require("node:path");
 
 // ../../apps/sync-agent/dist/args.js
 function takeFlagValue(rest, flag) {
@@ -7682,7 +7682,7 @@ function expandHome(p) {
     return (0, import_node_path.join)((0, import_node_os.homedir)(), p.slice(2));
   return p;
 }
-async function validateClonePath(candidate, configHome = agentConfigHome(), dataHome = agentDataHome()) {
+function normalizeClonePath(candidate, configHome = agentConfigHome(), dataHome = agentDataHome()) {
   const raw = expandHome(candidate.trim());
   if (!raw)
     throw new AgentError("no folder given for the wiki");
@@ -7696,6 +7696,10 @@ async function validateClonePath(candidate, configHome = agentConfigHome(), data
   if ((0, import_node_path.resolve)(dataHome) === target) {
     throw new AgentError(`${target} is the folder that holds every wiki \u2014 pick a folder inside it (or anywhere else), not it`);
   }
+  return target;
+}
+async function validateClonePath(candidate, configHome = agentConfigHome(), dataHome = agentDataHome()) {
+  const target = normalizeClonePath(candidate, configHome, dataHome);
   try {
     const info = await (0, import_promises.stat)(target);
     if (!info.isDirectory())
@@ -7938,16 +7942,18 @@ var execFileAsync = (0, import_node_util.promisify)(import_node_child_process.ex
 var GitError = class extends Error {
   exitCode;
   stderr;
-  constructor(message, exitCode, stderr) {
+  spawnCode;
+  constructor(message, exitCode, stderr, spawnCode) {
     super(message);
     this.exitCode = exitCode;
     this.stderr = stderr;
+    this.spawnCode = spawnCode;
     this.name = "GitError";
   }
 };
-async function runGit(cwd, args, env) {
+async function runGit(cwd, args, env, config = []) {
   try {
-    const { stdout } = await execFileAsync("git", ["-c", "core.quotePath=false", ...args], {
+    const { stdout } = await execFileAsync("git", ["-c", "core.quotePath=false", ...config, ...args], {
       cwd,
       env: env ? { ...process.env, ...env } : process.env,
       maxBuffer: 64 * 1024 * 1024
@@ -7956,29 +7962,94 @@ async function runGit(cwd, args, env) {
   } catch (e) {
     const err = e;
     const exitCode = typeof err.code === "number" ? err.code : null;
-    const stderr = err.stderr ? err.stderr.toString() : err.message ?? "";
-    throw new GitError(`git ${args.join(" ")} failed`, exitCode, stderr);
+    const stderr = err.stderr ? err.stderr.toString() : (err.message ?? "").replace(/^Command failed: [^\n]*\n?/, "");
+    throw new GitError(`git ${args.join(" ")} failed`, exitCode, stderr, typeof err.code === "string" ? err.code : void 0);
   }
 }
 function authHeaderEnv(url, token) {
   const ambient = Number.parseInt(process.env.GIT_CONFIG_COUNT ?? "", 10);
-  const n = Number.isInteger(ambient) && ambient > 0 ? ambient : 0;
+  let n = Number.isInteger(ambient) && ambient > 0 ? ambient : 0;
+  for (let i = 0; i < n; i++) {
+    if (process.env[`GIT_CONFIG_KEY_${i}`] === void 0 || process.env[`GIT_CONFIG_VALUE_${i}`] === void 0) {
+      n = 0;
+      break;
+    }
+  }
   return {
     GIT_CONFIG_COUNT: String(n + 1),
     [`GIT_CONFIG_KEY_${n}`]: `http.${url}.extraHeader`,
     [`GIT_CONFIG_VALUE_${n}`]: `Authorization: Bearer ${token}`
   };
 }
-async function cloneRepo(url, dir, env) {
+var GIT_TOKEN_ENV = "COMMONGROUND_GIT_TOKEN";
+var TOKEN_HELPER = `!f() { test "$1" = get && printf 'username=x-access-token\\npassword=%s\\n' "$${GIT_TOKEN_ENV}"; }; f`;
+function gitAuth(url, token) {
+  let origin;
+  try {
+    origin = new URL(url).origin;
+  } catch {
+    return { env: {}, args: [] };
+  }
+  return {
+    env: {
+      ...authHeaderEnv(url, token),
+      [GIT_TOKEN_ENV]: token,
+      GIT_TERMINAL_PROMPT: "0",
+      GIT_ASKPASS: "",
+      SSH_ASKPASS: ""
+    },
+    args: [
+      "-c",
+      "credential.helper=",
+      "-c",
+      "core.askPass=",
+      "-c",
+      `credential.${origin}.helper=${TOKEN_HELPER}`
+    ]
+  };
+}
+async function cloneRepo(url, dir, access3 = {}) {
   const parent = (0, import_node_path2.dirname)(dir);
   await (0, import_promises2.mkdir)(parent, { recursive: true });
-  await runGit(parent, ["clone", url, dir], env);
+  await runGit(parent, ["clone", url, dir], access3.env, access3.args);
 }
-async function fetchOrigin(dir, env) {
-  await runGit(dir, ["fetch", "origin"], env);
+async function fetchOrigin(dir, access3 = {}) {
+  await runGit(dir, ["fetch", "origin"], access3.env, access3.args);
 }
-async function pushBranch(dir, branch, env) {
-  await runGit(dir, ["push", "origin", branch], env);
+async function pushBranch(dir, branch, access3 = {}) {
+  await runGit(dir, ["push", "origin", branch], access3.env, access3.args);
+}
+async function gitVersion() {
+  try {
+    const m = /git version (\d+)\.(\d+)/.exec(await runGit(process.cwd(), ["--version"]));
+    return m ? [Number(m[1]), Number(m[2])] : null;
+  } catch {
+    return null;
+  }
+}
+function lastWord(stderr) {
+  const lines = stderr.split("\n").map((l) => l.trim()).filter(Boolean);
+  const verdict = [...lines].reverse().find((l) => /^(fatal|error):/i.test(l));
+  return (verdict ?? lines[lines.length - 1] ?? "").slice(0, 300);
+}
+async function explainGitFailure(err) {
+  if (err.spawnCode === "ENOENT") {
+    return "git is not installed on this machine (or not on PATH), and a local wiki folder needs it. Install git (https://git-scm.com/downloads), then try again.";
+  }
+  const stderr = err.stderr;
+  if (/authentication failed for|remote: authentication required/i.test(stderr)) {
+    return `CommonGround did not accept this machine's sign-in: it was revoked, or it has expired. Nothing was changed; ${ask("login")}.`;
+  }
+  if (/could not read username for/i.test(stderr)) {
+    const v = await gitVersion();
+    const tooOld = v !== null && (v[0] < 2 || v[0] === 2 && v[1] < 31);
+    return "git could not present your CommonGround sign-in to the server, so nothing was fetched. " + (tooOld ? `This machine's git is ${v[0]}.${v[1]}, which is older than CommonGround can sign in with; updating git (https://git-scm.com/downloads) fixes it. ` : "Updating git (https://git-scm.com/downloads) usually fixes it. ") + "Your sign-in itself is fine: do not store it in a file, a keychain or the wiki address to work around this.";
+  }
+  if (/could not resolve host|failed to connect|connection refused|connection timed out|operation timed out|network is unreachable|ssl/i.test(stderr)) {
+    return `could not reach CommonGround (${lastWord(stderr)}). Nothing was changed; check the connection and try again.`;
+  }
+  const word = lastWord(stderr);
+  return word ? `${err.message}: ${word}` : err.message;
 }
 function withoutUserinfo(url) {
   try {
@@ -8000,10 +8071,19 @@ async function refreshRemote(dir, remote) {
     }
   } catch {
   }
-  await fetchOrigin(dir, remote.env);
+  await fetchOrigin(dir, remote);
 }
 async function currentBranch(dir) {
   return (await runGit(dir, ["rev-parse", "--abbrev-ref", "HEAD"])).trim();
+}
+async function revParse(dir, ref) {
+  try {
+    return (await runGit(dir, ["rev-parse", "--verify", ref])).trim();
+  } catch (e) {
+    if (e instanceof GitError && e.exitCode === 128)
+      return null;
+    throw e;
+  }
 }
 async function isWorkingTreeClean(dir) {
   const out = await runGit(dir, ["status", "--porcelain", "--untracked-files=no"]);
@@ -8191,7 +8271,7 @@ var HttpSyncBackend = class {
   async remoteAccess(teamId) {
     const binding = await crossWikiBinding(this, teamId, this.cfg.configHome, this.cfg.dataHome);
     const url = this.endpoint(`/git/${teamId}`).toString();
-    return { url, env: authHeaderEnv(url, binding.token) };
+    return { url, ...gitAuth(url, binding.token) };
   }
   /**
    * `GET /git/charter` with the stored device token (SER-244) — the DEVICE-reachable door.
@@ -8248,8 +8328,8 @@ var HttpSyncBackend = class {
 };
 
 // ../../apps/sync-agent/dist/commands.js
-var import_promises5 = require("node:fs/promises");
-var import_node_path6 = require("node:path");
+var import_promises6 = require("node:fs/promises");
+var import_node_path7 = require("node:path");
 
 // ../shared/dist/scope.js
 var SCOPE_LEVELS = ["company", "department", "team", "product"];
@@ -12385,6 +12465,14 @@ var EnvSchema = external_exports.object({
    */
   INVITE_FROM_EMAIL: external_exports.string().optional(),
   /**
+   * Where a reply to any mail we send lands (SER-318) — a mailbox somebody reads, sent as the
+   * provider's `reply_to`. The sender above sits on a send-only subdomain with no inbound MX, so
+   * without this a reply bounces, and the privacy page names "reply to any email we send you" as
+   * the removal channel. Absent → no `reply_to` is sent and a reply goes to the sender, as before.
+   * Independent of the pair above: it changes where replies go, never whether mail is sent.
+   */
+  MAIL_REPLY_TO: external_exports.string().optional(),
+  /**
    * The Resend Audience the `sync:audience` script mirrors waitlist emails into (SER-299).
    *
    * Read by that operator script ONLY — never on a request path. The launch announcement is
@@ -14901,13 +14989,15 @@ var BRIEF_START = "<!-- commonground:retrieval-brief:start -->";
 var BRIEF_END = "<!-- commonground:retrieval-brief:end -->";
 var BRIEF_BLOCK_RE = /<!-- commonground:retrieval-brief:start -->[\s\S]*?<!-- commonground:retrieval-brief:end -->/g;
 var EXCLUDED = ["/CLAUDE.md", `/${WIKI_LAYOUT.configDir}/maintainer-skill/`];
-async function injectRouterRule(dir, rule = CLONE_ROUTER_RULE) {
-  const path = (0, import_node_path5.join)(dir, "CLAUDE.md");
-  const existing = await readFileOr(path, "");
-  const cleaned = existing.replace(BLOCK_RE, "").replace(BRIEF_BLOCK_RE, "").split("\n").filter((line) => {
+function withoutRouterBlocks(claudeMd) {
+  return claudeMd.replace(BLOCK_RE, "").replace(BRIEF_BLOCK_RE, "").split("\n").filter((line) => {
     const t = line.trim();
     return t !== ROUTER_START && t !== ROUTER_END && t !== BRIEF_START && t !== BRIEF_END;
   }).join("\n").trimEnd();
+}
+async function injectRouterRule(dir, rule = CLONE_ROUTER_RULE) {
+  const path = (0, import_node_path5.join)(dir, "CLAUDE.md");
+  const cleaned = withoutRouterBlocks(await readFileOr(path, ""));
   const next = cleaned.length > 0 ? `${cleaned}
 
 ${rule}
@@ -14968,6 +15058,9 @@ async function excludeInjected(dir) {
   const missing = EXCLUDED.filter((line) => !have.has(line));
   if (missing.length === 0)
     return;
+  if (!await exists((0, import_node_path5.join)(dir, ".git"))) {
+    throw new Error(`${dir} is not a git repository \u2014 refusing to write tooling into it`);
+  }
   await (0, import_promises4.mkdir)((0, import_node_path5.dirname)(path), { recursive: true });
   const body = existing.trimEnd();
   await (0, import_promises4.writeFile)(path, `${body ? `${body}
@@ -14979,11 +15072,102 @@ async function injectAll(dir, naming, teamId) {
   await injectRouterRule(dir, cloneRouterRule(await charterVoiceFromWiki(dir), naming, teamId));
   await injectSkill(dir);
 }
+async function exists(path) {
+  try {
+    await (0, import_promises4.access)(path);
+    return true;
+  } catch {
+    return false;
+  }
+}
 async function readFileOr(path, fallback) {
   try {
     return await (0, import_promises4.readFile)(path, "utf8");
   } catch {
     return fallback;
+  }
+}
+
+// ../../apps/sync-agent/dist/clone-state.js
+var import_promises5 = require("node:fs/promises");
+var import_node_path6 = require("node:path");
+var INJECTED_SKILL_DIR = "maintainer-skill";
+async function isUsableClone(dir) {
+  let top;
+  try {
+    top = (await runGit(dir, ["rev-parse", "--show-toplevel"])).trim();
+  } catch (e) {
+    if (e instanceof GitError && !e.spawnCode && /not a git repository|not in a git directory/i.test(e.stderr)) {
+      return false;
+    }
+    throw e;
+  }
+  if (await (0, import_promises5.realpath)(top) !== await (0, import_promises5.realpath)(dir))
+    return false;
+  return await revParse(dir, "HEAD") !== null;
+}
+async function holdsNoRefs(gitDir) {
+  const packed = await (0, import_promises5.readFile)((0, import_node_path6.join)(gitDir, "packed-refs"), "utf8").catch(() => "");
+  if (packed.split("\n").some((l) => l.trim() && !l.startsWith("#") && !l.startsWith("^")))
+    return false;
+  const walk2 = async (d) => {
+    for (const e of await (0, import_promises5.readdir)(d, { withFileTypes: true }).catch(() => [])) {
+      if (e.isDirectory() ? !await walk2((0, import_node_path6.join)(d, e.name)) : true)
+        return false;
+    }
+    return true;
+  };
+  return walk2((0, import_node_path6.join)(gitDir, "refs"));
+}
+async function isLitter(dir, name) {
+  const path = (0, import_node_path6.join)(dir, name);
+  const info = await (0, import_promises5.lstat)(path);
+  if (name === ".DS_Store" || name === "Thumbs.db")
+    return info.isFile();
+  if (name === ".git")
+    return info.isDirectory() && await holdsNoRefs(path);
+  if (name === "CLAUDE.md") {
+    return info.isFile() && withoutRouterBlocks(await (0, import_promises5.readFile)(path, "utf8")).trim() === "";
+  }
+  if (name === WIKI_LAYOUT.configDir) {
+    if (!info.isDirectory())
+      return false;
+    return (await (0, import_promises5.readdir)(path)).every((n) => n === INJECTED_SKILL_DIR);
+  }
+  return false;
+}
+async function cloneState(dir) {
+  let info;
+  try {
+    info = await (0, import_promises5.lstat)(dir);
+  } catch {
+    return "absent";
+  }
+  if (info.isSymbolicLink()) {
+    try {
+      info = await (0, import_promises5.stat)(dir);
+    } catch {
+      return "foreign";
+    }
+  }
+  if (!info.isDirectory())
+    return "foreign";
+  if (await isUsableClone(dir))
+    return "usable";
+  const names = await (0, import_promises5.readdir)(dir);
+  for (const name of names) {
+    if (!await isLitter(dir, name))
+      return "foreign";
+  }
+  const tooling = names.some((n) => n === "CLAUDE.md" || n === WIKI_LAYOUT.configDir);
+  return tooling && !names.includes(".git") ? "foreign" : "wreckage";
+}
+async function clearWreckage(dir) {
+  if (await cloneState(dir) !== "wreckage") {
+    throw new Error(`${dir} is not clone wreckage \u2014 refusing to clear it`);
+  }
+  for (const name of await (0, import_promises5.readdir)(dir)) {
+    await (0, import_promises5.rm)((0, import_node_path6.join)(dir, name), { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   }
 }
 
@@ -15075,16 +15259,16 @@ function apiUrl(apiBaseUrl, path) {
 }
 var PENDING_FILE = "device-login.json";
 function pendingPath(configHome) {
-  return (0, import_node_path6.join)(configHome, PENDING_FILE);
+  return (0, import_node_path7.join)(configHome, PENDING_FILE);
 }
 async function writePendingLogin(configHome, p) {
-  await (0, import_promises5.mkdir)(configHome, { recursive: true, mode: 448 });
-  await (0, import_promises5.writeFile)(pendingPath(configHome), JSON.stringify(p), { mode: 384 });
-  await (0, import_promises5.chmod)(pendingPath(configHome), 384);
+  await (0, import_promises6.mkdir)(configHome, { recursive: true, mode: 448 });
+  await (0, import_promises6.writeFile)(pendingPath(configHome), JSON.stringify(p), { mode: 384 });
+  await (0, import_promises6.chmod)(pendingPath(configHome), 384);
 }
 async function readPendingLogin(configHome, nowMs = Date.now()) {
   try {
-    const raw = JSON.parse(await (0, import_promises5.readFile)(pendingPath(configHome), "utf8"));
+    const raw = JSON.parse(await (0, import_promises6.readFile)(pendingPath(configHome), "utf8"));
     if (typeof raw?.deviceCode !== "string" || !raw.deviceCode)
       return null;
     if (typeof raw.expiresAtMs !== "number" || raw.expiresAtMs <= nowMs)
@@ -15095,7 +15279,7 @@ async function readPendingLogin(configHome, nowMs = Date.now()) {
   }
 }
 async function clearPendingLogin(configHome) {
-  await (0, import_promises5.rm)(pendingPath(configHome), { force: true }).catch(() => void 0);
+  await (0, import_promises6.rm)(pendingPath(configHome), { force: true }).catch(() => void 0);
 }
 async function startDeviceLogin(deps) {
   const now = deps.now ?? Date.now;
@@ -15289,16 +15473,16 @@ async function initProject(deps, opts) {
 async function connectLocalWiki(deps, teamId, binding, name, path, onClone) {
   if (path) {
     const existing = await resolveClonePath(teamId, deps.configHome, deps.dataHome);
-    if (await pathExists2(existing)) {
+    if (await cloneState(existing) === "usable") {
       throw new AgentError(`this wiki is already cloned at ${existing} \u2014 ` + byAudience(`to move it, run "commonground relocate ${path} ${teamId}" (which moves the folder and updates this project's CLAUDE.md), not "init --path"`, `to move it, offer to relocate it for them (that moves the folder and updates this project's CLAUDE.md); "init --path" cannot`));
     }
-    await setClonePath(teamId, await validateClonePath(path, deps.configHome, deps.dataHome), deps.configHome);
+    const target = normalizeClonePath(path, deps.configHome, deps.dataHome);
+    const there = await cloneState(target);
+    await setClonePath(teamId, there === "wreckage" ? target : await validateClonePath(target, deps.configHome, deps.dataHome), deps.configHome);
   }
   const dir = await resolveCloneTarget(deps, teamId, binding.token);
-  const cloned = !await pathExists2(dir);
-  if (cloned) {
-    await cloneFresh(deps, teamId, dir, await deps.backend.remoteAccess(teamId), onClone);
-  } else {
+  const cloned = await ensureClone(deps, teamId, dir, () => deps.backend.remoteAccess(teamId), onClone);
+  if (!cloned) {
     await injectTooling(deps, teamId, dir);
   }
   const standing = cloned ? null : await standingAgainstHosted(deps, teamId);
@@ -15319,18 +15503,18 @@ async function standingAgainstHosted(deps, teamId) {
 }
 async function detectRouterBlock(projectDir) {
   try {
-    return parseRouterBlock(await (0, import_promises5.readFile)((0, import_node_path6.join)(projectDir, "CLAUDE.md"), "utf8"));
+    return parseRouterBlock(await (0, import_promises6.readFile)((0, import_node_path7.join)(projectDir, "CLAUDE.md"), "utf8"));
   } catch {
     return null;
   }
 }
 async function findRouterBlock(startDir) {
-  let dir = (0, import_node_path6.resolve)(startDir);
+  let dir = (0, import_node_path7.resolve)(startDir);
   for (let depth = 0; depth < 64; depth++) {
     const found = await detectRouterBlock(dir);
     if (found)
       return { ...found, dir };
-    const parent = (0, import_node_path6.dirname)(dir);
+    const parent = (0, import_node_path7.dirname)(dir);
     if (parent === dir)
       return null;
     dir = parent;
@@ -15353,7 +15537,10 @@ async function relocateClone(deps, opts) {
   const { teamId, projectDir } = opts;
   const binding = await bindingFor(deps, teamId);
   const from = await resolveClonePath(teamId, deps.configHome, deps.dataHome);
-  if (!await pathExists2(from)) {
+  const standing = await cloneState(from);
+  if (standing === "foreign")
+    throw new AgentError(notAWikiFolder(from));
+  if (standing !== "usable") {
     throw new AgentError(`there is no wiki folder to move \u2014 nothing is cloned for this team yet. ` + byAudience(`Run "commonground init --mode local --path <folder> ${teamId}" to clone it where you want it.`, `Offer /commonground:point in local mode, naming the folder, to clone it where they want it.`));
   }
   const to = await validateClonePath(opts.to, deps.configHome, deps.dataHome);
@@ -15361,14 +15548,14 @@ async function relocateClone(deps, opts) {
     throw new AgentError(`your wiki is already at ${from}`);
   await setClonePath(teamId, to, deps.configHome);
   try {
-    await (0, import_promises5.mkdir)((0, import_node_path6.dirname)(to), { recursive: true });
+    await (0, import_promises6.mkdir)((0, import_node_path7.dirname)(to), { recursive: true });
     try {
-      await (0, import_promises5.rename)(from, to);
+      await (0, import_promises6.rename)(from, to);
     } catch (e) {
       if (e.code !== "EXDEV")
         throw e;
-      await (0, import_promises5.cp)(from, to, { recursive: true, preserveTimestamps: true });
-      await (0, import_promises5.rm)(from, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+      await (0, import_promises6.cp)(from, to, { recursive: true, preserveTimestamps: true });
+      await (0, import_promises6.rm)(from, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
     }
   } catch (e) {
     await setClonePath(teamId, from, deps.configHome).catch(() => void 0);
@@ -15378,8 +15565,8 @@ async function relocateClone(deps, opts) {
 }
 var isReservedImportPath = isReservedPath;
 function isInside2(parent, child) {
-  const rel = (0, import_node_path6.relative)((0, import_node_path6.resolve)(parent), (0, import_node_path6.resolve)(child));
-  return rel === "" || !rel.startsWith("..") && !(0, import_node_path6.isAbsolute)(rel);
+  const rel = (0, import_node_path7.relative)((0, import_node_path7.resolve)(parent), (0, import_node_path7.resolve)(child));
+  return rel === "" || !rel.startsWith("..") && !(0, import_node_path7.isAbsolute)(rel);
 }
 async function importWiki(deps, opts) {
   const { sourceDir, teamId } = opts;
@@ -15390,11 +15577,7 @@ async function importWiki(deps, opts) {
   if (!await isDir(sourceDir))
     throw new AgentError(`not a folder: ${sourceDir}`);
   const dir = await resolveClonePath(teamId, deps.configHome, deps.dataHome);
-  const remote = await deps.backend.remoteAccess(teamId);
-  if (!await pathExists2(dir)) {
-    await cloneRepo(remote.url, dir, remote.env);
-    await injectTooling(deps, teamId, dir);
-  }
+  await ensureClone(deps, teamId, dir, () => deps.backend.remoteAccess(teamId), opts.onClone);
   const guardedHomes = [
     deps.configHome,
     ...isInside2(deps.dataHome, sourceDir) ? [] : [deps.dataHome]
@@ -15427,7 +15610,7 @@ async function importWiki(deps, opts) {
     "commit",
     "-m",
     // `ingest: ` to match the hosted writes' `<op>: ` shape (SER-220) — one history, one grammar.
-    `ingest: import wiki from ${(0, import_node_path6.basename)(sourceDir)}`
+    `ingest: import wiki from ${(0, import_node_path7.basename)(sourceDir)}`
   ]);
   const synced = await sync(deps, teamId);
   return {
@@ -15444,36 +15627,36 @@ async function importWiki(deps, opts) {
 }
 async function overlaySource(sourceDir, dir, guardedHomes) {
   const allowed = (src, alsoReject) => {
-    const rel = (0, import_node_path6.relative)(sourceDir, src);
+    const rel = (0, import_node_path7.relative)(sourceDir, src);
     if (rel === "")
       return true;
     if (isReservedImportPath(rel) || alsoReject(rel))
       return false;
     return !guardedHomes.some((home) => isInside2(home, src));
   };
-  await (0, import_promises5.cp)(sourceDir, dir, {
+  await (0, import_promises6.cp)(sourceDir, dir, {
     recursive: true,
     force: true,
     filter: (src) => allowed(src, isRawSourcePath)
   });
   const notImported = [];
   for (const relPath of RESERVED_ROOT_NAMES) {
-    if (await pathExists2((0, import_node_path6.join)(sourceDir, relPath))) {
+    if (await pathExists2((0, import_node_path7.join)(sourceDir, relPath))) {
       notImported.push({ relPath, reason: RESERVED_ROOT_REASON[relPath] });
     }
   }
-  const sourcesDir = (0, import_node_path6.join)(sourceDir, WIKI_LAYOUT.sourcesDir);
+  const sourcesDir = (0, import_node_path7.join)(sourceDir, WIKI_LAYOUT.sourcesDir);
   if (await isDir(sourcesDir)) {
     for (const rel of await walkFiles(sourcesDir, () => true)) {
-      const existing = (0, import_node_path6.join)(dir, WIKI_LAYOUT.sourcesDir, rel);
-      if (await pathExists2(existing) && await differs(existing, (0, import_node_path6.join)(sourcesDir, rel))) {
+      const existing = (0, import_node_path7.join)(dir, WIKI_LAYOUT.sourcesDir, rel);
+      if (await pathExists2(existing) && await differs(existing, (0, import_node_path7.join)(sourcesDir, rel))) {
         notImported.push({
           relPath: `${WIKI_LAYOUT.sourcesDir}/${rel}`,
           reason: "a DIFFERENT raw source already exists at this path \u2014 sources/ is immutable"
         });
       }
     }
-    await (0, import_promises5.cp)(sourcesDir, (0, import_node_path6.join)(dir, WIKI_LAYOUT.sourcesDir), {
+    await (0, import_promises6.cp)(sourcesDir, (0, import_node_path7.join)(dir, WIKI_LAYOUT.sourcesDir), {
       recursive: true,
       force: false,
       // copy-if-absent: an existing raw source keeps its original bytes…
@@ -15486,10 +15669,10 @@ async function overlaySource(sourceDir, dir, guardedHomes) {
 }
 async function differs(a, b) {
   try {
-    const [statA, statB] = await Promise.all([(0, import_promises5.stat)(a), (0, import_promises5.stat)(b)]);
+    const [statA, statB] = await Promise.all([(0, import_promises6.stat)(a), (0, import_promises6.stat)(b)]);
     if (statA.size !== statB.size)
       return true;
-    const [bytesA, bytesB] = await Promise.all([(0, import_promises5.readFile)(a), (0, import_promises5.readFile)(b)]);
+    const [bytesA, bytesB] = await Promise.all([(0, import_promises6.readFile)(a), (0, import_promises6.readFile)(b)]);
     return !bytesA.equals(bytesB);
   } catch {
     return true;
@@ -15507,7 +15690,7 @@ async function walkFiles(root, keep, onUnreadableDir) {
   async function walk2(abs, rel) {
     let entries;
     try {
-      entries = await (0, import_promises5.readdir)(abs, { withFileTypes: true });
+      entries = await (0, import_promises6.readdir)(abs, { withFileTypes: true });
     } catch (e) {
       onUnreadableDir?.(rel || ".", e instanceof Error ? e.message : "could not be read");
       return;
@@ -15516,7 +15699,7 @@ async function walkFiles(root, keep, onUnreadableDir) {
       const childRel = rel ? `${rel}/${e.name}` : e.name;
       if (e.isDirectory()) {
         if (!RESERVED_SEGMENTS.has(e.name.normalize("NFC").toLowerCase())) {
-          await walk2((0, import_node_path6.join)(abs, e.name), childRel);
+          await walk2((0, import_node_path7.join)(abs, e.name), childRel);
         }
       } else if (e.isFile() && keep(childRel)) {
         out.push(childRel);
@@ -15534,8 +15717,8 @@ async function normalizeAndReindex(dir, sourceDir, teamId, today) {
   const importFiles = [];
   for (const relPath of importedRel) {
     try {
-      const content = await (0, import_promises5.readFile)((0, import_node_path6.join)(dir, relPath), "utf8");
-      const mtime = await mtimeDate((0, import_node_path6.join)(sourceDir, relPath));
+      const content = await (0, import_promises6.readFile)((0, import_node_path7.join)(dir, relPath), "utf8");
+      const mtime = await mtimeDate((0, import_node_path7.join)(sourceDir, relPath));
       importFiles.push({ relPath, content, ...mtime ? { mtime } : {} });
     } catch {
       continue;
@@ -15543,7 +15726,7 @@ async function normalizeAndReindex(dir, sourceDir, teamId, today) {
   }
   const result = normalizeImport(importFiles, { today });
   for (const f of result.files)
-    await (0, import_promises5.writeFile)((0, import_node_path6.join)(dir, f.relPath), f.content, "utf8");
+    await (0, import_promises6.writeFile)((0, import_node_path7.join)(dir, f.relPath), f.content, "utf8");
   if (result.skipped.length > 0) {
     const lines = result.skipped.map((s) => `  ${s.relPath}: ${s.reason}`).join("\n");
     process.stderr.write(
@@ -15594,10 +15777,10 @@ function renderIndex(tree) {
   });
 }
 async function currentIndex(dir) {
-  return (0, import_promises5.readFile)((0, import_node_path6.join)(dir, WIKI_LAYOUT.indexFile), "utf8").catch(() => "");
+  return (0, import_promises6.readFile)((0, import_node_path7.join)(dir, WIKI_LAYOUT.indexFile), "utf8").catch(() => "");
 }
 async function writeIndex(dir, tree) {
-  await (0, import_promises5.writeFile)((0, import_node_path6.join)(dir, WIKI_LAYOUT.indexFile), renderIndex(tree), "utf8");
+  await (0, import_promises6.writeFile)((0, import_node_path7.join)(dir, WIKI_LAYOUT.indexFile), renderIndex(tree), "utf8");
 }
 async function rebuildIndex(dir) {
   const tree = await readWorkingTree(dir);
@@ -15606,14 +15789,14 @@ async function rebuildIndex(dir) {
 }
 async function mtimeDate(path) {
   try {
-    return (await (0, import_promises5.stat)(path)).mtime.toISOString().slice(0, 10);
+    return (await (0, import_promises6.stat)(path)).mtime.toISOString().slice(0, 10);
   } catch {
     return void 0;
   }
 }
 async function isDir(path) {
   try {
-    return (await (0, import_promises5.stat)(path)).isDirectory();
+    return (await (0, import_promises6.stat)(path)).isDirectory();
   } catch {
     return false;
   }
@@ -15647,21 +15830,88 @@ async function resolveCloneTarget(deps, teamId, token) {
   await refreshTeamProfile(deps, teamId, token);
   return resolveClonePath(teamId, deps.configHome, deps.dataHome);
 }
-async function recordAndAnnounce(deps, teamId, dir, onClone) {
+async function recordAndAnnounce(deps, teamId, dir, onClone, reclaimed = false) {
   const profile = await readTeamProfile(teamId, deps.configHome);
   if (!profile.clonePath) {
-    if ((0, import_node_path6.resolve)((0, import_node_path6.dirname)(dir)) === (0, import_node_path6.resolve)(deps.dataHome)) {
-      await setCloneDir(teamId, (0, import_node_path6.basename)(dir), deps.configHome);
+    if ((0, import_node_path7.resolve)((0, import_node_path7.dirname)(dir)) === (0, import_node_path7.resolve)(deps.dataHome)) {
+      await setCloneDir(teamId, (0, import_node_path7.basename)(dir), deps.configHome);
     } else {
-      await setClonePath(teamId, (0, import_node_path6.resolve)(dir), deps.configHome);
+      await setClonePath(teamId, (0, import_node_path7.resolve)(dir), deps.configHome);
     }
   }
-  onClone?.(dir);
+  onClone?.(dir, reclaimed);
 }
-async function cloneFresh(deps, teamId, dir, origin, onClone) {
-  await recordAndAnnounce(deps, teamId, dir, onClone);
-  await cloneRepo(origin.url, dir, origin.env);
+async function cloneFresh(deps, teamId, dir, origin, onClone, reclaimed = false) {
+  await recordAndAnnounce(deps, teamId, dir, onClone, reclaimed);
+  await cloneRepo(origin.url, dir, origin);
   await injectTooling(deps, teamId, dir);
+}
+function notAWikiFolder(dir) {
+  return `there is a folder at ${dir}, but it is not a CommonGround wiki folder: it has other files in it and no wiki history. Nothing in it was touched and nothing was fetched. Move or rename that folder, then try again. Or ` + byAudience('pick another place with "commonground init --mode local --path <folder>"', "offer to put the wiki folder somewhere else (/commonground:point in local mode, naming a folder)");
+}
+async function ensureClone(deps, teamId, dir, origin, onClone) {
+  const standing = await cloneState(dir);
+  if (standing === "usable")
+    return false;
+  if (standing === "foreign")
+    throw new AgentError(notAWikiFolder(dir));
+  const access3 = await origin();
+  return withFetchLock(dir, async () => {
+    const now = await cloneState(dir);
+    if (now === "usable")
+      return false;
+    if (now === "foreign")
+      throw new AgentError(notAWikiFolder(dir));
+    if (now === "wreckage")
+      await clearWreckage(dir);
+    await cloneFresh(deps, teamId, dir, access3, onClone, now === "wreckage");
+    return true;
+  });
+}
+async function withFetchLock(dir, work) {
+  const lock = (0, import_node_path7.join)((0, import_node_path7.dirname)(dir), `.${(0, import_node_path7.basename)(dir)}.fetching`);
+  await (0, import_promises6.mkdir)((0, import_node_path7.dirname)(dir), { recursive: true });
+  const take = async () => {
+    const fh = await (0, import_promises6.open)(lock, "wx");
+    try {
+      await fh.writeFile(String(process.pid));
+    } finally {
+      await fh.close();
+    }
+  };
+  try {
+    await take();
+  } catch (e) {
+    if (e.code !== "EEXIST")
+      throw e;
+    const owner = Number.parseInt(await (0, import_promises6.readFile)(lock, "utf8").catch(() => ""), 10);
+    if (Number.isInteger(owner) && owner !== process.pid && isAlive(owner)) {
+      throw new AgentError(`another CommonGround command is fetching this wiki into ${dir} right now. Nothing was changed; wait for it to finish, then try again.`);
+    }
+    await (0, import_promises6.rm)(lock, { force: true });
+    await take();
+  }
+  try {
+    return await work();
+  } finally {
+    await (0, import_promises6.rm)(lock, { force: true });
+  }
+}
+function isAlive(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (e) {
+    return e.code === "EPERM";
+  }
+}
+async function requireClone(teamId, dir) {
+  const standing = await cloneState(dir);
+  if (standing === "usable")
+    return;
+  if (standing === "foreign")
+    throw new AgentError(notAWikiFolder(dir));
+  throw new AgentError(`no local clone for "${teamId}" \u2014 ${byAudience('run "commonground pull" first', "pull it first (offer /commonground:pull)")}`);
 }
 function refusedWithHttp403(stderr) {
   return /the requested url returned error: 403|rpc failed;\s*http 403/i.test(stderr);
@@ -15698,7 +15948,7 @@ async function pushRefusalReason(origin) {
 }
 async function publishBranch(dir, branch, origin) {
   try {
-    await pushBranch(dir, branch, origin.env);
+    await pushBranch(dir, branch, origin);
   } catch (e) {
     if (!(e instanceof GitError) || !refusedWithHttp403(e.stderr))
       throw e;
@@ -15712,8 +15962,7 @@ async function sync(deps, teamId, opts = {}) {
   const binding = await bindingFor(deps, teamId);
   const dir = await resolveCloneTarget(deps, teamId, binding.token);
   const origin = await deps.backend.remoteAccess(teamId);
-  if (!await pathExists2(dir)) {
-    await cloneFresh(deps, teamId, dir, origin, opts.onClone);
+  if (await ensureClone(deps, teamId, dir, () => Promise.resolve(origin), opts.onClone)) {
     return { teamId, clonePath: dir, action: "cloned", ahead: 0, behind: 0 };
   }
   await refreshRemote(dir, origin);
@@ -15819,8 +16068,7 @@ async function pull(deps, teamId, opts = {}) {
   const origin = await deps.backend.remoteAccess(teamId);
   await refreshTeamProfile(deps, teamId, binding.token);
   const dir = await resolveClonePath(teamId, deps.configHome, deps.dataHome);
-  if (!await pathExists2(dir)) {
-    await cloneFresh(deps, teamId, dir, origin, opts.onClone);
+  if (await ensureClone(deps, teamId, dir, () => Promise.resolve(origin), opts.onClone)) {
     return { teamId, clonePath: dir, action: "cloned", ahead: 0, behind: 0, dirty: false };
   }
   await refreshRemote(dir, origin);
@@ -15871,8 +16119,7 @@ async function pull(deps, teamId, opts = {}) {
 async function push(deps, teamId, opts = {}) {
   const binding = await bindingFor(deps, teamId);
   const dir = await resolveClonePath(teamId, deps.configHome, deps.dataHome);
-  if (!await pathExists2(dir))
-    throw new AgentError(`no local clone for "${teamId}" \u2014 ${byAudience('run "commonground pull" first', "pull it first (offer /commonground:pull)")}`);
+  await requireClone(teamId, dir);
   const origin = await deps.backend.remoteAccess(teamId);
   if (!can(binding.role, "wiki:edit")) {
     let pages;
@@ -15997,9 +16244,8 @@ async function push(deps, teamId, opts = {}) {
 async function exportWiki(deps, teamId, opts = {}) {
   const binding = await bindingFor(deps, teamId);
   const dir = await resolveClonePath(teamId, deps.configHome, deps.dataHome);
-  if (!await pathExists2(dir))
-    throw new AgentError(`no local clone for "${teamId}" \u2014 ${byAudience('run "commonground pull" first', "pull it first (offer /commonground:pull)")}`);
-  const out = opts.out ?? (0, import_node_path6.join)(deps.dataHome, `${teamId}-wiki.tar`);
+  await requireClone(teamId, dir);
+  const out = opts.out ?? (0, import_node_path7.join)(deps.dataHome, `${teamId}-wiki.tar`);
   await archiveHead(dir, out);
   return { path: out };
 }
@@ -16008,7 +16254,7 @@ async function status(deps, teamId) {
   const legacy = await legacyCredentialState(deps.configHome, deps.dataHome);
   const legacyCredential = legacy ? { legacyCredential: legacy } : {};
   const dir = await resolveCloneTarget(deps, teamId, binding.token);
-  if (!await pathExists2(dir)) {
+  if (await cloneState(dir) !== "usable") {
     return {
       teamId,
       role: binding.role,
@@ -16046,8 +16292,7 @@ async function status(deps, teamId) {
 async function resolveDivergence(deps, teamId, choice, opts = {}) {
   const binding = await bindingFor(deps, teamId);
   const dir = await resolveClonePath(teamId, deps.configHome, deps.dataHome);
-  if (!await pathExists2(dir))
-    throw new AgentError(`no local clone for "${teamId}" \u2014 ${byAudience('run "commonground pull" first', "pull it first (offer /commonground:pull)")}`);
+  await requireClone(teamId, dir);
   if (choice === "keep-local") {
     return { teamId, choice };
   }
@@ -16063,15 +16308,13 @@ async function resolveDivergence(deps, teamId, choice, opts = {}) {
 async function lint(deps, teamId) {
   const binding = await bindingFor(deps, teamId);
   const dir = await resolveClonePath(teamId, deps.configHome, deps.dataHome);
-  if (!await pathExists2(dir))
-    throw new AgentError(`no local clone for "${teamId}" \u2014 ${byAudience('run "commonground pull" first', "pull it first (offer /commonground:pull)")}`);
+  await requireClone(teamId, dir);
   return { ...await localLint(dir), clonePath: dir };
 }
 async function coverage(deps, teamId) {
   const binding = await bindingFor(deps, teamId);
   const dir = await resolveClonePath(teamId, deps.configHome, deps.dataHome);
-  if (!await pathExists2(dir))
-    throw new AgentError(`no local clone for "${teamId}" \u2014 ${byAudience('run "commonground pull" first', "pull it first (offer /commonground:pull)")}`);
+  await requireClone(teamId, dir);
   await refreshTeamProfile(deps, teamId, binding.token);
   return {
     ...await localCoverage(dir, await readTeamProfile(teamId, deps.configHome)),
@@ -16081,8 +16324,7 @@ async function coverage(deps, teamId) {
 async function normalizeRetiredKeys(deps, teamId, opts = {}) {
   const binding = await bindingFor(deps, teamId);
   const dir = await resolveClonePath(teamId, deps.configHome, deps.dataHome);
-  if (!await pathExists2(dir))
-    throw new AgentError(`no local clone for "${teamId}" \u2014 ${byAudience('run "commonground pull" first', "pull it first (offer /commonground:pull)")}`);
+  await requireClone(teamId, dir);
   const files = [];
   const unreadable = [];
   const pageFiles = (await walkMarkdown(dir, (relPath, reason) => {
@@ -16091,7 +16333,7 @@ async function normalizeRetiredKeys(deps, teamId, opts = {}) {
   })).filter(isWikiPagePath);
   for (const relPath of pageFiles) {
     try {
-      files.push({ relPath, content: await (0, import_promises5.readFile)((0, import_node_path6.join)(dir, relPath), "utf8") });
+      files.push({ relPath, content: await (0, import_promises6.readFile)((0, import_node_path7.join)(dir, relPath), "utf8") });
     } catch (e) {
       unreadable.push({ relPath, reason: e instanceof Error ? e.message : "could not be read" });
     }
@@ -16116,7 +16358,7 @@ async function normalizeRetiredKeys(deps, teamId, opts = {}) {
   if (!opts.apply)
     return { ...plan, action: "preview" };
   for (const r of sweep.rewrites)
-    await (0, import_promises5.writeFile)((0, import_node_path6.join)(dir, r.relPath), r.content, "utf8");
+    await (0, import_promises6.writeFile)((0, import_node_path7.join)(dir, r.relPath), r.content, "utf8");
   await rebuildIndex(dir);
   return { ...plan, action: "applied" };
 }
@@ -16125,7 +16367,7 @@ function agentAuthor(binding) {
 }
 async function pathExists2(path) {
   try {
-    await (0, import_promises5.access)(path);
+    await (0, import_promises6.access)(path);
     return true;
   } catch {
     return false;
@@ -16134,7 +16376,7 @@ async function pathExists2(path) {
 
 // ../../apps/sync-agent/dist/team-resolve.js
 var import_node_fs3 = require("node:fs");
-var import_node_path7 = require("node:path");
+var import_node_path8 = require("node:path");
 var FULL_WIKI_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 async function resolveWiki(deps, arg, projectDir = process.cwd()) {
   if (arg)
@@ -16235,18 +16477,18 @@ function describeWikiChoice(choice, label, alsoLabels = []) {
 `);
 }
 function canon(p) {
-  const abs = (0, import_node_path7.resolve)(p);
+  const abs = (0, import_node_path8.resolve)(p);
   try {
     return import_node_fs3.realpathSync.native(abs);
   } catch {
-    const parent = (0, import_node_path7.dirname)(abs);
-    return parent === abs ? abs : (0, import_node_path7.join)(canon(parent), (0, import_node_path7.basename)(abs));
+    const parent = (0, import_node_path8.dirname)(abs);
+    return parent === abs ? abs : (0, import_node_path8.join)(canon(parent), (0, import_node_path8.basename)(abs));
   }
 }
 function within(child, root) {
   const c = canon(child);
   const r = canon(root);
-  return c === r || c.startsWith(r.endsWith(import_node_path7.sep) ? r : r + import_node_path7.sep);
+  return c === r || c.startsWith(r.endsWith(import_node_path8.sep) ? r : r + import_node_path8.sep);
 }
 async function isCloneDir(deps, teamId, dir) {
   try {
@@ -16631,7 +16873,7 @@ async function buildDeps() {
   const reposDir = process.env.COMMONGROUND_REPOS_DIR;
   if (reposDir && !process.env.COMMONGROUND_API_URL) {
     const membershipsPath = process.env.COMMONGROUND_MEMBERSHIPS;
-    const memberships = membershipsPath ? JSON.parse(await (0, import_promises6.readFile)(membershipsPath, "utf8")) : {};
+    const memberships = membershipsPath ? JSON.parse(await (0, import_promises7.readFile)(membershipsPath, "utf8")) : {};
     return { backend: new LocalSyncBackend({ reposDir, memberships }), configHome, dataHome };
   }
   return {
@@ -16766,8 +17008,9 @@ ${USAGE_INIT}`);
   return { mode, modeGiven, team, refresh, path, also, drop };
 }
 var USAGE_INIT = "usage: commonground init [--mode mcp|local] [--path <folder>] [--refresh] [wiki]\n       commonground init --also <wiki> [--path <folder>]   (read one more wiki here)\n       commonground init --drop <wiki>                     (stop reading one here)";
-function announceClone(dir) {
-  process.stdout.write(`Creating your wiki folder at ${dir}
+function announceClone(dir, reclaimed = false) {
+  process.stdout.write(reclaimed ? `An earlier attempt left an unfinished folder at ${dir} (no wiki pages in it). Clearing it and fetching your wiki there again.
+` : `Fetching your wiki into ${dir}
 `);
 }
 function formatRelocate(r) {
@@ -17069,11 +17312,11 @@ function formatCoverage(r) {
   const basis = r.chartered ? "against this wiki's charter" : `against the default "${r.shape}" shape template` + (r.assumed ? ` (no cached team profile \u2014 ${ask("pull")} to refresh)` : "");
   const head = `${r.clonePath} \u2014 ${r.progress.done}/${r.progress.total} section(s) complete, ${basis}.
 `;
-  const open2 = r.rows.filter((s) => s.status === "empty" || s.status === "partial");
-  if (!open2.length)
+  const open3 = r.rows.filter((s) => s.status === "empty" || s.status === "partial");
+  if (!open3.length)
     return `${head}  Nothing outstanding.
 `;
-  return head + open2.map((s) => `  [${s.status}] ${s.label}${s.have.length ? ` \u2014 has: ${s.have.map((e) => e.pageId).join(", ")}` : ""}
+  return head + open3.map((s) => `  [${s.status}] ${s.label}${s.have.length ? ` \u2014 has: ${s.have.map((e) => e.pageId).join(", ")}` : ""}
 ` + (s.prompt ? `      ${s.prompt}
 ` : "")).join("");
 }
@@ -17132,13 +17375,13 @@ async function clearStaleCredential() {
     throw new AgentError(state === "live" ? `refusing to remove ${legacy} \u2014 that file IS your sign-in on this machine, so removing it would sign you out. ${byAudience('Run "commonground login" to move it instead.', "Offer to sign them in again, which moves it instead.")}` : state === "unreadable" ? `refusing to remove ${legacy} \u2014 CommonGround can't read that file, so it can't prove it isn't your only sign-in. ${byAudience(`Make it readable ("chmod 600 ${legacy}") and run this again, or remove it yourself.`, "It stays put until the user makes it readable or removes it themselves.")}` : `refusing to remove ${legacy} \u2014 CommonGround can't prove that file is unused (it may hold a sign-in ${storePath()} doesn't), so it isn't ours to destroy. ${byAudience('Run "commonground login" to consolidate', "Offer to sign them in again to consolidate")}, or remove that file yourself.`);
   }
   try {
-    await (0, import_promises6.unlink)(legacy);
+    await (0, import_promises7.unlink)(legacy);
   } catch (e) {
     if (e.code !== "ENOENT") {
       throw new AgentError(`couldn't remove ${legacy} (${e.message}) \u2014 fix the permissions on that folder, or remove the file yourself`);
     }
   }
-  await (0, import_promises6.rmdir)((0, import_node_path8.dirname)(legacy)).catch(() => void 0);
+  await (0, import_promises7.rmdir)((0, import_node_path9.dirname)(legacy)).catch(() => void 0);
   process.stdout.write(`Removed ${legacy}.
 ` + ((0, import_node_fs4.existsSync)(storePath()) ? `  Your sign-in is unaffected \u2014 CommonGround reads it from ${storePath()}.
 ` : `  It held no sign-in, so nothing changed about how this machine is signed in.
@@ -17425,7 +17668,7 @@ ${formatWikiList(hits, active, boundId, alsoIds)}Say which one \u2014 the full n
         throw new AgentError("usage: commonground import <dir> [wiki]");
       const deps = await buildDeps();
       const teamId = await resolveTeamId(deps, rest[1]);
-      const result = await importWiki(deps, { sourceDir: (0, import_node_path8.resolve)(folder), teamId });
+      const result = await importWiki(deps, { sourceDir: (0, import_node_path9.resolve)(folder), teamId, onClone: announceClone });
       process.stdout.write(formatImport(result, await voiceFor(deps, teamId)));
       return;
     }
@@ -17436,8 +17679,9 @@ ${USAGE}`);
       process.exitCode = 1;
   }
 }
-main(process.argv.slice(2)).catch((err) => {
-  process.stderr.write(`commonground: ${err instanceof Error ? err.message : String(err)}
+main(process.argv.slice(2)).catch(async (err) => {
+  const said = err instanceof GitError ? await explainGitFailure(err) : err instanceof Error ? err.message : String(err);
+  process.stderr.write(`commonground: ${said}
 `);
   process.exit(1);
 });

@@ -121,6 +121,16 @@ page, carrying what they wrote and why it matters — so a curator can fold it i
 real publish path, and it is the difference between their knowledge reaching the team and sitting on
 their disk. Don't offer to make them a curator; that's the admin's call, not a step in this flow.
 
+## 2b′. If the publish fails before anything is sent
+
+A `push` that dies on the way to the server says why in a sentence: the sign-in is no longer
+accepted (offer to sign them in again, then publish again), git could not present the sign-in
+(their git is too old; updating it is the fix), or the server could not be reached. **Nothing was
+published and nothing local was changed**, so say that, relay the sentence, and stop. Never work
+around it by putting the sign-in in a file, a `.netrc`, a keychain, a git credential helper or the
+wiki's address, and never "publish" the same pages through the MCP write tools instead: in a
+local-clone project that is the wrong path even when it would work.
+
 ## 2c. If the publish is refused over the wiki's subscription
 
 If `push` fails with a message about the wiki's **subscription**, or about **payments** that did

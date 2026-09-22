@@ -1059,6 +1059,24 @@ function clonePath(teamId) {
 }
 
 /**
+ * Does the folder at this wiki's clone path LOOK like a finished clone (SER-320)? Filesystem only,
+ * no `git`: it runs at every session start, and a slow git must never turn into a false "your wiki
+ * folder is missing". A finished clone has a `HEAD` and at least one ref; a `git clone` killed
+ * mid-flight has the first and not the second, and the stub an old `init` manufactured in a
+ * non-repository (`.git/info/` and nothing else) has neither.
+ */
+function cloneLooksUsable(teamId) {
+  try {
+    const git = path.join(clonePath(teamId), '.git');
+    if (!fs.existsSync(path.join(git, 'HEAD'))) return false;
+    if (fs.existsSync(path.join(git, 'packed-refs'))) return true;
+    return fs.readdirSync(path.join(git, 'refs', 'heads')).length > 0;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * The local wiki clone's current HEAD commit sha for a team, or null. The clone lives at
  * `<dataHome>/<teamId>` (mirrors the sync CLI's clonePath); MCP-mode projects have no clone, so a
  * missing dir / non-repo / git failure all return null. Bounded so a slow git never stalls startup.
@@ -1222,6 +1240,7 @@ module.exports = {
   clientHeader,
   clonePath,
   localCloneHead,
+  cloneLooksUsable,
   cloneHasCommit,
   matchKeywords,
   emitContext,

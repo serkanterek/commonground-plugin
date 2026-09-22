@@ -428,6 +428,13 @@ instruction that makes plain **claude.ai Chat** reflexively consult the wiki (a 
 from Claude Code's `CLAUDE.md` router). The user pastes it into **Settings → Profile preferences**
 (every chat) or a **Project's custom instructions**.
 
+0. **Only for a wiki the hosted connector serves.** claude.ai Chat reaches a wiki through the
+   connector and nothing else, so for a wiki marked `(Free plan)` in the `commonground use` listing
+   print NO snippet: the instruction would tell Chat to call tools it is never given, and it would
+   sit in their Profile preferences saying so in every chat. Say in one line that reaching this
+   wiki from claude.ai comes with Pro, and that Claude Code with the wiki folder is how Free works.
+   Go by the MARKER, never a plan word: a paid seat anywhere keeps the connector on that person's
+   own personal wiki, and no marker at all means unknown (an older server), not a refusal.
 1. **Read the charter to tailor it.** `get_page` `wiki-charter` — `company/wiki-charter` on an older
    wiki — (or `get_coverage` for just
    the `audience`); local-clone → read `wiki-charter.md`. No charter yet → don't guess: ask

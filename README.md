@@ -179,6 +179,17 @@ machine.
 `/commonground:status` sorts out which of the three you're in: it says which wiki this project is
 bound to, whether this machine can reach it, and what the fix actually is.
 
+**The wiki folder could not be fetched** (local mode: `/commonground:point`, `/commonground:pull`).
+The message says which of these it is. *Your sign-in is no longer accepted:* it was revoked or has
+expired, so sign in again and retry. *Git could not present your sign-in:* your git is very old
+(CommonGround signs in to git by itself and needs nothing stored; updating git fixes it).
+*Git is not installed:* a local wiki folder needs it. *A folder that is not a wiki is in the way:*
+the message names it, and nothing in it was touched; move it, or choose another place. Two things
+are never the fix: copying your sign-in into a file, a keychain or a git setting, and retrying in
+a loop. A retry itself is always safe, though. If an earlier attempt left an unfinished folder
+behind, the next one clears it, says so, and fetches again; it never removes a folder with your
+files in it.
+
 **If the subscription lapses.** Writing is refused and reading still works. That is a *billing*
 state, not a connection or a membership problem: a wiki whose **subscription** has ended, or
 whose **payments** stopped going through, goes read-only until it is restored. Nothing is deleted and

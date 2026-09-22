@@ -37,8 +37,10 @@ Run `commonground pull` — passing `$ARGUMENTS` as the wiki when it names one, 
   verbatim and confirm which wiki they mean before reporting the rest; the line names the command that
   addresses the one they are standing in.
 
-- **Cloned** — first time. The CLI prints `Creating your wiki folder at <path>` *before* it makes
-  anything, so the user is never surprised by a new directory. **Relay that path** — it is where
+- **Cloned** — first time. The CLI prints `Fetching your wiki into <path>` *before* it makes
+  anything, so the user is never surprised by a new directory. (If it says an earlier attempt left
+  an unfinished folder there and it is clearing it: that is a retry repairing itself — relay it,
+  nothing of theirs was removed.) **Relay that path** — it is where
   their team's context now lives, and it's the folder they'd open in an editor. Then offer to answer
   a question from it. If they'd rather it lived somewhere else, offer to move it for them — you
   run `commonground relocate <folder>`, which moves the files and updates this project's
@@ -64,3 +66,12 @@ Run `commonground pull` — passing `$ARGUMENTS` as the wiki when it names one, 
 
 Never run `--take-remote` without an explicit yes: it replaces the working copy. When it does run,
 report the draft branch it saved their work on, so they know how to get it back.
+
+**If the pull itself fails, relay what the CLI said and stop.** It says why in a sentence: the
+sign-in is no longer accepted (offer to sign them in again, then pull again), git could not present
+the sign-in (their git is too old; updating it is the fix), git is not installed, the server could
+not be reached, or a folder that is not a wiki is sitting where the wiki folder goes (it names the
+folder; nothing in it was touched). Never work around a failed fetch by putting the sign-in in a
+file, a `.netrc`, a keychain, a git credential helper or the wiki's address: the CLI carries the
+sign-in to git by itself, and a copy written anywhere else is a credential leak, not a fix.
+`/commonground:status` is the diagnostic.

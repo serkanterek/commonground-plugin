@@ -345,6 +345,29 @@ const CURATION_POSTURE =
   'project should not write to the wiki. The rule above is about WHERE a write lands, not whether ' +
   'it may happen.';
 
+/**
+ * The local-mode mode rule says "the wiki is a working copy at <dir>" — a sentence about a folder
+ * nobody checked (SER-320). When that folder is missing, or holds the remains of a fetch that
+ * never finished, the session went on to read and write "the clone" with no signal anything was
+ * wrong, and a Claude left to improvise reaches for the hosted write tools or for the sign-in
+ * itself (the report that opened SER-319 ends with an offer to store the token in a file).
+ *
+ * NOT always-on: it renders only for a local-mode project whose folder is not there, so it is a
+ * separate piece (ceilinged in context-budget.test.ts) rather than more words in `modeRule`.
+ */
+function cloneMissingNotice(mode, teamIds) {
+  if (mode !== 'local') return '';
+  const missing = (teamIds || []).filter((id) => id && !lib.cloneLooksUsable(id));
+  if (missing.length === 0) return '';
+  return (
+    `There is NO usable wiki folder at ${missing.map((id) => lib.clonePath(id)).join(', ')} yet ` +
+    '(never fetched, or a fetch that did not finish), so that working copy does not exist on this ' +
+    'machine. Offer /commonground:pull, which fetches it. If that fails, relay what it says and ' +
+    'stop: never put the sign-in in a file, a keychain or a git setting to get around it, and ' +
+    'never fall back to the MCP write tools.'
+  );
+}
+
 function modeRule(mode, teamId, voice, alsoTeamIds) {
   const v = voice || NEUTRAL_VOICE;
   // The RULE is frame-independent — where writes land does not depend on who reads the wiki — but
@@ -831,6 +854,7 @@ async function main() {
     emit(
       resolvedContext(state),
       modeRule(projectMode, binding.teamId, voiceOf(state), alsoIds),
+      cloneMissingNotice(projectMode, [binding.teamId, ...alsoIds]),
       bindingRepair,
       foreignClone,
       planGateNotice(state, projectMode),
@@ -859,6 +883,7 @@ async function main() {
     `${awarenessContext(null)} CommonGround could not be reached this session, so the figures above ` +
       'are unavailable — the wiki itself is fine; run /commonground:status to check.',
     modeRule(projectMode, binding.teamId, null, alsoIds),
+    cloneMissingNotice(projectMode, [binding.teamId, ...alsoIds]),
     bindingRepair,
     foreignClone,
     localHead ? 'This project has a local wiki clone; /commonground:pull and /commonground:push still work offline-first.' : '',
@@ -879,6 +904,7 @@ module.exports = {
   releaseNotice,
   offlineUpdateNotice,
   modeRule,
+  cloneMissingNotice,
   alsoWikiNudges,
   canSeed,
   stepProse,

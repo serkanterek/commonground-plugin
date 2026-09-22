@@ -210,7 +210,8 @@ the user should hear it from you, not discover it from a later `status`.
 The first binds THIS project. It writes an idempotent CommonGround router block into this project's
 `./CLAUDE.md` (it merges — it never clobbers the user's existing content) so Claude consults the wiki
 before answering team questions. Local mode also clones the wiki, printing the folder it is creating
-before it creates it — relay that path to the user, it's where their notes now live.
+before it fetches into it (`Fetching your wiki into <path>`) — relay that path to the user, it's
+where their notes now live.
 
 It also records this project's wiki in `./.claude/settings.json` (merged, never clobbered — their
 own permissions and hooks are untouched), which is what makes the MCP connector answer **for this
@@ -232,8 +233,21 @@ at length or the anti-scope at all: both are read from the charter page on deman
 plainly, and move on — this is a heads-up, not a confirmation to collect. Neither file gets a
 filesystem path and neither holds a secret; the sign-in lives elsewhere.
 
+**If the fetch fails, relay what the CLI said and STOP — never work around it.** A failed `init`
+in local mode says why in a sentence: the sign-in is no longer accepted (sign them in again, then
+re-run), git could not present the sign-in (their git is too old; updating it is the fix), git is
+not installed, the server could not be reached, or a folder that is not a wiki is in the way (it
+names the folder; nothing in it was touched). Whatever it says, these are never the answer, and
+you do not offer them: writing the sign-in into a file, a `.netrc`, a keychain, a git credential
+helper or the wiki's address; and, in local mode, seeding or saving through the MCP write tools
+"instead" (the wiki would fill with pages nobody reviewed, in a project that was told its pages
+are files). A failed `init` has written NO router block, so the hook that normally refuses those
+tools here is not armed yet: the restraint is yours. `/commonground:status` is the diagnostic.
+A retry is always safe: if an earlier attempt left an unfinished folder behind, `init` clears it
+and says so; it never deletes a folder with anyone's files in it.
+
 **If a wiki folder already exists, `init` leaves it exactly as it is.** It clones only when there is
-nothing on disk yet; it will not fast-forward an existing folder onto the hosted version, and it will
+no wiki on disk yet (an unfinished attempt is not a wiki: see above); it will not fast-forward an existing folder onto the hosted version, and it will
 not publish local commits — even for an admin. Instead it reports where the folder stands (ahead,
 behind, diverged, or matching) and names the verb that would act. **Relay that standing to the user
 and stop there.** Do not follow it with `commonground pull`, `push`, `sync` or `resolve` to "finish
@@ -279,10 +293,14 @@ CommonGround web app, nothing is deleted while it is blocked, and reading, `/com
 the local wiki folder answer throughout.
 `/commonground:status` is what separates the four.
 
-Then check the wiki's state so you hand off to the right next step — call `get_awareness` (its
-`pageCount`) or `get_coverage`:
+Then check the wiki's state so you hand off to the right next step. **MCP mode:** call
+`get_awareness` (its `pageCount`) or `get_coverage`. **Local mode:** run `commonground coverage`,
+which reads the folder `init` just fetched (every section empty = an empty wiki) — not the MCP
+tools: a wiki marked `(Free plan)` is not served by the connector at all, and for any wiki they
+describe the PUBLISHED copy rather than the folder this project works in.
 
-- **Empty wiki (`pageCount === 0`) + the user can curate (admin/curator):** the wiki has no content
+- **Empty wiki (`pageCount === 0`, or every coverage section empty) + the user can curate
+  (admin/curator):** the wiki has no content
   yet — pointing at it isn't the finish line. Flow straight into seeding: explain that
   **`/commonground:seed`** starts by chartering the wiki (who it's for — a team or just them — what
   it should hold, and when their AI should consult it), then interviews them or imports an existing
@@ -300,7 +318,8 @@ so point at it rather than reaching for `commonground import` here.
 ## 7. (Optional) Bridge claude.ai Chat too
 
 This command owns Claude **Code**'s `./CLAUDE.md` router. If the user also uses **claude.ai Chat**
-(or mobile), offer to print a copy-paste instruction that makes plain Chat reflexively consult the
+(or mobile) — and the wiki is not marked `(Free plan)`, since Chat reaches a wiki only through the
+hosted connector — offer to print a copy-paste instruction that makes plain Chat reflexively consult the
 same wiki — follow the `maintainer` skill's **bridge-to-Chat** procedure, which owns the variants and
 how to fill them. Pure-Chat teammates who can't run this command have the whole setup at
 **https://app.commongroundapp.io/connect** — a public page, so it works before they have an account.

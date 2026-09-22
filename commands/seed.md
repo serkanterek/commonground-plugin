@@ -95,6 +95,11 @@ with no review step — so the mode is a QUESTION now, and it comes before the r
 because the answer decides which sign-in must work (local → the CLI's membership of the target;
 MCP → the connector's).
 
+**Whatever settled the target — an argument, this project's binding, or the listing — run
+`commonground use` before asking the mode.** The listing is the only place the plan appears
+(`commonground status` and the router block carry no plan marker), and the marker decides whether
+the mode is a question at all. The target decides WHICH wiki, never whether the plan gets learned.
+
 **In Claude Code, always ask** (AskUserQuestion). When the project already has an established
 mode for this target, list that option first, marked "current setup", so the question has an
 obvious default instead of a fork:
@@ -104,6 +109,11 @@ obvious default instead of a fork:
   target wiki.
 - **Hosted directly (MCP)** — every saved page is immediately live on the hosted wiki — for the
   whole team, on a shared one. No staging step.
+
+**A wiki marked `(Free plan)` in the `commonground use` listing is not a question either: it is
+local.** Say why in one line (Free works through the wiki folder on this machine; the hosted
+connector comes with Pro) and carry on — the same rule, and the same marker, as
+`/commonground:point` step 4. Offering "Hosted directly" there offers something that is refused.
 
 **In claude.ai Chat, state rather than ask** — there is no filesystem, so don't stage a fake
 choice: say plainly that pages go live on the hosted wiki as they are saved, and that running
@@ -144,7 +154,19 @@ was settled here.
 
 ## 1. Read the current state — one call, then talk
 
-Call `get_coverage` (or `GET /wiki/coverage`), with the `wiki:` argument whenever step 0 targeted
+**Local-clone mode: run `commonground coverage [wiki]`** (add `--json` for the structured form).
+It reads the FOLDER — unpublished pages included, which is the wiki being seeded here — and it is
+the only read a `(Free plan)` wiki has: the connector does not serve one. It gives `progress`,
+the section rows, `chartered`, the charter's `categories`, and the team's `shape` — step 2's
+confirm line reads that `shape`, and `assumed: true` means it is the default rather than the
+recorded one, so treat it as unknown and ask openly instead of confirming it. The charter's
+audience is not in this output: read it from `wiki-charter.md` in the folder at the step that
+needs it. It does not know `callerDiscipline` or the `seeding` cursor either, so ask the
+discipline once and skip 1a's re-entry beats (open as `fresh`, or as a top-up if pages exist). Do NOT call `get_coverage` for a local-mode seeding even when the connector is
+attached: it describes the published wiki, and would report as empty the sections you filled ten
+minutes ago and have not pushed.
+
+**MCP mode:** call `get_coverage`, with the `wiki:` argument whenever step 0 targeted
 another wiki. It answers everything the arc needs to open: overall `progress`
 (`done`/`total`/`pct`), one row per section (`status` done/partial/empty, its `prompt`, `scope`,
 `havePageIds`, and per-section counts), **`callerDiscipline`** — the user's own discipline
@@ -195,8 +217,10 @@ who stopped partway, gets the beginner's greeting. Open on the matching beat:
   interleaving two interviews: *"Alex was seeding this about ten minutes ago, on **Key decisions**.
   Want to continue where they stopped, or take a different section?"*
 
-**Record progress as you go.** After each section, call **`save_seeding_progress`** with the
-`sectionId` and every question id you have put. Call it once more with `done: true` when seeding
+**Record progress as you go (MCP mode).** In local-clone mode there is no cursor to keep: the
+files in the folder ARE the progress, and `commonground coverage` reads them back — skip this, and
+never treat the tool's absence or refusal as a reason to stop seeding. After each section, call
+**`save_seeding_progress`** with the `sectionId` and every question id you have put. Call it once more with `done: true` when seeding
 finishes, which clears the cursor. It stores POSITION ONLY — never answers, which belong in pages.
 
 Be honest about the limit if it comes up: an answer given but not yet written to a page is still
@@ -244,7 +268,7 @@ describing your own work and hearing it named back. The order below is the point
    step 3 and let structure emerge from content later.
 
    **These answers are CONTENT, not just charter input.** Hold on to them verbatim. Record the
-   question ids with `save_seeding_progress` so re-entry doesn't re-ask them, and — critically —
+   question ids with `save_seeding_progress` (MCP mode) so re-entry doesn't re-ask them, and — critically —
    **Branch A must not ask the same things again** (step 4): draft its first page(s) straight from
    these answers, and open there rather than at question one.
    **If they have another wiki, read its charter before naming anything (SER-272).** A second
@@ -408,7 +432,9 @@ schema-valid, retrievable pages, not files that look covered but answer badly.
 
 **Survey.** Get the folder path (`$ARGUMENTS` or ask for it). Read the layout: count the markdown
 files and **cluster them** by folder/topic (e.g. "14 psychology notes · 8 client docs · 5 book
-summaries"), and check `get_index` for overlap so likely **duplicates** are flagged up front.
+summaries"), and check the catalog for overlap — the folder's `index.md` in local-clone mode (it
+lists pages the user hasn't published yet, which `get_index` cannot), `get_index` in MCP mode — so
+likely **duplicates** are flagged up front.
 
 **Triage.** Keep clusters coarse — top-level folders/topics, aim for **≤8** even on a big tree.
 Show the cluster summary, then decide. For a **large import**, start with one **multiSelect**
@@ -484,8 +510,8 @@ a root `index.md`, because the wiki regenerates its own catalog there. Same for 
 
 **Post-import — say where the wiki lives now (there are two copies, and only one is the wiki).**
 Import **copies**; it never adopts the folder. So, in this order:
-1. Re-read `get_coverage` / the index and report how the import mapped onto the **charter's
-   structure** — which sections it filled, which are still thin.
+1. Re-read coverage — `commonground coverage` in local-clone mode, `get_coverage` in MCP mode —
+   and the index, and report how the import mapped onto the **charter's structure** — which sections it filled, which are still thin.
 2. Name the canonical copy: **the wiki folder is the wiki** — the copy CommonGround syncs,
    publishes and serves. The folder you imported was left untouched and is now a separate copy that
    will drift.
@@ -555,8 +581,9 @@ Close with a short, encouraging, **audience-aware** status:
 - **my-team / whole-company:** "Your wiki is live — N of M sections covered. Your teammates' Claude
   now starts from this context."
 
-Then call **`save_seeding_progress` with `done: true`** — that clears the cursor, so the next run
-opens as a fresh top-up rather than trying to resume a session that finished.
+Then, **in MCP mode**, call **`save_seeding_progress` with `done: true`** — that clears the cursor,
+so the next run opens as a fresh top-up rather than trying to resume a session that finished. In
+local-clone mode there was no cursor to keep, so there is nothing to clear.
 
 **Then hand off to pointing — that is the next beat, not the previous one.** A wiki with content in
 it is only useful where the user actually works, so close by offering
@@ -581,7 +608,8 @@ compacted, an import is larger than it looked, or they simply stop. None of that
 none of it should be reported as one.
 
 - **They stop partway.** Say what landed and how to come back, in one line: *"Saved what we have —
-  N of M sections. `/commonground:seed` picks up here whenever you want."* Record the cursor first.
+  N of M sections. `/commonground:seed` picks up here whenever you want."* Record the cursor first
+  (MCP mode; in local-clone mode the files in the folder are the record).
 - **An import is bigger than expected.** Say so before ploughing on: *"That folder has 200 files —
   I'll work through them in batches and save as I go, so nothing is lost if we stop."* Persist each
   batch rather than holding everything to the end; a run that dies at file 190 must not lose 189.
@@ -591,7 +619,9 @@ none of it should be reported as one.
 - **Nothing landed at all.** Say that plainly too. A seeding session that produced no pages and
   claims success is worse than one that admits it stalled.
 
-Finally, if the user also works in **claude.ai Chat**, offer to bridge it: now that the charter
+Finally, if the user also works in **claude.ai Chat** — and this wiki is NOT marked `(Free plan)`
+in the listing, because Chat reaches a wiki only through the hosted connector and a marked wiki is
+not served one — offer to bridge it: now that the charter
 exists, you can print a Chat instruction **tailored to its audience** (retrieval brief + pinned
 keywords) that they paste into Profile preferences or a Project's custom instructions. Follow the
 `maintainer` skill's **bridge-to-Chat** procedure. It's a different surface from this project's

@@ -62,7 +62,10 @@ help them read, answer, and file `suggest_change`.
 
 - **Read/answer** — search the wiki and answer with citations. In MCP mode use the CommonGround
   MCP tools (`search`, `get_page`, `get_index`). In local-clone mode start at `index.md` and open
-  only the pages you need. Never assert a fact a page doesn't back.
+  only the pages you need — but `index.md` is generated and only regenerates on
+  `/commonground:push`, so a page written this session is not in it yet and no verb rebuilds it in
+  place: read the page FILES whenever you need what is current. Never assert a fact a page doesn't
+  back.
 - **A project that reads several wikis.** The SessionStart hook and the router block name every
   wiki the project reads, primary first. In MCP mode a bare `search` / `get_index` then answers
   from ALL of them, **grouped per wiki** — each group carries `wiki.teamId` and `wiki.name`; pass
@@ -77,11 +80,13 @@ help them read, answer, and file `suggest_change`.
 - **Curate** — run the procedures below. Persist by editing the clone (local) or via the MCP write
   tools (MCP). The server re-validates frontmatter on write — that's the backstop, not a substitute
   for getting it right here.
-- **What genuinely stays server-side, even in local-clone mode:** the **suggestions queue**
+- **What stays server-side, WHEN this session has a connector:** the **suggestions queue**
   (`list_suggestions` / `suggest_change` / `resolve_suggestion`). It can't live in git — it carries
-  messages from people who have no write access to the repo. Everything else a local project needs
-  is on disk: `commonground lint` and `commonground coverage` run against the working copy, so they
-  see unpublished work that the server's `lint` / `get_coverage` cannot.
+  messages from people who have no write access to the repo. Say it only when those tools are
+  actually in your tool list: a local-mode project with no connector cannot file a suggestion at
+  all, so offering one there sends a member after something that isn't here. Everything else a local
+  project needs is on disk: `commonground lint` and `commonground coverage` run against the working
+  copy, so they see unpublished work that the server's `lint` / `get_coverage` cannot.
 - **If the connector goes quiet** (MCP mode) — missing or failing CommonGround tools are **usually**
   a connection problem rather than a role one: a member still sees `search` / `get_page` /
   `get_index`, so if *those* are gone too the connector was dropped (a plugin update does this
@@ -241,8 +246,10 @@ restate each other. Write one on every page you touch.
   the page instead of its content, and match nothing.
 
 Omit it and the catalog falls back to the page's first body line — a working default, not a good
-one. `index.md` itself is **generated**: rebuilt from the pages on every write, grouped and sorted
-for you, with deprecated and hypothetical pages omitted. Never hand-write or hand-edit that file.
+one. `index.md` itself is **generated**: grouped and sorted for you, with deprecated and
+hypothetical pages omitted. Never hand-write or hand-edit that file. The hosted writer rebuilds it
+on every `save_page`; **in a local clone it is rebuilt on `/commonground:push` (and on an import)**,
+so between those it is a snapshot of the last publish, not a live list.
 
 ### `tags:` — the page's categories
 
@@ -339,8 +346,8 @@ looping "anything else?" until they're done — then organize and persist.
    clone. MCP: `stage_sources`. Never overwrite an existing source; pick a new name. A pure
    spoken/typed thought with no artifact needs no source file — the page is the record.
 3. **Detect the shape and draft.** Identify the durable takeaways. Prefer **updating** an existing
-   catalog page over creating a near-duplicate (check the clone's `index.md`, or `get_index` in MCP
-   mode — in local-clone mode read the file, since it includes pages not yet published). Write/update
+   catalog page over creating a near-duplicate (`get_index` in MCP mode; in local-clone mode read
+   the page files, since `index.md` only regenerates on push). Write/update
    schema-correct pages, each carrying its `tags:` (the charter categories it belongs to — the
    catalog you just read shows the vocabulary), citing any stored source under `sources:`, and
    linking the pages they relate to inline in the body — `[[wikilinks]]` / `[text](pageId)`,

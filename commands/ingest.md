@@ -126,10 +126,10 @@ the record.
 
 ## 5. Draft the page(s)
 
-Check the current catalog first — the clone's `index.md` in local-clone mode (it lists pages the
-user hasn't published yet, which `get_index` cannot), `get_index` in MCP mode — and prefer
-**updating** an existing page
-over creating a near-duplicate. That same read gives you the wiki's **category vocabulary**: the
+Check what the wiki already holds first — in local-clone mode read the page FILES in the folder
+rather than `index.md`, which is machine-generated and only regenerates on `/commonground:push`, so
+it does not list anything written this session and nothing rebuilds it in place; `get_index` in MCP
+mode. Prefer **updating** an existing page over creating a near-duplicate. That same read gives you the wiki's **category vocabulary**: the
 catalog's headings are the charter's `## Structure` sections, and every page you write carries the
 one or more it belongs to in `tags:` (that is what groups it — folders don't). Write schema-correct
 pages, each carrying its `tags:`, citing any stored source under

@@ -68,12 +68,23 @@ function voiceOf(state) {
   return v && typeof v === 'object' ? { ...NEUTRAL_VOICE, ...v } : NEUTRAL_VOICE;
 }
 
-/** Build the awareness context line from the state DTO's figures, or a static pointer without them. */
-function awarenessContext(awareness, voice) {
+/**
+ * Build the awareness context line from the state DTO's figures, or a static pointer without them.
+ *
+ * `cloneDir` is the wiki folder in LOCAL mode (SER-325). The pointer used to name `get_index /
+ * search / get_page` in every mode, which is the connector's vocabulary and precisely the path a
+ * local-clone project must not take: the same session was then told, two sentences later, that
+ * those tools are the wrong path here. A local project is pointed at its own files instead, so the
+ * first instruction it reads is the one it can actually carry out.
+ */
+function awarenessContext(awareness, voice, cloneDir) {
   const v = voice || NEUTRAL_VOICE;
   // `when` is authored to END on "consult it:", so the tool list completes that sentence rather
   // than restating it.
-  const base = `This project is connected to ${v.wiki}. ${v.when} get_index / search / get_page, and cite pageIds.`;
+  const base = cloneDir
+    ? `This project is connected to ${v.wiki}, a folder on this machine at ${cloneDir}. ${v.when} ` +
+      `read ${cloneDir}/index.md and open the pages it links, and cite pageIds.`
+    : `This project is connected to ${v.wiki}. ${v.when} get_index / search / get_page, and cite pageIds.`;
   if (!awareness || typeof awareness !== 'object') return base;
   const bits = [];
   if (typeof awareness.openSuggestions === 'number')
@@ -97,6 +108,18 @@ function awarenessContext(awareness, voice) {
         .join('; ')}.`
     : '';
   return `${base}${state}${changes}${live}`;
+}
+
+/**
+ * The wiki folder to point a LOCAL project at, or null in every other case (SER-325).
+ *
+ * Every emit path needs this and each one holds the team id differently (a resolved binding, the
+ * project's own block, nothing at all), so the decision lives here rather than three times: a
+ * signed-out or offline local project is exactly where the connector's vocabulary would be most
+ * wrong, and exactly where it is easiest to forget to pass the folder.
+ */
+function localCloneDir(mode, teamId) {
+  return mode === 'local' && teamId ? lib.clonePath(teamId) : null;
 }
 
 /** Roles that can curate (wiki:edit) — the audience for the seed nudge. Members are read-only. */
@@ -125,7 +148,7 @@ function canSeed(role) {
  * coverage — and spending it here would trade a real activation nudge for a maintenance one. This
  * has its own throttle, keyed by the version, and they must not draw from the same pot.
  */
-function updateNotice(state) {
+function updateNotice(state, options) {
   const latest = state?.active?.pluginUpdate?.latest;
   // Absent means either "current" or "we could not tell", and both are silence. The server never
   // sends this field to say you are up to date.
@@ -134,6 +157,10 @@ function updateNotice(state) {
   // on to say anything: this read already answered the question the unbound paths spend a request
   // asking, so a later session on one of those paths does not have to ask it again.
   lib.rememberReleaseCheck(latest || null);
+  // HELD means another verbatim block is already going out this session (SER-325). Returning ''
+  // without touching the once-per-release mark is the whole point: nothing has been said, so
+  // nothing is recorded as said, and the notice speaks next session instead of being lost.
+  if (options && options.hold) return '';
   return releaseNotice(latest);
 }
 
@@ -145,7 +172,14 @@ function updateNotice(state) {
  * session on the paths that could least afford the noise", and it would be invisible in review.
  */
 function releaseNotice(latest) {
-  if (!latest || lib.lastAnnouncedRelease() === latest) return '';
+  if (!latest) return '';
+  // Once per release was the right correction to once per session, and it overshot (SER-325):
+  // someone busy the one time it spoke never heard about that release again. Every fifth session
+  // while still behind is the middle, and the counter lives in the same memo as the mark.
+  if (!lib.shouldAnnounceRelease(latest)) {
+    lib.noteReleaseSilence(latest);
+    return '';
+  }
   lib.markReleaseAnnounced(latest);
   const running = lib.pluginVersion();
   return lib.verbatimBlock(
@@ -209,6 +243,22 @@ const CONNECTOR_HEALTH_CLAUSE =
   'fails the same way, and so does a plan that does not include the hosted connector; `/mcp` ' +
   'cannot grant membership or change a plan. Check which wiki this project names, or ' +
   '/commonground:status, before asserting any diagnosis.';
+
+/**
+ * The clause, or '' for a project that has no connector in play (SER-325).
+ *
+ * In local-clone mode the wiki is a folder: there are no CommonGround tools to go missing, and a
+ * 409-character diagnosis of a surface this project does not use is 409 characters every session
+ * pays to be pointed at the wrong failure. FR-04-24's standing rule is that always-on prose has to
+ * earn its place on the surface that renders it.
+ *
+ * A local project has no connector recorded BY CONSTRUCTION: mode is a property of the project, and
+ * the local mode rule directly bans the connector's write tools. If a future mode ever mounts both,
+ * this is the one place that has to change.
+ */
+function connectorHealthClause(mode) {
+  return mode === 'local' ? '' : CONNECTOR_HEALTH_CLAUSE;
+}
 
 /**
  * THE PLAN GATE, said only to the session it actually gates (SER-302).
@@ -399,9 +449,12 @@ function modeRule(mode, teamId, voice, alsoTeamIds) {
       `and the publish step. Read from the clone too — it reflects unpublished work that ${published} ` +
       `does not. Nothing reaches ${v.reaches} until \`/commonground:push\`, which previews and asks ` +
       'first. Editing locally needs no particular role (it is the user\'s own copy); only ' +
-      'publishing is admin/curator. The suggestions queue (`list_suggestions` / `suggest_change` / ' +
-      '`resolve_suggestion`) is the one thing that legitimately stays server-side — it cannot live ' +
-      'in git, because it carries messages from people with no write access to the repo. ' +
+      'publishing is admin/curator. ' +
+      // The suggestions-queue sentence used to live here, naming three connector tools as "the one
+      // thing that legitimately stays server-side" (SER-325). In local mode that is three tool
+      // names offered to a session that has just been told the connector is the wrong path, in a
+      // rule that is always-on — and a local project reaches the queue through
+      // `/commonground:lint`, not by being handed the tools in its orientation.
       CURATION_POSTURE
     );
   }
@@ -467,6 +520,10 @@ function modeRule(mode, teamId, voice, alsoTeamIds) {
  * ships, for the same reason: destroying a working configuration to fix a header is no trade.
  */
 function bindingRepairClause(cwd, mode) {
+  // Standing INSIDE a wiki folder is not a project with a stale binding (SER-325). The governing
+  // CLAUDE.md there is the clone's own, and "repairing" it would create a `.claude/settings.json`
+  // inside the wiki, which the next publish would carry to everyone who reads it.
+  if (lib.isCloneSession(cwd)) return '';
   const bound = lib.projectTeamId(cwd);
   if (!bound) return ''; // this project declares no wiki — nothing to rebuild from
   const serving = (process.env.COMMONGROUND_WIKI || '').trim();
@@ -607,7 +664,7 @@ function stepProse(step, state) {
     case 'review-suggestions':
       return 'Teammates have filed suggestions against this wiki. Mention /commonground:lint when there is a natural moment.';
     case 'invite-teammate':
-      return 'This wiki works but has exactly one member. If it comes up, mention teammates can be invited at app.commongroundapp.io/team.';
+      return 'This wiki works but has exactly one member. If it comes up, mention teammates can be invited from the Team tab in the CommonGround app.';
     case 'fill-gap':
       return gap
         ? `The wiki's own checklist still has "${gap}" empty — /commonground:seed resumes there.`
@@ -627,15 +684,30 @@ function stepProse(step, state) {
  * An EMPTY wiki is the one case where the pointer would be a lie — there is nothing to consult — so
  * those steps replace it rather than follow it.
  */
-function resolvedContext(state) {
+function resolvedContext(state, mode, clone) {
   const step = (state && state.next) || { id: 'steady' };
   // The shared budget has decided we have said this enough. Drop the STEP, keep the facts: going
   // silent means we stop volunteering an action, not that we stop telling Claude what the wiki is.
   const silent = state && state.loudness === 'silent';
-  const prose = silent ? '' : stepProse(step, state);
+  const dir = mode === 'local' && clone && clone.dir ? clone.dir : null;
+  // What the FOLDER holds, which no server-side resolver can see (SER-325). The DTO describes the
+  // PUBLISHED wiki, so a local project that has been seeded but never pushed was being told its
+  // wiki was empty and that it should start seeding — with the pages sitting right there on disk.
+  const held = Boolean(dir && clone && (clone.pages > 0 || clone.charter));
   const empty = step.id === 'await-seed' || step.id === 'seed-first-pages' || step.id === 'charter-wiki';
-  const facts = empty ? '' : awarenessContext(awarenessFromState(state), voiceOf(state));
-  return [facts, prose, CONNECTOR_HEALTH_CLAUSE].filter(Boolean).join(' ');
+  let prose = silent ? '' : stepProse(step, state);
+  if (empty && held) {
+    const what = [
+      clone.pages > 0 ? `${clone.pages} page(s)` : '',
+      clone.charter ? 'a charter' : '',
+    ].filter(Boolean).join(' and ');
+    prose =
+      `The published wiki is still empty, but the wiki folder at ${dir} already holds ${what} that ` +
+      'nobody has published yet. Read those files rather than treating this wiki as unseeded' +
+      (silent ? '.' : ', and offer /commonground:push when the user wants the team to have them.');
+  }
+  const facts = empty && !held ? '' : awarenessContext(awarenessFromState(state), voiceOf(state), dir);
+  return [facts, prose, connectorHealthClause(mode)].filter(Boolean).join(' ');
 }
 
 /**
@@ -695,18 +767,92 @@ async function alsoWikiNudges(alsoIds, binding, localMode, now) {
       lib.writeKeywordsCache(teamId, wiki.keywords, now);
     }
     if (!localMode) continue;
-    const localHead = lib.localCloneHead(teamId);
-    const hostedHead = wiki.lastCommitOid;
-    if (!localHead || !hostedHead || hostedHead === localHead) continue;
-    lines.push(
-      lib.cloneHasCommit(teamId, hostedHead)
-        ? `The clone of wiki ${teamId} (which this project also reads) has unpublished changes — ` +
-            `suggest running /commonground:push ${teamId} when the user is ready.`
-        : `Wiki ${teamId} (which this project also reads) has moved on since its local clone last ` +
-            `updated — suggest running /commonground:pull ${teamId}.`,
-    );
+    const line = syncNudge(teamId, wiki.lastCommitOid, teamId);
+    if (line) lines.push(line);
   }
   return lines.join(' ');
+}
+
+/**
+ * The directional sync nudge for one wiki: pull when the team has moved on, push when this machine
+ * holds work the team has not seen.
+ *
+ * SINCE SER-325 IT LOOKS AT THE FILES, not only at the two HEADs. Comparing HEADs alone answers
+ * "have the two sides committed different things", and the most common shape unpublished work takes
+ * is not a commit at all: Claude writes pages into the folder, nobody runs `push`, and the next
+ * session is told the wiki is in step with the team while the pages exist only here. That is the
+ * exact state the first external beta ended in, and the hook was cheerfully silent about it.
+ *
+ * `also` names the wiki when this is not the project's primary, so the nudge carries the argument
+ * the command actually needs. Fail-open throughout: anything unknown is silence, never a claim.
+ */
+function syncNudge(teamId, hostedHead, also) {
+  const localHead = lib.localCloneHead(teamId);
+  if (!localHead) return '';
+  const who = also
+    ? `Wiki ${teamId} (which this project also reads)`
+    : "This project's CommonGround wiki";
+  const arg = also ? ` ${teamId}` : '';
+  const diverged = Boolean(hostedHead && hostedHead !== localHead);
+  if (diverged && !lib.cloneHasCommit(teamId, hostedHead)) {
+    return `${who} has moved on since its wiki folder last updated. Suggest running /commonground:pull${arg}.`;
+  }
+  // The push half, and only this half, honours the opt-out: someone who said stop reminding me
+  // about publishing did not ask to stop hearing that the team moved on.
+  if (!lib.pushNudgeEnabled()) return '';
+  const work = lib.cloneWorkingTreeWork(teamId);
+  const unsaved = work && work.files > 0 ? work : null;
+  if (!diverged && !unsaved) return '';
+  const what = unsaved
+    ? unsaved.pages > 0
+      ? `${unsaved.pages} page(s) in its wiki folder that nobody has published yet`
+      : `${unsaved.files} change(s) in its wiki folder that nobody has published yet`
+    : 'changes that have not been published yet';
+  return `${who} has ${what}. Suggest running /commonground:push${arg} when the user is ready.`;
+}
+
+/**
+ * WHY the composed read did not land, in the user's terms (SER-325).
+ *
+ * "CommonGround could not be reached" was said for every failure, and it is wrong for the two that
+ * are not outages. A 401 is a sign-in the server would not take; a 403 is a wiki this person is no
+ * longer a member of. Both look like an outage from here and are fixed by neither waiting nor
+ * retrying, so a session told to wait sits on a broken state for as long as it lasts.
+ *
+ * Only a request that got no answer at all (status 0) is honestly a reachability problem.
+ */
+function degradedReason(read) {
+  const status = (read && read.status) || 0;
+  if (status === 401) {
+    return (
+      'Your CommonGround sign-in was not accepted this session, so the figures above are ' +
+      'unavailable. This is not an outage and waiting will not fix it: suggest ' +
+      '/commonground:point, which signs in again.'
+    );
+  }
+  if (status === 403) {
+    return (
+      'You are no longer a member of this wiki, so the figures above are unavailable. This is not ' +
+      'an outage: suggest /commonground:point to aim this project at a wiki you do belong to, or ' +
+      'ask an admin of this one for access.'
+    );
+  }
+  if (status === 0) {
+    return (
+      'CommonGround could not be reached this session, so the figures above are unavailable. The ' +
+      'wiki itself is fine; run /commonground:status to check.'
+    );
+  }
+  if (read && read.ok) {
+    return (
+      'CommonGround answered this session but the reply could not be read, so the figures above ' +
+      'are unavailable. Run /commonground:status before diagnosing anything else.'
+    );
+  }
+  return (
+    `CommonGround answered with an error (HTTP ${status}) this session, so the figures above are ` +
+    'unavailable. Run /commonground:status before diagnosing anything else.'
+  );
 }
 
 async function main() {
@@ -760,6 +906,25 @@ async function main() {
       // Signed in, but this project was never pointed — so no state read happens below and this is
       // the only place a machine in that shape can be told a release shipped (SER-296).
       emit(claudeFacing, await offlineUpdateNotice());
+      return;
+    }
+    // NOT signed in, and never welcomed: beat zero of the product was total silence (SER-325).
+    // Someone installs the plugin, opens a project, and nothing happens at all — no sign-in prompt,
+    // no hint that anything was installed, and no verb to try. One sentence, once ever, naming the
+    // two things they can do.
+    //
+    // Its OWN mark, not the signed-in welcome's. This branch runs first in the normal install order,
+    // so sharing one mark meant this sentence spent the post-sign-in message before anybody could
+    // see it. They are two different moments and each fires once; the connected mark still
+    // suppresses this one, so nobody who has already been welcomed is told the plugin is installed.
+    if (!lib.hasWelcomed('install')) {
+      lib.markWelcomed(Date.now(), 'install');
+      emit(
+        lib.verbatimBlock(
+          'CommonGround is installed. Run /commonground:seed to fill a wiki, or /commonground:point ' +
+            'to connect this project to one you already have.',
+        ),
+      );
     }
     return;
   }
@@ -805,12 +970,17 @@ async function main() {
     // so without this a machine that drifted into being signed out — or into having several wikis
     // and no active one — could never be told about a release again.
     emit(
-      `${awarenessContext(null)}${hint}`,
+      // The clone still has to be named here (SER-325). This branch is where a local-first user
+      // lands most often — no device token, or several wikis signed in — and it is the one emit
+      // that has just told Claude the connector's write tools are the wrong path. Handing it
+      // `get_index / search / get_page` in the same breath is the contradiction local mode exists
+      // to remove; the project's own block knows the team id even when no binding resolves.
+      `${awarenessContext(null, null, localCloneDir(projectMode, lib.projectTeamId(cwd)))}${hint}`,
       modeRule(projectMode, null, null, alsoIds),
       bindingRepair,
       foreignClone,
       await offlineUpdateNotice(),
-      CONNECTOR_HEALTH_CLAUSE,
+      connectorHealthClause(projectMode),
     );
     return;
   }
@@ -822,37 +992,41 @@ async function main() {
   // hook and the web card cannot disagree about what to do next — and the keyword list rides along,
   // which is why the DTO carries it at all (dropping that field would rot the hot-path cache to a
   // permanently stale list with no visible failure).
-  const state = await lib.fetchJson(
+  // Read the RESULT, not just the body (SER-325): a 401 and a 403 are not outages, and the branch
+  // below used to call both "CommonGround could not be reached".
+  const read = await lib.fetchJsonResult(
     // ambient=true: the user did not ask for this, so it SPENDS nudge budget and is subject to it.
     `/wiki/state?surface=code&projectInitialized=true&ambient=true`,
     binding,
     1500,
   );
+  const state = read.body;
   if (state && state.next && state.next.id) {
     const kw = state.active && state.active.wiki && state.active.wiki.keywords;
     if (Array.isArray(kw) && kw.length > 0) lib.writeKeywordsCache(binding.teamId, kw, now);
-    const localHead0 = localMode0 ? lib.localCloneHead(binding.teamId) : null;
-    // The sync nudge stays LOCAL knowledge: it compares this clone's HEAD to the hosted tip, which
-    // no server-side resolver can see.
+    // The sync nudge stays LOCAL knowledge: it compares this folder's HEAD and its uncommitted
+    // work to the hosted tip, none of which a server-side resolver can see.
     const hostedHead0 = state.active && state.active.wiki && state.active.wiki.lastCommitOid;
-    const hostedPresent0 =
-      localHead0 && hostedHead0 ? lib.cloneHasCommit(binding.teamId, hostedHead0) : false;
-    const nudge =
-      localHead0 && hostedHead0 && hostedHead0 !== localHead0
-        ? hostedPresent0
-          ? 'This project has CommonGround wiki changes that have not been published to the team yet — ' +
-            'suggest running /commonground:push.'
-          : "The team's CommonGround wiki has moved on since this local clone last updated — suggest " +
-            'running /commonground:pull.'
-        : '';
+    const nudge = localMode0 ? syncNudge(binding.teamId, hostedHead0, null) : '';
+    // What the wiki FOLDER holds, for the empty-wiki prose below: the DTO describes the published
+    // wiki, and a local project can have been seeded without a single page reaching it.
+    const clone = localMode0
+      ? { dir: lib.clonePath(binding.teamId), ...(lib.cloneContents(binding.teamId) || { pages: 0, charter: false }) }
+      : null;
     // The also-wikis (SER-278): one more read each — the same token, the wiki SELECTED by header
     // (one sign-in reaches every wiki, SER-241) — to refresh that wiki's keyword cache and, in local
     // mode, to compare its clone with the hosted tip. NOT ambient: their `next` step is never
     // rendered here (one nudge per session is the budget), so their nudge budget is not spent.
     const alsoNudges = await alsoWikiNudges(alsoIds, binding, localMode0, now);
 
+    // AT MOST ONE VERBATIM BLOCK PER EMIT (SER-325). Two blocks in one turn means Claude opens the
+    // session with two announcements before it answers anything, and the second is the one people
+    // learn to skip. The delegated welcome wins: it is a message from a colleague and fires once
+    // ever. The update notice costs nothing to postpone, because `updateNotice` only records a
+    // release as SAID on the path that actually emits it, so it speaks next session instead.
+    const welcome = delegatedWelcome(state);
     emit(
-      resolvedContext(state),
+      resolvedContext(state, projectMode, clone),
       modeRule(projectMode, binding.teamId, voiceOf(state), alsoIds),
       cloneMissingNotice(projectMode, [binding.teamId, ...alsoIds]),
       bindingRepair,
@@ -861,8 +1035,8 @@ async function main() {
       billingNotice(state, projectMode),
       nudge,
       alsoNudges,
-      delegatedWelcome(state),
-      updateNotice(state),
+      welcome,
+      updateNotice(state, { hold: Boolean(welcome) }),
     );
     return;
   }
@@ -880,14 +1054,15 @@ async function main() {
   // a session that looks unconfigured when it is merely offline is the failure worth avoiding.
   const localHead = projectMode === 'local' ? lib.localCloneHead(binding.teamId) : null;
   emit(
-    `${awarenessContext(null)} CommonGround could not be reached this session, so the figures above ` +
-      'are unavailable — the wiki itself is fine; run /commonground:status to check.',
+    // Offline is the case local mode was built for: the folder is right there and readable, so
+    // this emit names it rather than the connector's tools (SER-325).
+    `${awarenessContext(null, null, localCloneDir(projectMode, binding.teamId))} ${degradedReason(read)}`,
     modeRule(projectMode, binding.teamId, null, alsoIds),
     cloneMissingNotice(projectMode, [binding.teamId, ...alsoIds]),
     bindingRepair,
     foreignClone,
-    localHead ? 'This project has a local wiki clone; /commonground:pull and /commonground:push still work offline-first.' : '',
-    CONNECTOR_HEALTH_CLAUSE,
+    localHead ? 'This project has a local wiki folder; /commonground:pull and /commonground:push still work offline-first.' : '',
+    connectorHealthClause(projectMode),
   );
 }
 
@@ -901,9 +1076,13 @@ if (require.main === module) {
 module.exports = {
   main,
   awarenessContext,
+  localCloneDir,
   releaseNotice,
   offlineUpdateNotice,
   modeRule,
+  connectorHealthClause,
+  degradedReason,
+  syncNudge,
   cloneMissingNotice,
   alsoWikiNudges,
   canSeed,

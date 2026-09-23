@@ -9,8 +9,13 @@ storage, retrieval and auth; it never runs an LLM on your behalf.
 
 ## Requirements
 
-A CommonGround account and team — create one at **[app.commongroundapp.io](https://app.commongroundapp.io)**.
-The plugin is the client; it needs an account to talk to.
+- **A CommonGround account with at least one wiki** — create both at
+  **[app.commongroundapp.io](https://app.commongroundapp.io)**. The plugin is the client; it needs an
+  account to talk to, and the sign-in screen has nothing to approve until a wiki exists.
+- **git**, for local-clone mode (the recommended one). 2.31 or newer signs in over the fast path; an
+  older git still works, by a different route. No git on this machine means MCP mode, and
+  `/commonground:point` offers to walk you through installing it.
+- **Node**, which you already have if Claude Code runs here.
 
 ## Install
 
@@ -98,8 +103,10 @@ them at once, each wiki speaking for what it covers, and says which one a fact c
 
 `/commonground:point` asks which one you want and recommends local: it is faster and cheaper,
 because Claude reads files on disk instead of calling the connector. MCP mode is for when always
-seeing the latest published version, with nothing to pull, matters more. (A wiki on Free works
-through the local folder, so that one is not a question.)
+seeing the latest published version, with nothing to pull, matters more. A project decides this
+once, and whichever of `/commonground:point` and `/commonground:seed` you run first is where the
+question comes up. (Free does not include the hosted connector, so a wiki on Free works through the
+local folder and that one is not a question.)
 
 **MCP mode** — the wiki lives on the server and Claude queries it live through the CommonGround
 connector, so it is always current. No local files. Writes here go live the moment they land — on
@@ -203,6 +210,11 @@ git history, and revoking credentials or invitations all keep working; publishin
 inviting people wait. The refusal says so in its own words, and a wiki admin restores it under
 **Billing** in the CommonGround web app. If you're not an admin of that wiki, tell one; there is
 nothing to repair on your side and nothing to reconnect.
+
+**"You have unpublished pages" every time a session starts.** That's the reminder that work is
+sitting in your wiki folder and hasn't gone out yet. Ask Claude to stop reminding you, or run
+`commonground prefs set push-nudge off` yourself; `... on` brings it back. The pages stay where they
+are either way, and `/commonground:status` still tells you what's unpublished whenever you ask.
 
 **Upgrading.** Reinstall between sessions rather than mid-task, for the reason at the top of this
 section: a version change tears the live connector down.

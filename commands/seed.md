@@ -16,10 +16,9 @@ continues filling gaps.
 options per question (an "Other" is built in). Fall back to a plain conversational question when
 the tool isn't available or the answer is open-ended. Either way, ask one thing at a time.
 
-**The mode — where pages land — is settled by ASKING, in step 0.3; never by detection alone.**
-The SessionStart hook, this project's `./CLAUDE.md` router block (`<!-- commonground:mode:… -->`)
-and `commonground status` tell you the CURRENT setup — use them to mark the default option in the
-question, not to skip it (SER-256).
+**The mode — where pages land — is settled in step 0.3, and NEVER by detection alone.** A project
+decides it once: when `/commonground:point` has already set one, seeding inherits it and confirms it
+in a line; when nothing has, seeding is the one that asks (SER-256).
 **Local-clone mode:** every page below is a FILE in the clone, and the charter too — do not use
 `save_page` / `save_charter`; nothing is published until `/commonground:push`. **MCP mode:** the
 write tools go straight to the hosted wiki, live the moment they land — for the whole team on a
@@ -28,8 +27,9 @@ write lands, never *whether* seeding may happen: the user invoked this arc, so c
 writing and write it — never tell them this project shouldn't write to the wiki.
 
 **Roles.** In **local-clone mode** seeding needs no particular role — it builds the user's own
-working copy — but a member can't publish it, so say that when the arc completes and offer
-`suggest_change`. In **MCP mode** seeding writes the hosted wiki directly, so it is **admin/curator
+working copy — but a member can't publish it, so say that when the arc completes; offer
+`suggest_change` only when this session actually has that tool (it is a connector tool, and a local
+project without one cannot file a suggestion). In **MCP mode** seeding writes the hosted wiki directly, so it is **admin/curator
 only**: for a member, don't attempt writes — explain the limit and offer to answer questions from
 whatever wiki exists (`search` / `get_page`) instead.
 
@@ -87,44 +87,72 @@ reports "not logged in" / "no team logged in", sign in **here**, inline:
 write is the defect class this whole area exists to close, and seeding is the one arc that writes
 dozens of pages before anyone would notice.
 
-**3. Mode — ask WHERE PAGES LAND, before anything is read or written (SER-256).**
+**3. Mode — WHERE PAGES LAND, settled before anything is read or written (SER-256).**
 
-Where a page lands is never a silent default. The first live run presumed MCP because the
-connector happened to work, and every drafted page would have gone live on a shared hosted wiki
-with no review step — so the mode is a QUESTION now, and it comes before the recon in step 1
-because the answer decides which sign-in must work (local → the CLI's membership of the target;
-MCP → the connector's).
+Where a page lands is never a silent default: the first live run presumed MCP because the connector
+happened to work, and every drafted page would have gone live on a shared hosted wiki with no review
+step. It comes before the recon in step 1, because the answer decides which sign-in must work (local
+→ the CLI's membership of the target; MCP → the connector's).
 
 **Whatever settled the target — an argument, this project's binding, or the listing — run
-`commonground use` before asking the mode.** The listing is the only place the plan appears
+`commonground use` before the mode is settled.** The listing is the only place the plan appears
 (`commonground status` and the router block carry no plan marker), and the marker decides whether
 the mode is a question at all. The target decides WHICH wiki, never whether the plan gets learned.
 
-**In Claude Code, always ask** (AskUserQuestion). When the project already has an established
-mode for this target, list that option first, marked "current setup", so the question has an
-obvious default instead of a fork:
+Then, in this order:
 
-- **Local clone** — pages are files on this machine first; you review everything, and nothing
-  reaches the hosted wiki until `/commonground:push`. Needs the CLI signed in as a member of the
-  target wiki.
-- **Hosted directly (MCP)** — every saved page is immediately live on the hosted wiki — for the
-  whole team, on a shared one. No staging step.
+- **This project already has a mode** — `commonground status` reports it (`Mode: local, wiki folder
+  <path>` or `Mode: hosted connector (MCP)`; `--json` carries it as `mode`). That is the mode.
+  **Confirm it in ONE line and carry on**, never as a question: *"Pages land as files in your wiki
+  folder, and nothing reaches the team until `/commonground:push`. Carrying on."* A project decides
+  this once, and `/commonground:point` already decided it here.
+- **`local` or `mcp` said outright** — in `$ARGUMENTS`, or in plain words ("keep it local", "switch
+  to mcp"). That is the answer, including as a switch on a project that already has a mode. Those
+  two words are modes, never wiki names.
+- **Nothing has set one yet** — seeding is the first asker here, so seeding asks, with the same
+  question, the same machine probe and the same defaults as **`/commonground:point` step 4**: read
+  `probe.git` from `commonground status --json`, lead with **Local folder (Recommended)** when git
+  is present, and when it is missing lead with **Hosted connector (Recommended)** and offer the
+  third option, **Help me install git**. Read that step rather than restating it here; the one
+  sentence worth adding at seeding time is what each answer means for the pages you are about to
+  write, which the preamble above already states.
 
 **A wiki marked `(Free plan)` in the `commonground use` listing is not a question either: it is
-local.** Say why in one line (Free works through the wiki folder on this machine; the hosted
-connector comes with Pro) and carry on — the same rule, and the same marker, as
-`/commonground:point` step 4. Offering "Hosted directly" there offers something that is refused.
+local.** Say why in one line (Free works through the wiki folder on this machine and does not
+include the hosted connector) and carry on — the same rule, and the same marker, as
+`/commonground:point` step 4. Offering "Hosted directly" there offers something that will not
+answer.
 
 **In claude.ai Chat, state rather than ask** — there is no filesystem, so don't stage a fake
 choice: say plainly that pages go live on the hosted wiki as they are saved, and that running
 `/commonground:seed` in Claude Code instead is the way to stage and review first.
 
-Then wire the answer up:
+Then wire the answer up. One fact the branches below all lean on: **mode belongs to the project,
+not to one wiki in it.** `commonground init --also` adds a wiki in the mode this
+project's block already records, and `--path` is refused outright in an MCP project because there is
+no folder to place one in. So an answer that SWITCHES this project's mode is a re-point
+(`commonground init --mode local <wiki>`, which replaces the set this project reads, so the others
+go back with `--also`), and a re-point changes where every wiki in this project lands. Put that to
+the user and let them decide before you seed a line. Seeding never makes it a side effect, and
+while the project still has its old mode, seed the wiki where it already lives.
 
-- **Local, target is this project's wiki** → the local-clone rules above, unchanged.
-- **Local, target not pointed or not cloned here** → run the point flow for it now —
-  `commonground init --mode local [--path <folder>] <wiki>`, with point.md's confirm-or-override
-  on the folder — then seed into the files.
+- **Local, target is this project's wiki** → the local-clone rules above, unchanged. If the block
+  says MCP and the user asked for local anyway, there is no clone yet: that is the re-point above,
+  not something to improvise around.
+- **Local, target not pointed or not cloned here** → point it now, but **never with a bare `init`**.
+  A bare `init <wiki>` replaces whatever set this project reads, and seeding is not the place to
+  take a project's wikis away from it. Two cases:
+  - **This project is not pointed at anything** → ask first, in one question: *"Point this folder at
+    **Acme Handbook** so I can seed into it?"* (`AskUserQuestion` when it's available). On yes, run
+    `commonground init --mode local <wiki>` with point.md's confirm-or-override on the folder.
+  - **This project already reads a wiki, or several** → add beside them:
+    `commonground init --also <wiki> [--path <folder>]`. Nothing it already reads changes, and the
+    added wiki lands as a folder because this project is already local. In an MCP project that same
+    command adds the wiki in MCP mode with no folder at all, which is the re-point above, not a
+    thing to route around: seed it through the connector with the `wiki:` argument below until the
+    user decides.
+  Either way, **relay what the project now reads** — the wikis by name and which is the primary —
+  before seeding a line. Then seed into the files.
 - **MCP, target is the session's wiki** → the write tools as-is.
 - **MCP, target is a DIFFERENT wiki** → pass **`wiki: <teamId>`** on every seed-path tool call:
   `get_coverage`, `get_awareness`, `get_index`, `get_page`, `stage_sources`, `save_page`,
@@ -134,8 +162,11 @@ Then wire the answer up:
   as it words them** rather than pre-judging. A refusal is never a reason to retry without the
   argument — that writes into the wrong wiki.
 
-**4. Verify the argument took effect — before writing anything.** Every tool response ends with
-`[commonground] answered from wiki <id>`. After your FIRST `wiki:`-carrying call, read it:
+**4. Verify which wiki answered — before the FIRST write, on every MCP seeding.** Every tool
+response ends with `[commonground] answered from wiki <id>`. Read it off your first tool call of the
+arc and check it against the target, whether or not you passed a `wiki:` argument: a session whose
+connector is serving a different wiki than the one you are seeding looks exactly like a working one.
+Once it matches, proceed and don't check again. On a `wiki:`-carrying call:
 
 - It names the **target** → the argument landed. Proceed, and don't check again.
 - It names the **session's** wiki → this server predates the argument and **silently ignored it**
@@ -378,12 +409,16 @@ Pinned keywords; both instruction surfaces name the wiki and enumerate its Struc
 connector's instructions render Retrieval brief and Excludes in full, the CLAUDE.md router block
 carries the brief's first sentence as the wiki's trigger and points at the charter for the rest).
 
-With the charter persisted, make it live in this project: run **`commonground init --refresh`**.
-It re-renders the fenced router block in the wiki's own voice — its kind (personal for a just-me
-wiki), its name and Structure sections, the brief's first sentence as its trigger line — and absorbs any leftover
-`retrieval-brief` marker block from
-earlier plugin versions. Never hand-edit inside the fence. The MCP connector's instructions pick
-the charter up automatically (per session/request) — no extra step there.
+With the charter persisted, make it live **in this project — but only if this project actually reads
+the wiki you just chartered.** Check the router block first (`commonground status` names the wikis
+this project reads): if the wiki is one of them, run **`commonground init --refresh`**, which
+re-renders the fenced block in the wiki's own voice — its kind (personal for a just-me wiki), its
+name and Structure sections, the brief's first sentence as its trigger line — and absorbs any
+leftover `retrieval-brief` marker block from earlier plugin versions. Never hand-edit inside the
+fence. If this project reads some OTHER wiki, `--refresh` has nothing to do with the one you just
+chartered: say so in a sentence (*"the charter is saved; run `/commonground:point <wiki>` in the
+projects that should read it"*) and move on. The MCP connector's instructions pick the charter up
+automatically (per session/request) — no extra step there.
 
 ## 3. Fork: build fresh, or import what you have?
 
@@ -432,9 +467,11 @@ schema-valid, retrievable pages, not files that look covered but answer badly.
 
 **Survey.** Get the folder path (`$ARGUMENTS` or ask for it). Read the layout: count the markdown
 files and **cluster them** by folder/topic (e.g. "14 psychology notes · 8 client docs · 5 book
-summaries"), and check the catalog for overlap — the folder's `index.md` in local-clone mode (it
-lists pages the user hasn't published yet, which `get_index` cannot), `get_index` in MCP mode — so
-likely **duplicates** are flagged up front.
+summaries"), and check for overlap with what the wiki already has — **in local-clone mode read the
+page FILES in the folder**, not `index.md`: the catalog is machine-generated and regenerates on
+`/commonground:push`, so anything written this session is missing from it and there is no verb that
+rebuilds it in place. `get_index` in MCP mode. Either way, likely **duplicates** are flagged up
+front.
 
 **Triage.** Keep clusters coarse — top-level folders/topics, aim for **≤8** even on a big tree.
 Show the cluster summary, then decide. For a **large import**, start with one **multiSelect**
@@ -575,11 +612,20 @@ subscription; if the user is not an admin of this wiki, the step is to tell one.
 the pages are already safe in their own copy, so say that before anything else, and offer to resume
 seeding once it is back.
 
-Close with a short, encouraging, **audience-aware** status:
-- **just-me:** "Your wiki is live — N of M sections covered. Your Claude now starts every session
-  from your own context."
-- **my-team / whole-company:** "Your wiki is live — N of M sections covered. Your teammates' Claude
-  now starts from this context."
+Close with a short, encouraging status that is **audience-aware and true about where the pages
+are**. "Live" is a claim about the hosted wiki, so only say it when something was actually
+published:
+
+- **Local mode, nothing pushed yet** (the usual end of a local seeding run): *"N of M sections
+  covered, saved in your wiki folder. Nothing reaches the team until `/commonground:push`."* For a
+  just-me wiki: *"…saved in your wiki folder. It reaches your other Claude sessions when you
+  publish."* Never "your wiki is live" here: the pages are on this machine and nowhere else, and a
+  user who believes otherwise stops before the one step that shares them.
+- **Local mode, they published** → then it is live; say what the push sent.
+- **MCP mode, just-me:** "Your wiki is live — N of M sections covered. Your Claude now starts every
+  session from your own context."
+- **MCP mode, my-team / whole-company:** "Your wiki is live — N of M sections covered. Your
+  teammates' Claude now starts from this context."
 
 Then, **in MCP mode**, call **`save_seeding_progress` with `done: true`** — that clears the cursor,
 so the next run opens as a fresh top-up rather than trying to resume a session that finished. In

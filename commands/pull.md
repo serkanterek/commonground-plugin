@@ -69,8 +69,8 @@ report the draft branch it saved their work on, so they know how to get it back.
 
 **If the pull itself fails, relay what the CLI said and stop.** It says why in a sentence: the
 sign-in is no longer accepted (offer to sign them in again, then pull again), git could not present
-the sign-in (their git is too old; updating it is the fix), git is not installed, the server could
-not be reached, or a folder that is not a wiki is sitting where the wiki folder goes (it names the
+the sign-in (relay the cause the CLI names rather than diagnosing a git version yourself), git is
+not installed, the server could not be reached, or a folder that is not a wiki is sitting where the wiki folder goes (it names the
 folder; nothing in it was touched). Never work around a failed fetch by putting the sign-in in a
 file, a `.netrc`, a keychain, a git credential helper or the wiki's address: the CLI carries the
 sign-in to git by itself, and a copy written anywhere else is a credential leak, not a fix.

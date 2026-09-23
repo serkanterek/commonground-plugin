@@ -15,19 +15,23 @@ beside the team's — one set, read over one connection (or from one clone each)
 `get_index` answering from all of them and each wiki's own charter saying what it covers. The flags
 carry it: `--also <wiki>` adds a wiki beside the ones the project already reads, `--drop <wiki>`
 stops reading one, and a bare wiki name keeps its old meaning — *this project reads THIS wiki* — so
-it replaces the set. Plain words map to the same two flags: "also point this at Hipo", "read my
-personal wiki here too", "add Hipo" mean `--also`; "stop reading Hipo here", "drop the personal
-wiki from this project" mean `--drop`. The first wiki a project reads is its **primary** — what a
-bare `commonground` verb and a tool call that names no `wiki` address; everything else about the
-set is additive.
+it replaces the set. Plain words map to the same flags ("add Hipo", "read my personal wiki here
+too" mean `--also`; "stop reading Hipo here" means `--drop`). The first wiki a project reads is its
+**primary** — what a bare `commonground` verb and a tool call that names no `wiki` address.
 
 The bundled `commonground` CLI talks to the hosted API by default (no env setup needed).
 
 ## 1. Check sign-in state
 
-Run `commonground status`.
-- If it reports a team with a sync state, the user is already signed in — note the team and go to step 3.
-- If it reports "not logged in" / "no team logged in", continue to step 2.
+Run `commonground status` (`--json` gives the machine-readable form, which step 4 reads for `mode`
+and `probe`). In that form a machine with several sign-ins and no pointer answers with `unresolved`
+and no sync fields; `mode` and `probe` are still there, so step 4 can read them either way.
+- A team with a sync state → already signed in. Note the team and the `Mode:` line, then go to step 3.
+- "not logged in" / "no team logged in" → step 2.
+- **`more than one wiki available — say which: …`** → not a failure and not a sign-in problem. They
+  are signed in; this folder is simply not pointed anywhere yet, so nothing can choose for them. The
+  message lists their wikis by name: relay those names, ask which one this project should read, and
+  carry the answer into step 3. It is step 3's question arriving early, so don't ask it twice.
 
 ## 2. Sign in (device-code login)
 
@@ -52,10 +56,16 @@ nothing to approve without one, and its button is hidden rather than left dead.
   or the code expired and needs a fresh `commonground login --start`. Ask which they are seeing on
   the screen rather than guessing, and never keep polling while telling them nothing is wrong.
 
-  On success it prints the wiki and role. **One sign-in is all they need** — it reaches every wiki
+  On success it prints `Signed in to <wiki> as <role>` — the wiki by NAME, not a pair of ids. Relay
+  it as it is written; never translate a wiki back into a UUID for the user.
+  **One sign-in is all they need** — it reaches every wiki
   they are a member of, now and later, so a wiki created or joined afterwards needs no second login.
 
 ## 3. Resolve which wiki this project should read
+
+**`local` and `mcp` in `$ARGUMENTS` are MODES, never wiki names.** Neither is ever resolved as a
+wiki, and neither leaves this step with a target: they answer step 4, and step 3 still has to work
+out which wiki this is about. Same for "switch to local" / "switch to mcp".
 
 If `$ARGUMENTS` names a wiki, that wins: use it, and **don't stage a choice the user already made**.
 But still run the listing below — it is one fast call — and read the named wiki's row out of it,
@@ -102,9 +112,8 @@ once; if they decline, don't raise it again in this session.
 
 **One caveat about the listing.** If the output ends with a parenthetical note that it was *"listed
 from this machine's sign-ins"*, the list may be **incomplete** — a wiki joined recently will be
-missing from it. Say so rather than concluding a wiki does not exist. That conclusion was the bug:
-the CLI used to list its own login cache and present it as the universe, so a user who created a
-second wiki in the web app came back here and was told, as a fact, that it wasn't there.
+missing from it. Say so rather than concluding a wiki does not exist: telling a user a wiki they
+just created "isn't there" is the bug this note exists to prevent.
 
 The note says **why** it fell back, and the three reasons have three different fixes — relay the one
 the note names, never a generic "try later":
@@ -117,48 +126,65 @@ the note names, never a generic "try later":
 
 **If a wiki they expect is missing**, two different situations, and only one is a problem:
 
-- **They just created it, or were just invited.** Being a member is all it takes now — one sign-in
-  reaches every wiki you belong to, so it should appear as soon as the server can be reached. There
-  is nothing to log into. If it still isn't listed, they aren't a member yet (an invite not accepted,
-  or a wiki created under a different account).
+- **They just created it, or were just invited.** Membership is all it takes — one sign-in reaches
+  every wiki they belong to, so there is nothing to log into. If it still isn't listed, they aren't
+  a member yet (an invite not accepted, or a wiki under a different account).
 - **They want a NEW wiki.** Wikis are created in the web app — **app.commongroundapp.io**, "+ New
-  wiki". You cannot create one from here; say that plainly and point them there rather than looking
-  for a command. Once it exists and they're a member, it is usable here immediately.
+  wiki". You cannot create one from here; say that plainly rather than hunting for a command.
 
-## 4. Choose a mode — and, for local, where the folder goes
+## 4. The mode — one decision per project, and for local, where the folder goes
 
-**Where a project's wiki lives is the user's decision: ASKED, with local recommended, never silently
-defaulted (SER-323).**
-In this order:
-- **Adding (`--also`), dropping (`--drop`) or repairing (`--refresh`)?** The project is already
-  pointed, so its mode is settled and comes from its own router block: don't ask it again, and
-  don't pass `--mode` (the CLI refuses it beside those flags). Skip to step 5. On a local-mode add,
+**A project decides its mode ONCE. Whichever of `/commonground:point` and `/commonground:seed` runs
+first asks it; the other inherits it and only confirms.** The answer lives in this project's router
+block, and `commonground status` reports it (`Mode: local, wiki folder <path>` or `Mode: hosted
+connector (MCP)`; `--json` carries it as `mode`). So, in this order:
+
+- **This project already has a mode** — adding (`--also`), dropping (`--drop`), repairing
+  (`--refresh`), or a bare re-point of a project that is already pointed. Read it, confirm it in ONE
+  line, and move on: *"This project is in local mode; keeping it there."* Never re-ask, and don't
+  pass `--mode` (the CLI refuses it beside `--also`, `--drop` and `--refresh`). On a local-mode add,
   the folder question at the end of this step still applies, to the wiki being added.
-- `local` in `$ARGUMENTS` → that is the answer. Don't stage a choice the user already made. `mcp`
-  in `$ARGUMENTS` is the answer only for a wiki that carries no `(Free plan)` marker; on a marked
-  wiki it is answered with the sentence in the next bullet, not obeyed.
+- `local` in `$ARGUMENTS` → that is the answer, including as a switch on a project that already has
+  a mode. `mcp` in `$ARGUMENTS` is the answer only for a wiki that carries no `(Free plan)` marker;
+  on a marked wiki it is answered with the sentence two bullets down, not obeyed.
 - **Marked `(Free plan)`** → **local-clone mode**, and say why in one line: Free works through the
-  wiki folder on this machine, and the hosted connector comes with Pro. Don't offer MCP mode as an
-  equal choice here. If the user asks for it anyway, say plainly that it will be refused for this
-  wiki.
-- **Otherwise → ask, recommending local.** Use the `AskUserQuestion` tool (multiple-choice UI) if
-  it's available in this session, otherwise a plain question. Two options, local FIRST and marked
-  recommended, and the trade-off stated in the options themselves so the choice is informed:
-  - **Local folder (local-clone mode) (Recommended):** a full copy of the wiki on this machine as
-    plain markdown. Faster and cheaper: Claude reads files on disk, with no connector call and no
-    round trip to the server. Kept in step with `/commonground:pull` and `/commonground:push`, so
-    it shows what was last pulled, and every write is a file you review before it publishes. Works
-    offline; opens in Obsidian or any editor.
-  - **Hosted connector (MCP mode):** Claude queries the server live, so it always sees the latest
-    published version with nothing to pull. Nothing on disk. Needs a session restart and the
-    connector's own consent (`/mcp`).
+  wiki folder on this machine and does not include the hosted connector. Don't offer MCP mode as an
+  equal choice here; if they ask for it anyway, say that plainly rather than pointing them at
+  something that will not answer.
+- **A new bind with nothing said → ask.** `--mode` is REQUIRED on a bare `init <wiki>` that points a
+  project for the first time, so there is no silent default to fall into.
 
-  The rule of thumb to say out loud: if this machine can run local, run local; MCP is for when
-  being current without pulling matters more, or when no local folder is wanted here. Neither
-  answer changes claude.ai Chat: Chat reaches a wiki through the connector whichever mode this
-  project is in (step 7). Then wait for the answer. A question that resolves itself is the exact
-  failure step 3 refuses for WHICH wiki, and it is how a project's pages once went live on a shared
-  wiki with no review step (the reason `/commonground:seed` asks where pages land, SER-256).
+**Let the machine pick the default, then ask anyway.** `commonground status --json` carries
+`probe.git`: `present`, `version`, and `headerChannel` (true when git is 2.31 or newer). One read,
+before the question. It decides which option LEADS and what you say about it, never the answer:
+
+| the probe says | lead with | the reason to say |
+|---|---|---|
+| git present, `headerChannel` true | **Local folder (Recommended)** | git is here, so the wiki can live on this machine as plain markdown |
+| git present, `headerChannel` false | **Local folder (Recommended)** | their git is older than 2.31, so the sign-in travels by the helper channel instead; local works, it just takes that route |
+| git missing | **Hosted connector (Recommended)** | local mode needs git and this machine has none, so the connector is what works today |
+
+Ask with the `AskUserQuestion` tool (multiple-choice UI) when it is available, a plain question
+otherwise, with local FIRST and marked recommended wherever git is present, and the trade-off stated
+in the options themselves so the choice is informed:
+
+- **Local folder (local-clone mode):** a full copy of the wiki on this machine as plain markdown.
+  Faster and cheaper: Claude reads files on disk, with no connector call and no round trip to the
+  server. Kept in step with `/commonground:pull` and `/commonground:push`, so every write is a file
+  you review before it publishes. Works offline; opens in Obsidian or any editor.
+- **Hosted connector (MCP mode):** Claude queries the server live, so it always sees the latest
+  published version with nothing to pull. Nothing on disk. Needs a session restart and the
+  connector's own consent (`/mcp`).
+- **Help me install git** — offer this third option only when the probe says git is missing. Walk
+  them through it for their OS, re-run the probe, then come back to this question: **macOS**
+  `xcode-select --install` (Apple's Command Line Tools installer); **Linux** their distro's package
+  (`sudo apt install git`, `sudo dnf install git`, and so on); **Windows** Git for Windows from
+  git-scm.com. **Never run an installer they did not ask for**, and never install one as a side
+  effect of pointing a project.
+
+Neither answer changes claude.ai Chat: it reaches a wiki through the connector whichever mode this
+project is in (step 7). Then wait for the answer: a mode that resolves itself is how a project's
+pages once went live on a shared wiki with no review step (SER-256).
 
 **The marker is about REACH, not only about the plan.** A paid seat in any wiki keeps the hosted
 connector on that person's own personal wiki, so someone who pays for a team wiki reads their own
@@ -173,10 +199,9 @@ machine's sign-ins, which carry no plan, or it could not be reached). So an abse
 reason to say anything about plans in either direction, not Free and not Pro. It is the two-option
 question above, with nothing said about plans.
 
-**If they chose local, settle the folder in the same breath — one question, with a real default.**
-The folder is named after the wiki (`~/CommonGround/<wiki-name>/`), so the default is already
-sensible; the point is that the user gets told where their notes will live *before* a directory
-appears, and can say otherwise. Ask it as a confirm-or-override, never as an open-ended "where?":
+**If they chose local, settle the folder in the same breath.** The default is already sensible
+(`~/CommonGround/<wiki-name>/`); the point is that they hear where their notes will live *before* a
+directory appears. Ask it as a confirm-or-override, never as an open-ended "where?":
 
 > *"I'll put your wiki at `~/CommonGround/acme-handbook/` — good, or would you rather it lived
 > somewhere else (say, in your notes folder)?"*
@@ -185,7 +210,8 @@ appears, and can say otherwise. Ask it as a confirm-or-override, never as an ope
 - Naming a folder → pass it: `commonground init --mode local --path "<folder>" [wiki]`. It must be
   **empty or not exist yet**; the CLI refuses a folder with files in it and points at
   `commonground import` instead, which is the right tool for "I already have notes there".
-- **Don't ask this in MCP mode** — there is no folder, and `--path` is rejected there.
+- **There is no folder question in MCP mode**, and `--path` is refused there — including beside
+  `--also`. The CLI says so rather than dropping the flag, so relay the refusal instead of retrying.
 - If the wiki is **already cloned**, `--path` is refused by design (it would strand the old folder,
   unpublished work and all). To move an existing folder, offer to run `commonground relocate
   <folder> [wiki]` for them — it moves the files, remembers the new spot, and updates this
@@ -196,6 +222,9 @@ appears, and can say otherwise. Ask it as a confirm-or-override, never as an ope
 ## 5. Point it
 
 Run `commonground init --mode <mcp|local> [--path <folder>] <wiki>`, then `commonground use <wiki>`.
+`--mode` is required on a first bind and refused beside `--also`, `--drop` and `--refresh`; a
+re-`init` of a project that already has a router block inherits the mode recorded there, so leave it
+off unless the user asked to switch.
 
 **Adding or dropping instead?** The project is already pointed, so its mode and its primary are
 settled — don't pass `--mode` or a bare wiki name beside the flag:
@@ -214,8 +243,9 @@ primary did not move.
 refresh this project as it stands (a hook said the binding could not be recorded, the connector
 serves a different wiki than the project names, or the block carries another machine's clone
 path), run `commonground init --refresh` — it re-records every wiki this project already names
-and replaces nothing (add `--mode local` only for the foreign-clone-path case, which re-clones
-here). Never a bare `init <wiki>` for a repair: on a project that reads several wikis that
+and replaces nothing. The foreign-clone-path case has its own explicit form, `commonground init
+--refresh --reclone`, which re-clones the wiki here; `--mode` is refused beside `--refresh`, because
+a repair does not re-decide a mode. Never a bare `init <wiki>` for a repair: on a project that reads several wikis that
 resets the set to that one wiki. There is nothing to ask the user here — no decision is being
 made, only the recorded facts re-recorded — so run it, relay the receipt, and remind them a
 session restart applies it.
@@ -252,11 +282,12 @@ filesystem path and neither holds a secret; the sign-in lives elsewhere.
 
 **If the fetch fails, relay what the CLI said and STOP — never work around it.** A failed `init`
 in local mode says why in a sentence: the sign-in is no longer accepted (sign them in again, then
-re-run), git could not present the sign-in (their git is too old; updating it is the fix), git is
-not installed (the CLI says how to install it; and if this wiki carried no `(Free plan)` marker,
-offering MCP mode instead is a fair next step, since it needs no git: the other option this step
-offered, not a workaround), the server could not be reached, or a folder that is not a wiki is in
-the way (it names the folder; nothing in it was touched). Whatever it says, these are never the answer, and
+re-run), git could not present the sign-in (the CLI names the cause it can prove, so relay that
+sentence rather than diagnosing a git version yourself), git is not installed (offer step 4's
+**Help me install git** walkthrough; and if this wiki carried no `(Free plan)` marker, MCP mode is a
+fair next step too, since it needs no git: the other option step 4 offered, not a workaround), the
+server could not be reached, or a folder that is not a wiki is in the way (it names the folder;
+nothing in it was touched). Whatever it says, these are never the answer, and
 you do not offer them: writing the sign-in into a file, a `.netrc`, a keychain, a git credential
 helper or the wiki's address; and, in local mode, seeding or saving through the MCP write tools
 "instead" (the wiki would fill with pages nobody reviewed, in a project that was told its pages
@@ -283,18 +314,32 @@ When the project was already pointed somewhere else, say what changed, from whic
 ## 6. Confirm, then hand off (don't dead-end at an empty wiki)
 
 Tell the user: the mode chosen, that `./CLAUDE.md` now routes to CommonGround, and the wiki — or,
-for a project that reads several, every wiki and which is the primary. **For MCP mode, tell them to
-restart the session** — the wikis this project reads are recorded for the connector at session
-start, so until they do, the connector is still answering for whichever wiki (or set) it was told
-about when the session began; an add or a drop needs the restart exactly as a first point does.
+for a project that reads several, every wiki and which is the primary.
+
+**MCP mode: the receipt is the end of this turn.** Say it plainly and stop:
+
+> *"Restart this session to pick up the connector. Then I'll check the wiki and hand you to seeding."*
+
+The wikis this project reads are recorded for the connector at session START, so until the restart
+the connector is still answering for whichever wiki (or set) it was told about when this session
+began; an add or a drop needs the restart exactly as a first point does. So do NOT call
+`get_awareness`, `get_coverage` or `lint` over the pre-restart connector to "check it worked": every
+one of them answers about the OLD wiki, and a right-looking answer from the wrong wiki is the exact
+failure this area exists to close. The wiki-state check and the overlap check below both wait for
+the next session.
+
+**Local mode: carry straight on** — there is no connector in the loop, so nothing is stale.
 
 **After an add, run the overlap check.** Two wikis read together is the moment SER-272's boundary
-question becomes real. In MCP mode call the `lint` tool once (the session's own wiki; no `wiki`
-argument needed) and read its `crossWiki` block — it compares the session's wiki against every
-other wiki the user belongs to, the one just added included. In local mode `commonground lint` reads
-the working tree and the MCP `lint` tool is still the one that carries `crossWiki`. If `unsettled`
-is above zero, say so in a sentence and point at `/commonground:lint`, which lists the subjects
-and settles which wiki answers for each; if it is zero, say the two don't overlap and move on.
+question becomes real. The `crossWiki` block comes from the MCP `lint` tool (the session's own wiki;
+no `wiki` argument needed) — it compares that wiki against every other wiki the user belongs to, the
+one just added included. If `unsettled` is above zero, say so in a sentence and point at
+`/commonground:lint`, which lists the subjects and settles which wiki answers for each; if it is
+zero, say the two don't overlap and move on. **If this session has no `lint` tool** — local mode, a
+`(Free plan)` wiki, or an MCP project that has not restarted yet — the check is not available here:
+say it is still owed and name `/commonground:lint` for the next session that has a connector.
+`commonground lint` reads the working tree and answers a different question; it carries no
+`crossWiki`, so never report "no overlap" from it.
 Don't run `/commonground:lint` itself here uninvited — naming the check is the job.
 Do not skip this because everything looks connected: that is exactly the state in which a wrong-wiki
 answer is indistinguishable from a right one. For MCP
@@ -312,11 +357,12 @@ CommonGround web app, nothing is deleted while it is blocked, and reading, `/com
 the local wiki folder answer throughout.
 `/commonground:status` is what separates the four.
 
-Then check the wiki's state so you hand off to the right next step. **MCP mode:** call
-`get_awareness` (its `pageCount`) or `get_coverage`. **Local mode:** run `commonground coverage`,
-which reads the folder `init` just fetched (every section empty = an empty wiki) — not the MCP
-tools: a wiki marked `(Free plan)` is not served by the connector at all, and for any wiki they
-describe the PUBLISHED copy rather than the folder this project works in.
+Then check the wiki's state so you hand off to the right next step. **Local mode:** run
+`commonground coverage`, which reads the folder `init` just fetched (every section empty = an empty
+wiki) — not the MCP tools: a wiki marked `(Free plan)` is not served by the connector at all, and
+for any wiki they describe the PUBLISHED copy rather than the folder this project works in.
+**MCP mode:** this is the first thing to do AFTER the restart, with `get_awareness` (its
+`pageCount`) or `get_coverage` — not before it.
 
 - **Empty wiki (`pageCount === 0`, or every coverage section empty) + the user can curate
   (admin/curator):** the wiki has no content

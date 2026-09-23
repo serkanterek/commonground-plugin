@@ -84,13 +84,19 @@ function keywordNudge(prompt, cwd) {
   // ZERO network calls by design — its only local cache holds keywords, not the charter — so it
   // cannot know whether this wiki is personal or shared. "Their CommonGround wiki" is true either
   // way; "your team's" was a guess that read as wrong to every solo user.
+  // WHERE to look depends on the mode (SER-325). Naming `search / get_index / get_page` in a
+  // local-clone project sends Claude at the connector for a read the project keeps on disk, and
+  // the SessionStart rule two screens up has just told it those tools are the wrong path here.
+  const local = lib.routerMode(cwd) === 'local';
   if (teamIds.length === 1) {
     const hits = matched[0].hits;
+    const how = local
+      ? `read the wiki folder at ${lib.clonePath(teamIds[0])} (start at its index.md)`
+      : 'search the wiki (search / get_index / get_page)';
     return (
       `The user's message mentions ${hits.map((h) => `"${h}"`).join(', ')}, which their ` +
-      'CommonGround wiki likely covers. Before answering, search the wiki (search / get_index / ' +
-      'get_page) and ground your answer in it, citing the pageIds you used. If nothing relevant is ' +
-      'found, say so rather than guessing.'
+      `CommonGround wiki likely covers. Before answering, ${how} and ground your answer in it, ` +
+      'citing the pageIds you used. If nothing relevant is found, say so rather than guessing.'
     );
   }
   // Several wikis: name WHICH matched, by id — the cache holds no names, and the id is what the
@@ -98,10 +104,13 @@ function keywordNudge(prompt, cwd) {
   const which = matched
     .map((m) => `${m.hits.map((h) => `"${h}"`).join(', ')} (wiki ${m.teamId})`)
     .join('; ');
+  const howMany = local
+    ? `read each wiki's own folder (${matched.map((m) => `${m.teamId} at ${lib.clonePath(m.teamId)}`).join('; ')})`
+    : 'search (a bare `search` answers from every wiki this project reads, grouped by wiki; pass ' +
+      '`wiki` to narrow)';
   return (
     `The user's message mentions ${which}, which the CommonGround wikis this project reads likely ` +
-    'cover. Before answering, search (a bare `search` answers from every wiki this project reads, ' +
-    'grouped by wiki; pass `wiki` to narrow) and ground your answer in it, citing the wiki and the ' +
+    `cover. Before answering, ${howMany} and ground your answer in it, citing the wiki and the ` +
     'pageIds you used. If nothing relevant is found, say so rather than guessing.'
   );
 }
@@ -111,11 +120,15 @@ function main() {
   const prompt = typeof input.prompt === 'string' ? input.prompt : '';
   if (!prompt.trim()) return;
   const cwd = lib.projectCwd(input);
-  if (!lib.isInitialized(cwd)) return; // not a CommonGround project → stay out of the way
 
+  // THE SWAP CHECK RUNS IN EVERY PROJECT (SER-325). A plugin version change tears the connector
+  // down for the whole session, not only for folders that carry a router block, and the session
+  // most likely to be confused by it is the one that has not been pointed at a wiki yet: its
+  // CommonGround tools vanish and there is no router block anywhere to explain why. The keyword
+  // nudge stays gated below, where a block genuinely is the precondition.
   const current = lib.pluginVersion();
   const sessionId = lib.sessionIdOf(input);
-  const marker = lib.readVersionMarker();
+  const marker = lib.readVersionMarker(sessionId);
   const previous = versionChange(marker, current, sessionId);
   let notice = '';
   if (previous) {
@@ -130,7 +143,7 @@ function main() {
     lib.writeVersionMarker(sessionId, current);
   }
 
-  const parts = [notice, keywordNudge(prompt, cwd)].filter(Boolean);
+  const parts = [notice, lib.isInitialized(cwd) ? keywordNudge(prompt, cwd) : ''].filter(Boolean);
   if (parts.length) lib.emitContext('UserPromptSubmit', parts.join(' '));
 }
 

@@ -12,13 +12,23 @@ Run `commonground status` — with `$ARGUMENTS` as the wiki when it names one, b
 project's own binding resolves it). Report whether the user is signed in, the team, their role,
 and (local-clone mode) the sync state / any divergence.
 
-**Lead with the mode**, because it decides where this project's work lands:
+**Lead with the mode**, because it decides where this project's work lands. The CLI states it
+outright on a `Mode:` line (`Mode: local, wiki folder <path>` / `Mode: hosted connector (MCP)`), so
+relay that rather than inferring one:
 
-- **Local-clone mode** — name the clone path (the CLI prints it as `Your wiki folder: …`, or, when
-  nothing is cloned yet, `would be created at …`) and say plainly: curation edits files there, anyone
+- **Local-clone mode** — the folder rides on the `Mode:` line itself (`Mode: local, wiki folder
+  <path>`, or `Mode: local, wiki folder would be created at <path>` when nothing is cloned yet), so
+  read the path off that line rather than looking for one of its own. Then say plainly: curation
+  edits files there, anyone
   may curate, and nothing is published until `/commonground:push` — that's when a shared wiki reaches
-  the team, or a personal one reaches the user's other machines and Chat sessions. If the CLI reports
-  unpublished work, say so — that's the user's own thinking, not yet shared. If they'd rather the
+  the team, or a personal one reaches the user's other machines and Chat sessions. **If the CLI
+  reports unpublished work, lead with the count it gives** (`N pages in your wiki folder are not
+  published yet`, or files when none of them are pages). That line counts pages the user has WRITTEN,
+  committed or not, so it is the honest answer to "did my work go out?" — never soften it into "up to
+  date", and offer `/commonground:push`. **If they ask to stop being reminded about unpublished
+  pages, that is a setting, not an apology:** run `commonground prefs set push-nudge off`, which
+  turns off the start-of-session reminder (`commonground prefs set push-nudge on` brings it back).
+  It silences the reminder, never the work: this command still reports the count when asked. If they'd rather the
   folder lived somewhere else, offer to move it for them — you run `commonground relocate
   <folder>`, which moves the files and repoints this project's `./CLAUDE.md`. (Never move the
   folder with `mv`: the recorded
@@ -194,6 +204,7 @@ relay it, don't re-derive it), and `get_coverage` for the section counts. Then d
 marking only what you actually know:
 
 ```
+[x] Plugin               commonground 0.17.0
 [x] Signed in            sam@acme.com
 [x] Team                 Platform · admin
 [x] Claude connected     Code, last used today
@@ -204,6 +215,12 @@ marking only what you actually know:
 ```
 
 Rules for drawing it:
+
+- **The `Plugin` row is the version `commonground version` prints** (`commonground status --json`
+  carries the same string as `cliVersion`). Show it whenever you can get it: it is the first thing
+  anyone needs when something behaves oddly, and this ladder is the only place a user can see it. If
+  the verb isn't there, the installed plugin predates it — say that, and point at the update
+  instructions rather than guessing a number.
 
 - **A row you cannot determine is omitted, not guessed.** An unreadable count is not a zero, and
   `[ ]` against a step that is actually done is worse than saying nothing about it.

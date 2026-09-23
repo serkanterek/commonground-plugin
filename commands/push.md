@@ -40,6 +40,13 @@ pages and publishing rather than git. The CLI does print `commit(s)` and `N ahea
 places; when the user is reading that output, use its words rather than pretending it said something
 else — an explanation that contradicts the screen is worse than the jargon.
 
+**"Stop reminding me about publishing" is a setting you can change for them.** A session whose wiki
+folder holds unpublished pages opens with a reminder to publish. When the user would rather not see
+it, run `commonground prefs set push-nudge off` and say what it does: the start-of-session reminder
+stops, the pages stay exactly where they are, and `/commonground:status` still reports them whenever
+they ask. `commonground prefs set push-nudge on` brings it back. Don't apologise for a reminder you
+can turn off, and don't turn it off on your own initiative.
+
 ## 1. Preview first — always
 
 Run `commonground push --dry-run`. This changes nothing, locally or on the server, and reports the
@@ -116,17 +123,29 @@ for, close their request with `resolve_suggestion` (`applied`) and pass the `com
 Nothing was published, and **nothing was lost** — their work is still in the clone. Say that first;
 "your role is read-only" on its own reads like the work was rejected.
 
-The CLI names the pages they have unpublished. Offer to file them as **`suggest_change`** — one per
-page, carrying what they wrote and why it matters — so a curator can fold it in. That is a member's
-real publish path, and it is the difference between their knowledge reaching the team and sitting on
-their disk. Don't offer to make them a curator; that's the admin's call, not a step in this flow.
+The CLI names the pages they have unpublished. **When this session has the `suggest_change` tool**,
+offer to file them with it — one per page, carrying what they wrote and why it matters — so a
+curator can fold it in. That is a member's real publish path, and it is the difference between their
+knowledge reaching the team and sitting on their disk.
+
+The suggestions queue lives on the server, so **a local-mode project with no connector in this
+session cannot file one at all.** Don't offer a tool that isn't here: say the work is safe in the
+clone, and name the two real routes — `/commonground:point` in MCP mode, or sending a curator the
+pages directly. Either way, don't offer to make them a curator; that's the admin's call, not a step
+in this flow.
 
 ## 2b′. If the publish fails before anything is sent
 
 A `push` that dies on the way to the server says why in a sentence: the sign-in is no longer
-accepted (offer to sign them in again, then publish again), git could not present the sign-in
-(their git is too old; updating it is the fix), or the server could not be reached. **Nothing was
-published and nothing local was changed**, so say that, relay the sentence, and stop. Never work
+accepted (offer to sign them in again, then publish again), git could not present the sign-in (the
+CLI names the cause it can prove, so relay that sentence rather than diagnosing a git version
+yourself), or the server could not be reached. **Nothing was published**, so say that, relay the
+sentence as written, and stop. **Don't add "nothing was changed" on your own**: `push` commits the
+user's work into the wiki folder before it tries the server, so after a failure at that point the
+work IS committed, and the CLI says so where it can (`Your commit is safe in the folder; the publish
+did not reach the server`). That half is the reassurance they need before they retype anything, so
+relay whatever the CLI said about it and add nothing of your own. If its sentence is silent on the
+folder, say the work is still there rather than claiming it was untouched. Never work
 around it by putting the sign-in in a file, a `.netrc`, a keychain, a git credential helper or the
 wiki's address, and never "publish" the same pages through the MCP write tools instead: in a
 local-clone project that is the wrong path even when it would work.

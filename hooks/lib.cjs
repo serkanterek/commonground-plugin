@@ -98,6 +98,34 @@ function readActiveWiki() {
   }
 }
 
+/**
+ * The user's own preferences, from the same `state.json` the active-wiki pointer lives in (SER-325).
+ *
+ * READ-ONLY here, for the reason `readActiveWiki` is: `commonground prefs set` is the only writer,
+ * so a hook can never quietly change what a later session does. An absent or unparseable file is
+ * `{}`, which means every preference falls back to its default rather than to silence.
+ */
+function readPrefs() {
+  try {
+    const raw = JSON.parse(fs.readFileSync(statePath(), 'utf8'));
+    const prefs = raw && raw.prefs;
+    return prefs && typeof prefs === 'object' && !Array.isArray(prefs) ? prefs : {};
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * Is the "you have unpublished work" nudge wanted? ON unless the user turned it off.
+ *
+ * `commonground prefs set push-nudge off` is what a person gets when they say stop reminding me
+ * about publishing — a real answer, rather than a nudge that keeps arriving and teaches them to
+ * read past everything this hook says.
+ */
+function pushNudgeEnabled() {
+  return String(readPrefs().pushNudge || '').trim().toLowerCase() !== 'off';
+}
+
 function apiBase() {
   return (process.env.COMMONGROUND_API_URL || DEFAULT_API).replace(/\/+$/, '');
 }
@@ -144,6 +172,27 @@ function governingClaudeMd(cwd) {
 /** True when the CLAUDE.md governing this folder carries the CommonGround router block (i.e. it's initialized). */
 function isInitialized(cwd) {
   return governingClaudeMd(cwd) !== null;
+}
+
+/**
+ * The clone block's own heading, which is how a session opened INSIDE a wiki folder is told from a
+ * project that reads one (SER-325). Hand-mirrored from `cloneRouterRule` in the agent's
+ * `injection.ts`; `clone-path-drift.test.ts` is what keeps the two honest.
+ */
+const CLONE_BLOCK_HEADING = '## CommonGround wiki (this folder is the working copy)';
+
+/**
+ * Is the CLAUDE.md governing `cwd` the CLONE's own — i.e. is this session standing inside a wiki
+ * folder rather than in a project that reads one?
+ *
+ * It matters for anything that tries to REPAIR a project's binding. A clone has no `.claude/`
+ * settings to fix and never wanted one: writing there leaves a stray file inside the wiki that the
+ * next publish would carry to everyone, and the receipt would tell the user to restart a session
+ * to apply a repair that was never needed.
+ */
+function isCloneSession(cwd) {
+  const md = governingClaudeMd(cwd);
+  return md !== null && md.includes(CLONE_BLOCK_HEADING);
 }
 
 /**
@@ -621,22 +670,45 @@ function welcomedPath() {
   return path.join(configHome(), 'welcomed.json');
 }
 
-/** Has this machine's user already been welcomed? Unreadable/absent → not yet (fail toward saying it once). */
-function hasWelcomed() {
+/**
+ * The whole welcome record, or `{}` — one reader so the two marks can never clobber (SER-325).
+ *
+ * There are TWO welcomes, and they are different moments: `install` speaks to someone who has not
+ * signed in yet, `connected` to someone who has and whose project is not pointed at a wiki. One
+ * shared mark meant the first one spent the second, permanently — the install sentence fires first
+ * in the normal order, so the richer post-sign-in message could never be seen by the people it was
+ * written for. A file written before this carries only `welcomedAt`, which still suppresses both.
+ */
+function readWelcomed() {
   try {
     const raw = JSON.parse(fs.readFileSync(welcomedPath(), 'utf8'));
-    return raw && raw.welcomedAt ? true : false;
+    return raw && typeof raw === 'object' ? raw : {};
   } catch {
-    return false;
+    return {};
   }
 }
 
-/** Record the welcome. Best-effort: if this fails the worst case is saying it twice, never a crash. */
-function markWelcomed(now) {
+/**
+ * Has this user already had this welcome? Unreadable/absent → not yet (fail toward saying it once).
+ *
+ * `install` is also suppressed by the connected mark: someone who was welcomed while signed in and
+ * later signs out must not be told the plugin is installed, which they plainly know.
+ */
+function hasWelcomed(kind) {
+  const raw = readWelcomed();
+  return kind === 'install'
+    ? Boolean(raw.installWelcomedAt || raw.welcomedAt)
+    : Boolean(raw.welcomedAt);
+}
+
+/** Record one welcome, keeping the other's mark. Best-effort: worst case is saying it twice. */
+function markWelcomed(now, kind) {
   try {
     const p = welcomedPath();
+    const field = kind === 'install' ? 'installWelcomedAt' : 'welcomedAt';
+    const next = { ...readWelcomed(), [field]: now };
     fs.mkdirSync(path.dirname(p), { recursive: true, mode: 0o700 });
-    fs.writeFileSync(p, JSON.stringify({ welcomedAt: now }), { mode: 0o600 });
+    fs.writeFileSync(p, JSON.stringify(next), { mode: 0o600 });
     fs.chmodSync(p, 0o600);
   } catch {
     /* best-effort */
@@ -694,7 +766,32 @@ function lastAnnouncedRelease() {
  * a far better failure than a hook that throws.
  */
 function markReleaseAnnounced(version) {
-  writeUpdateState({ announced: version });
+  writeUpdateState({ announced: version, sinceAnnounced: 0 });
+}
+
+/**
+ * How many sessions have passed, in silence, since we last announced this release (SER-325).
+ *
+ * "Once per release" was the right correction to "every session", and it overshot: someone who is
+ * mid-task the one time it speaks never hears about the release again, and stays on that build
+ * until they happen to reinstall. Every fifth session is the middle — often enough to reach
+ * somebody who was busy, rare enough that it is not the thing they learn to skip.
+ */
+const RELEASE_REANNOUNCE_EVERY = 5;
+
+/** Should the notice for `latest` render this session? Silence is ONLY for a release already said. */
+function shouldAnnounceRelease(latest) {
+  if (!latest) return false;
+  if (lastAnnouncedRelease() !== latest) return true;
+  const seen = readUpdateState().sinceAnnounced;
+  return (typeof seen === 'number' ? seen : 0) + 1 >= RELEASE_REANNOUNCE_EVERY;
+}
+
+/** Record a session that saw the release and said nothing, so the fifth one speaks. */
+function noteReleaseSilence(latest) {
+  if (!latest || lastAnnouncedRelease() !== latest) return;
+  const seen = readUpdateState().sinceAnnounced;
+  writeUpdateState({ sinceAnnounced: (typeof seen === 'number' ? seen : 0) + 1 });
 }
 
 /** How long a release verdict is trusted. Releases are rare; a drifted machine can wait half a day. */
@@ -941,14 +1038,30 @@ function sessionIdOf(input) {
  * home deliberately: that is the only state location OUTSIDE every plugin version directory, so it
  * survives the swap it exists to detect (a marker inside the install would vanish with it).
  */
-function versionMarkerPath() {
-  return path.join(configHome(), VERSION_FILE);
+/**
+ * KEYED PER SESSION since SER-325, not one file per machine.
+ *
+ * The baseline exists to answer "did the plugin change under THIS session". One shared file could
+ * not: two sessions open at once take turns overwriting each other's `sessionId`, so the swap check
+ * in the prompt hook sees "another session's baseline" — which it correctly refuses to draw any
+ * conclusion from — and a real swap goes unannounced for both. Anyone with two terminals open had
+ * the detection silently off.
+ *
+ * The id is hashed rather than interpolated: it arrives from the host and becomes a filename, and
+ * a path separator in it would write outside the config home. Without one (an old host, a manual
+ * run) the historical machine-wide name is used, so nothing regresses for callers that have no id.
+ */
+function versionMarkerPath(sessionId) {
+  const id = typeof sessionId === 'string' && sessionId.trim() ? sessionId.trim() : null;
+  if (!id) return path.join(configHome(), VERSION_FILE);
+  const key = crypto.createHash('sha256').update(id).digest('hex').slice(0, 16);
+  return path.join(configHome(), `plugin-version-${key}.json`);
 }
 
-/** The recorded `{ sessionId, version, at }` baseline, or null when absent/unreadable. */
-function readVersionMarker() {
+/** The recorded `{ sessionId, version, at }` baseline for this session, or null when absent. */
+function readVersionMarker(sessionId) {
   try {
-    return JSON.parse(fs.readFileSync(versionMarkerPath(), 'utf8'));
+    return JSON.parse(fs.readFileSync(versionMarkerPath(sessionId), 'utf8'));
   } catch {
     return null;
   }
@@ -958,24 +1071,37 @@ function readVersionMarker() {
 function writeVersionMarker(sessionId, version) {
   if (!version) return;
   try {
-    const p = versionMarkerPath();
+    const p = versionMarkerPath(sessionId);
     fs.mkdirSync(path.dirname(p), { recursive: true, mode: 0o700 });
     fs.writeFileSync(p, JSON.stringify({ sessionId: sessionId || null, version, at: Date.now() }), {
       mode: 0o600,
     });
     fs.chmodSync(p, 0o600); // `mode` is ignored when overwriting an existing file — enforce it (as config.ts does)
+    sweepVersionMarkers();
   } catch {
     /* best-effort marker */
   }
 }
 
-/**
- * GET a `/wiki/*` JSON read with the device token, bounded by a timeout. Returns null on any failure.
- *
- * `headers` lets a caller SELECT a wiki (`x-cg-wiki`, SER-241) — one sign-in reaches every wiki the
- * user belongs to, so the SessionStart hook can read an also-wiki's state with the same token it
- * holds for the primary (SER-278). Never an authorization: the server re-checks membership.
- */
+/** A session's marker outlives its session, so old ones are swept. Best-effort and bounded. */
+const VERSION_MARKER_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+function sweepVersionMarkers(now = Date.now()) {
+  try {
+    const dir = configHome();
+    for (const name of fs.readdirSync(dir)) {
+      if (!/^plugin-version-[0-9a-f]{16}\.json$/.test(name)) continue;
+      const p = path.join(dir, name);
+      try {
+        if (now - fs.statSync(p).mtimeMs > VERSION_MARKER_TTL_MS) fs.unlinkSync(p);
+      } catch {
+        /* one unreadable marker never stops the sweep */
+      }
+    }
+  } catch {
+    /* best-effort */
+  }
+}
+
 /**
  * GET a PUBLIC json read with no credential at all (SER-296) — the sibling of {@link fetchJson} for
  * the paths that hold no device token. Declares the client like every other call, because the whole
@@ -996,8 +1122,26 @@ async function fetchPublicJson(pathname, timeoutMs) {
   }
 }
 
-async function fetchJson(pathname, binding, timeoutMs, headers) {
-  if (typeof fetch !== 'function') return null; // very old Node without global fetch → skip
+/**
+ * GET a `/wiki/*` JSON read with the device token, bounded by a timeout, SAYING WHY it failed:
+ * `{ ok, status, body }` (SER-325).
+ *
+ * `headers` lets a caller SELECT a wiki (`x-cg-wiki`, SER-241) — one sign-in reaches every wiki the
+ * user belongs to, so the SessionStart hook can read an also-wiki's state with the same token it
+ * holds for the primary (SER-278). Never an authorization: the server re-checks membership.
+ *
+ * `fetchJson` collapses every failure to null, so the SessionStart hook could only ever report
+ * "CommonGround could not be reached" — which is false, and misleading, for the two failures that
+ * are not outages at all. A 401 is a sign-in the server would not accept; a 403 is a membership
+ * this person no longer has. Both send Claude hunting for a network problem that is not there, and
+ * neither is fixed by waiting.
+ *
+ * `status` is 0 when the request never got an answer (no fetch, DNS, timeout, refused connection),
+ * which is the only case that honestly reads as unreachable. A body that will not parse is `ok`
+ * with a null body: the door answered, so the diagnosis is not a connection one.
+ */
+async function fetchJsonResult(pathname, binding, timeoutMs, headers) {
+  if (typeof fetch !== 'function') return { ok: false, status: 0, body: null };
   const ac = new AbortController();
   const timer = setTimeout(() => ac.abort(), timeoutMs);
   try {
@@ -1010,13 +1154,23 @@ async function fetchJson(pathname, binding, timeoutMs, headers) {
       headers: { authorization: `Bearer ${binding.token}`, ...clientHeader(), ...(headers || {}) },
       signal: ac.signal,
     });
-    if (!res || !res.ok) return null;
-    return await res.json();
+    if (!res) return { ok: false, status: 0, body: null };
+    if (!res.ok) return { ok: false, status: res.status || 0, body: null };
+    try {
+      return { ok: true, status: res.status || 200, body: await res.json() };
+    } catch {
+      return { ok: true, status: res.status || 200, body: null };
+    }
   } catch {
-    return null;
+    return { ok: false, status: 0, body: null };
   } finally {
     clearTimeout(timer);
   }
+}
+
+/** The body of {@link fetchJsonResult}, or null — the shape every caller that only wants data uses. */
+async function fetchJson(pathname, binding, timeoutMs, headers) {
+  return (await fetchJsonResult(pathname, binding, timeoutMs, headers)).body;
 }
 
 /** The team-profile cache the CLI keeps beside the token — non-secret, and never written here. */
@@ -1118,6 +1272,101 @@ function cloneHasCommit(teamId, oid) {
   }
 }
 
+/**
+ * What the wiki folder actually HOLDS: `{ pages, charter }`, or null when there is no folder
+ * (SER-325).
+ *
+ * The state DTO describes the PUBLISHED wiki, so a local project seeded but never pushed is
+ * reported empty and unchartered. Acting on that tells the user to start seeding a wiki whose
+ * pages are sitting on their own disk. Only this side can see them.
+ *
+ * Filesystem only, bounded to three levels, and fail-open: a folder it cannot read says nothing
+ * rather than claiming the wiki is empty, which is the claim that caused this.
+ */
+function cloneContents(teamId) {
+  try {
+    const dir = clonePath(teamId);
+    if (!fs.existsSync(path.join(dir, '.git'))) return null;
+    let pages = 0;
+    let charter = false;
+    const walk = (rel, depth) => {
+      for (const entry of fs.readdirSync(rel ? path.join(dir, rel) : dir, { withFileTypes: true })) {
+        const name = entry.name;
+        // Dot-directories, the raw-source store and the injected tooling are not pages.
+        if (name.startsWith('.') || name === 'sources' || name === 'node_modules') continue;
+        const child = rel ? `${rel}/${name}` : name;
+        if (entry.isDirectory()) {
+          if (depth < 3) walk(child, depth + 1);
+          continue;
+        }
+        if (!name.toLowerCase().endsWith('.md')) continue;
+        if (name === 'index.md' || name === 'CLAUDE.md') continue;
+        if (name === 'wiki-charter.md') {
+          charter = true;
+          continue;
+        }
+        pages += 1;
+      }
+    };
+    walk('', 0);
+    return { pages, charter };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * What is sitting in the clone that `commonground push` would publish — `{ files, pages }` — or
+ * null when there is no clone to look at (SER-325).
+ *
+ * The sync nudge used to compare HEADs and nothing else, so a session that wrote five pages and
+ * never committed them saw two identical HEADs and said nothing at all. That is the most common
+ * shape unpublished work takes: Claude writes a page, the user closes the terminal, and the next
+ * session is told the wiki is in step with the team when the pages are still only on this machine.
+ *
+ * `--untracked-files=all` rather than git's default, which collapses a new folder to one entry and
+ * would report "1 file" for a directory of pages. The injected tooling (`CLAUDE.md`, the maintainer
+ * skill) is excluded through `.git/info/exclude`, so it is invisible here exactly as it is to the
+ * publish itself.
+ *
+ * PAGE-SHAPED mirrors what the CLI counts: markdown outside `sources/`, and never `index.md`
+ * (regenerated on publish). Bounded and fail-open like every git call here — a slow or angry git
+ * says nothing rather than delaying the session's start.
+ */
+function cloneWorkingTreeWork(teamId) {
+  try {
+    const dir = clonePath(teamId);
+    if (!fs.existsSync(path.join(dir, '.git'))) return null;
+    const out = cp.execFileSync('git', ['-C', dir, 'status', '--porcelain', '--untracked-files=all'], {
+      encoding: 'utf8',
+      timeout: 1500,
+      stdio: ['ignore', 'pipe', 'ignore'],
+    });
+    // Mirrors `unpublishedWork` in apps/sync-agent/src/transport.ts (SER-325): the same rename
+    // split, the same folder-noise rule, the same idea of a page. `commonground status` and this
+    // nudge must report the same N for the same folder.
+    const NOISE = new Set(['.DS_Store', 'Thumbs.db', 'desktop.ini']);
+    const paths = out
+      .split('\n')
+      .filter((l) => l.trim().length > 0)
+      .map((line) => {
+        // `XY path`, and a rename prints `old -> new`; the destination is the one that exists.
+        const raw = line.slice(3).trim();
+        return (raw.includes(' -> ') ? raw.slice(raw.indexOf(' -> ') + 4) : raw).replace(/^"|"$/g, '');
+      })
+      .filter((p) => !NOISE.has(p.slice(p.lastIndexOf('/') + 1)));
+    let pages = 0;
+    for (const p of paths) {
+      if (!p.toLowerCase().endsWith('.md')) continue;
+      if (p === 'index.md' || p.startsWith('sources/')) continue;
+      pages += 1;
+    }
+    return { files: paths.length, pages };
+  } catch {
+    return null;
+  }
+}
+
 function escapeRegExp(s) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
@@ -1206,6 +1455,10 @@ module.exports = {
   projectTeamIds, // the whole set, primary first (SER-278)
   isInitialized,
   routerMode,
+  isCloneSession,
+  CLONE_BLOCK_HEADING,
+  readPrefs,
+  pushNudgeEnabled,
   legacyClonePath,
   pathExists,
   readStore,
@@ -1222,6 +1475,9 @@ module.exports = {
   hasWelcomed,
   lastAnnouncedRelease,
   markReleaseAnnounced,
+  shouldAnnounceRelease,
+  noteReleaseSilence,
+  RELEASE_REANNOUNCE_EVERY,
   releaseVerdict,
   rememberReleaseCheck,
   fetchPublicJson,
@@ -1237,11 +1493,14 @@ module.exports = {
   readVersionMarker,
   writeVersionMarker,
   fetchJson,
+  fetchJsonResult,
   clientHeader,
   clonePath,
   localCloneHead,
   cloneLooksUsable,
   cloneHasCommit,
+  cloneContents,
+  cloneWorkingTreeWork,
   matchKeywords,
   emitContext,
   governingClaudeMd,

@@ -96,19 +96,55 @@ function wrongWikiVerdict(cwd) {
   return {
     decision: 'deny',
     reason:
-      `Refused: this project is set up for CommonGround wiki ${bound}, but the connector has been ` +
-      `told to serve ${serving}. Reading would answer from a wiki this project isn't about, which ` +
-      `is worse than not answering — it looks like it worked. Ask Claude to re-point this project ` +
-      `(/commonground:point — it re-records what this project's CLAUDE.md names, every wiki of ` +
-      'it), then restart the session.',
+      `Restart this session. This project is set up for CommonGround wiki ${bound}, but this ` +
+      `session's connector was told to serve ${serving}, and an answer from the wrong wiki looks ` +
+      'exactly like a right one. The connector is told which wiki to serve when a session starts, ' +
+      'so a restart is what puts it right.',
     instruction:
       'This project and the CommonGround connector name different wikis, so every wiki answer here ' +
       'would come from the wrong one. Do NOT retry the tool and do not work around it with another ' +
-      'source. Tell the user plainly which two wikis disagree, and OFFER to fix it for them: run ' +
-      '"commonground init --refresh" in this project (it re-records the whole set; never ' +
-      `"commonground init ${bound}", which would reset the set of wikis this project reads to ` +
-      'that one alone), and say a session restart then applies it. Answer the rest of their ' +
-      'question from what you already have, saying the wiki was not consulted.',
+      'source. Tell the user plainly which two wikis disagree and that a session RESTART is what ' +
+      'applies the right one (the SessionStart hook re-records it for them). If a restart does not ' +
+      'end it, what this project records is stale: run "commonground init --refresh" here (it ' +
+      `re-records the whole set; never "commonground init ${bound}", which would reset the set of ` +
+      'wikis this project reads to that one alone). Answer the rest of their question from what ' +
+      'you already have, saying the wiki was not consulted.',
+  };
+}
+
+/**
+ * The project NAMES a wiki and this session's connector was never told which one (SER-325).
+ *
+ * This is the shape of the very first `/commonground:point`: `init` writes `COMMONGROUND_WIKI` into
+ * `.claude/settings.json`, Claude Code reads that file at session START, and the session doing the
+ * pointing therefore never sees it. Everything looks connected — the router block is there, the
+ * tools are there — and a write lands in whatever wiki the connector was last authorized for.
+ *
+ * {@link wrongWikiVerdict} cannot cover it and correctly does not try: with no variable there is no
+ * CONFIRMED mismatch, and denying on an unknown would break every project bound before 0.7.4 and
+ * every repo that gitignores the settings file. So this is an ASK, on WRITES only. A read from the
+ * wrong wiki in this state is a real risk too, but a prompt in front of every read would arrive
+ * dozens of times in the session immediately after pointing, and a guard people click through is
+ * the guard that was not there when it mattered.
+ *
+ * Silent whenever the env var IS set: the mismatch case above owns that ground.
+ */
+function unrecordedWikiVerdict(cwd) {
+  const bound = projectTeamId(cwd);
+  if (!bound) return null; // no declared wiki — nothing to compare, nothing to say
+  if ((process.env.COMMONGROUND_WIKI || '').trim()) return null; // recorded; not this case
+  return {
+    decision: 'ask',
+    reason:
+      `This project reads CommonGround wiki ${bound}, but this session was started before that ` +
+      'was recorded, so the connector has not been told which wiki to serve. This write may land ' +
+      'in a different wiki of yours. Restarting the session is what fixes it for good.',
+    instruction:
+      `This project's CLAUDE.md names wiki ${bound} and COMMONGROUND_WIKI is unset in this ` +
+      'session, which is the normal state immediately after a first /commonground:point (Claude ' +
+      'Code reads that file at session start). Tell the user to restart the session. If they want ' +
+      `it to go now anyway, pass \`wiki: "${bound}"\` explicitly on the call so the write cannot ` +
+      'land anywhere else. Reads are not gated here; only writes are.',
   };
 }
 
@@ -199,9 +235,23 @@ function outwardVerdict(tool) {
  */
 const GATED_COMMANDS = [
   {
-    // `commonground push|import`, however it is invoked — bare, via an absolute path to the bundled
-    // binary, or after a `cd ... &&`. Routing around the slash command is exactly how this failed.
-    re: /(^|[;&|(]|\s)([^\s;&|]*[/\\])?commonground\s+(push|import)(\s|$)/,
+    // `commonground push|import`, HOWEVER it is invoked (SER-325). Routing around the slash command
+    // is exactly how this failed once already, and the first matcher only understood the plainest
+    // spellings: bare, an unquoted absolute path, or after a `cd ... &&`. Every one of these got
+    // through it, and none is exotic — a path with a space in it is quoted by anything that writes
+    // one, and `bash -c` is how a model reaches for a shell when a direct call is refused:
+    //
+    //   "/Users/me/My Plugins/bin/commonground" push      (a quoted binary path)
+    //   node "/…/bin/commonground" push                   (run through node, as the hooks do)
+    //   bash -c "commonground push"                       (a shell inside the shell)
+    //   commonground.cmd push                             (Windows, where the shim carries .cmd)
+    //
+    // So a quote is a word boundary here, the binary may carry a Windows extension, and the verb
+    // may be followed by the closing quote rather than whitespace. It over-gates by construction:
+    // `git commit -m "commonground push"` now raises the dialog. That is the correct direction for
+    // a guard — a needless prompt costs one click, a missed one costs an unasked publish — and it
+    // is unavoidable, because `bash -c "commonground push"` is the same characters as a mention.
+    re: /(^|[;&|("'`]|\s)([^\s;&|"']*[/\\])?commonground(\.(?:cmd|exe|bat|ps1))?["']?\s+(push|import)([\s"'`]|$)/,
     // Shown to the PERSON in the approval dialog: what happens if they say yes, in plain language.
     reason:
       'This publishes your CommonGround wiki. From now on everyone who shares it — and every ' +
@@ -411,6 +461,12 @@ function decide(input) {
     };
   }
 
+  // The connector was never told which wiki this project reads (SER-325). Named rather than folded
+  // into the generic prompt below, because the two need different answers: this one is fixed by a
+  // restart, and the user cannot know that from a sentence about irreversibility.
+  const unrecorded = unrecordedWikiVerdict(projectCwd(input));
+  if (unrecorded) return unrecorded;
+
   // MCP mode — and also the uncertain case (no router block, unreadable CLAUDE.md). Uncertainty
   // resolves to ASK: the cost of a needless prompt is one click, the cost of a wrong allow is a
   // published page nobody asked for.
@@ -487,6 +543,7 @@ module.exports = {
   noticeFor,
   publishDetail,
   bareToolName,
+  unrecordedWikiVerdict,
   GATED_TOOLS,
   CONTENT_WRITE_TOOLS,
   OUTWARD_TOOLS,

@@ -10,6 +10,10 @@ rewrite pages silently. Lint never polices *content*: "too personal" or "not tea
 a finding kind — what belongs in the wiki is the charter's call (see `company/wiki-charter`), not
 lint's.
 
+**Running the CLI.** Every `commonground …` line in this file runs as
+`node "${CLAUDE_PLUGIN_ROOT}/bin/commonground" …`. That form works from both the Bash and the
+PowerShell tool; the bare word works only in Bash.
+
 ## 0. Which wiki are you linting?
 
 Establish the project's mode first (the SessionStart hook states it; else the `./CLAUDE.md` router
@@ -187,12 +191,24 @@ A short, grouped readout. Don't drown the user — surface the few that matter m
 1. **Open suggestions** — who asked for what, and against which page. Lead with these when there
    are any: they are the only findings with a person waiting on the other end.
 2. **Hygiene** — the `lint` findings, grouped by kind (stale / orphan / broken-citation /
-   thin-summary / redundant-summary / near-miss-tag / off-vocabulary-tag / uncategorised-page, plus
-   any contradiction / missing-cross-reference you found), each with the page(s) and a suggested
-   fix. Those last **five** each arrive as ONE finding for the whole wiki (each names a sample and a
-   count) — report each as one line, never expanded into a page-by-page list. That matters most for
-   the category kinds: an un-migrated wiki can carry dozens of off-vocabulary tags, and listing them
-   page by page buries every other finding in the report.
+   thin-summary / redundant-summary / near-miss-tag / off-vocabulary-tag / uncategorised-page /
+   unportable-name, plus any contradiction / missing-cross-reference you found), each with the
+   page(s) and a suggested fix. Those last **six** each arrive as ONE finding for the whole wiki
+   (each names a sample and a count) — report each as one line, never expanded into a page-by-page
+   list. That matters most for the category kinds: an un-migrated wiki can carry dozens of
+   off-vocabulary tags, and listing them page by page buries every other finding in the report.
+   `unportable-name` is about names, not content: files some machine that clones this wiki cannot
+   hold (a character Windows refuses, a trailing dot or space, a device name like `con`, a path too
+   long) or pairs that differ only in capitals, which a Mac or Windows keeps as one file. Say that a
+   clone there can fail or mix the pair up. There is no rename command: the fix is renaming the file
+   in a local clone, fixing its links and publishing. The push preview shows it as a rename, and
+   `push` then asks about the old name as a removal: confirm it as the same page under a new name.
+   For a pair that differs only in capitals, give all but one a distinct new name, never just a
+   different case of the same one (that is the other page's name). It needs a clone on a Linux
+   machine, whose disk tells the two apart; a Mac or Windows clone holds them as one file and can
+   publish nothing while the pair exists. A flagged file under `sources/` is a support repair, never
+   a rename you make: `sources/` is append-only. If nobody on the wiki has the clone it takes,
+   CommonGround support can do the rename.
    Add **one** line if the retired-key sweep found anything — how many pages still carry a key the
    schema no longer has, and which keys. It is not a per-page defect and must not be listed as one.
 3. **Coverage gaps** — overall progress **exactly as reported** (never recomputed), then the empty

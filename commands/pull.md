@@ -7,6 +7,10 @@ Bring this project's local CommonGround clone up to date with the hosted wiki. *
 pull**, including read-only members. Pulling never overwrites your own work on its own: if there's
 a clash it stops and asks.
 
+**Running the CLI.** Every `commonground …` line in this file runs as
+`node "${CLAUDE_PLUGIN_ROOT}/bin/commonground" …`. That form works from both the Bash and the
+PowerShell tool; the bare word works only in Bash.
+
 > **Normally local-clone mode only** — in MCP mode the wiki is live through the connector, so
 > there's nothing to pull. **One exception:** if the CommonGround tools are gone or failing (a
 > plugin update can drop the connector mid-session), `commonground pull` still works — it
@@ -43,10 +47,12 @@ Run `commonground pull` — passing `$ARGUMENTS` as the wiki when it names one, 
   nothing of theirs was removed.) **Relay that path** — it is where
   their team's context now lives, and it's the folder they'd open in an editor. Then offer to answer
   a question from it. If they'd rather it lived somewhere else, offer to move it for them — you
-  run `commonground relocate <folder>`, which moves the files and updates this project's
-  `./CLAUDE.md`.
+  run `commonground relocate "<folder>"`, which moves the files and records the new spot.
 - **Up to date** — nothing incoming. If it also mentions **unpublished changes**, tell the user
-  they have local work that hasn't been published and offer `/commonground:push`.
+  they have local work that hasn't been published and offer `/commonground:push`. For a member the
+  line says the work is safe on this machine and offers a suggestion for a curator instead; relay
+  that rather than offering a publish they cannot make, and offer `suggest_change` only when this
+  session has it (otherwise the routes in `/commonground:push` §2b).
 - **Updated** — it fast-forwarded. Report the pages that came in, by name (the CLI prints the
   receipt), so the user knows what changed.
 - **Blocked** — the hosted wiki moved *and* the user has local work that would be overwritten.
@@ -63,6 +69,10 @@ Run `commonground pull` — passing `$ARGUMENTS` as the wiki when it names one, 
      is snapshotted to a recoverable `draft/…` branch first, so nothing is lost — say that plainly,
      it's what makes this safe to choose.
   3. **Decide later** — do nothing; the clone stays exactly as it is.
+
+  On a Mac or Windows clone whose publishes `push` refuses over a pair of pages that differ only in
+  letter case (push.md §3c), option 1 is not available until this pull lands: offer 2, and say their
+  work waits on the draft branch for them to bring back and publish.
 
 Never run `--take-remote` without an explicit yes: it replaces the working copy. When it does run,
 report the draft branch it saved their work on, so they know how to get it back.

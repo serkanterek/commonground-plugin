@@ -8,6 +8,10 @@ pasted notes, a meeting transcript, a doc or URL, a decision you just made — a
 schema-correct, retrievable pages. All drafting happens **in this session, on the user's tokens**
 (Model A) — you produce the markdown; CommonGround persists it.
 
+**Running the CLI.** Every `commonground …` line in this file runs as
+`node "${CLAUDE_PLUGIN_ROOT}/bin/commonground" …`. That form works from both the Bash and the
+PowerShell tool; the bare word works only in Bash.
+
 ## 0. Establish the mode FIRST — it decides where every write lands
 
 **Do this before anything else, and never infer it from which tools are available.** The

@@ -6,11 +6,18 @@ argument-hint: "nothing needed; name a wiki to ask about that one"
 Orient the user in CommonGround: what it is (briefly, if they're new to it here), whether this
 project is connected, and what to do next. Adapt to what's true — don't run steps that don't apply.
 
+**Running the CLI.** Every `commonground …` line in this file runs as
+`node "${CLAUDE_PLUGIN_ROOT}/bin/commonground" …`. That form works from both the Bash and the
+PowerShell tool; the bare word works only in Bash.
+
 ## 1. Connection + identity
 
 Run `commonground status` — with `$ARGUMENTS` as the wiki when it names one, bare otherwise (the
 project's own binding resolves it). Report whether the user is signed in, the team, their role,
-and (local-clone mode) the sync state / any divergence.
+and (local-clone mode) the sync state / any divergence. If `commonground` or `node` is not found,
+follow `/commonground:point` step 1's not-found branch: check the spelling first (run it the way
+the top of this file says), never install anything unasked, and only after installing Node or Git,
+or reinstalling the plugin, have them restart Claude Code before anything else runs.
 
 **Lead with the mode**, because it decides where this project's work lands. The CLI states it
 outright on a `Mode:` line (`Mode: local, wiki folder <path>` / `Mode: hosted connector (MCP)`), so
@@ -25,14 +32,17 @@ relay that rather than inferring one:
   reports unpublished work, lead with the count it gives** (`N pages in your wiki folder are not
   published yet`, or files when none of them are pages). That line counts pages the user has WRITTEN,
   committed or not, so it is the honest answer to "did my work go out?" — never soften it into "up to
-  date", and offer `/commonground:push`. **If they ask to stop being reminded about unpublished
+  date", and offer `/commonground:push`. For a member (no publishing role) the CLI says instead that
+  the work is safe on this machine and can go to a curator as a suggestion; relay that, offering
+  `suggest_change` only when this session has it (otherwise the routes in `/commonground:push` §2b),
+  and don't offer a publish they cannot make. **If they ask to stop being reminded about unpublished
   pages, that is a setting, not an apology:** run `commonground prefs set push-nudge off`, which
   turns off the start-of-session reminder (`commonground prefs set push-nudge on` brings it back).
   It silences the reminder, never the work: this command still reports the count when asked. If they'd rather the
   folder lived somewhere else, offer to move it for them — you run `commonground relocate
-  <folder>`, which moves the files and repoints this project's `./CLAUDE.md`. (Never move the
-  folder with `mv`: the recorded
-  location and the router block would both go stale, and the next command would clone a second copy.)
+  "<folder>"`, which moves the files and records the new spot (no project's `./CLAUDE.md` names a
+  folder, so nothing else changes). (Never move the folder with `mv`: the recorded location would go
+  stale, and the next command would clone a second copy.)
 - **MCP mode** — say there's no local copy, so every write via `save_page` is immediately live — for
   the whole team on a shared wiki, for the user's other Claude sessions on a personal one.
 
@@ -204,7 +214,7 @@ relay it, don't re-derive it), and `get_coverage` for the section counts. Then d
 marking only what you actually know:
 
 ```
-[x] Plugin               commonground 0.17.0
+[x] Plugin               commonground 0.18.0
 [x] Signed in            sam@acme.com
 [x] Team                 Platform · admin
 [x] Claude connected     Code, last used today

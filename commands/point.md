@@ -21,6 +21,10 @@ too" mean `--also`; "stop reading Hipo here" means `--drop`). The first wiki a p
 
 The bundled `commonground` CLI talks to the hosted API by default (no env setup needed).
 
+**Running the CLI.** Every `commonground …` line in this file runs as
+`node "${CLAUDE_PLUGIN_ROOT}/bin/commonground" …`. That form works from both the Bash and the
+PowerShell tool; the bare word works only in Bash.
+
 ## 1. Check sign-in state
 
 Run `commonground status` (`--json` gives the machine-readable form, which step 4 reads for `mode`
@@ -32,6 +36,24 @@ and no sync fields; `mode` and `probe` are still there, so step 4 can read them 
   are signed in; this folder is simply not pointed anywhere yet, so nothing can choose for them. The
   message lists their wikis by name: relay those names, ask which one this project should read, and
   carry the answer into step 3. It is step 3's question arriving early, so don't ask it twice.
+- **`commonground` or `node` is not found** (`command not found`, or PowerShell's `is not
+  recognized`). First check the spelling: the bare `commonground` exists only in the
+  Bash tool, so run it the way the top of this file says. If `node` runs but cannot find the
+  module, the plugin's `bin/` did not install: reinstall the plugin (`/plugin`), then restart. If
+  `node` itself is not found, this machine has no Node that Claude Code can see, and nothing in
+  CommonGround runs without it: not this command, not its hooks, not the connector. Say so plainly
+  (nothing is wrong with the wiki), and offer to walk them through installing what is missing, for
+  the platform this session runs on:
+  - **Windows:** Node 20 or newer from nodejs.org, and for a local wiki folder Git for Windows
+    (`winget install --id Git.Git -e --source winget`, or the installer from git-scm.com), which
+    also gives Claude Code its Bash tool.
+  - **WSL:** install inside WSL, never on the Windows side: `sudo apt install git`, and Node 20 or
+    newer (nodejs.org lists the ways; a distro's own package can be older than 20).
+  - **macOS or Linux:** Node 20 or newer, from nodejs.org or the package manager.
+
+  Then they **restart Claude Code** and run `/commonground:point` again. A running Claude Code keeps
+  the PATH and the tools it started with, so run nothing else before the restart: it would only
+  report the same thing missing. **Never run an installer they did not ask for.**
 
 ## 2. Sign in (device-code login)
 
@@ -176,11 +198,15 @@ in the options themselves so the choice is informed:
   published version with nothing to pull. Nothing on disk. Needs a session restart and the
   connector's own consent (`/mcp`).
 - **Help me install git** — offer this third option only when the probe says git is missing. Walk
-  them through it for their OS, re-run the probe, then come back to this question: **macOS**
-  `xcode-select --install` (Apple's Command Line Tools installer); **Linux** their distro's package
-  (`sudo apt install git`, `sudo dnf install git`, and so on); **Windows** Git for Windows from
-  git-scm.com. **Never run an installer they did not ask for**, and never install one as a side
-  effect of pointing a project.
+  them through it for their OS: **macOS** `xcode-select --install` (Apple's Command Line Tools
+  installer); **Linux** their distro's package (`sudo apt install git`, `sudo dnf install git`, and
+  so on); **WSL** (`probe.host.os` is `wsl`) the same Linux package, installed inside WSL, never Git
+  for Windows; **Windows** Git for Windows, `winget install --id Git.Git -e --source winget` or the
+  installer from git-scm.com. On macOS, Linux and WSL, re-run the probe once it is in, then come back
+  to this question. On Windows the next step is to **restart Claude Code** and run
+  `/commonground:point` again: the running session keeps the PATH it started with, so a probe before
+  the restart still says git is missing. **Never run an installer they did not ask for**, and never
+  install one as a side effect of pointing a project.
 
 Neither answer changes claude.ai Chat: it reaches a wiki through the connector whichever mode this
 project is in (step 7). Then wait for the answer: a mode that resolves itself is how a project's
@@ -207,28 +233,38 @@ directory appears. Ask it as a confirm-or-override, never as an open-ended "wher
 > somewhere else (say, in your notes folder)?"*
 
 - Accepting the default → run `init` with no `--path`.
-- Naming a folder → pass it: `commonground init --mode local --path "<folder>" [wiki]`. It must be
-  **empty or not exist yet**; the CLI refuses a folder with files in it and points at
-  `commonground import` instead, which is the right tool for "I already have notes there".
+- Naming a folder → pass it, quoted: `commonground init --mode local --path "<folder>" [wiki]`. It
+  must be **empty or not exist yet**; the CLI refuses a folder with files in it and points at
+  `commonground import` instead, which is the right tool for "I already have notes there". On
+  Windows, write the folder with forward slashes (`C:/Users/<you>/wiki`), which every shell passes
+  through unchanged.
+- **On Windows, keep the wiki out of OneDrive and Dropbox.** Documents and Desktop are often inside
+  OneDrive, and a sync client rewriting files in a git folder can corrupt it and holds files open.
+  Don't suggest such a folder; if they name one, say this once and let them choose.
+- **On WSL** (`probe.host.os` is `wsl`), the default lives in the Linux home, which is where git is
+  fast. Say where Windows apps such as Obsidian see it:
+  `\\wsl.localhost\<distro>\home\<you>\CommonGround\<wiki>` (`<distro>` is `probe.host.distro`;
+  older Windows builds spell it `\\wsl$\<distro>\…`). A Windows folder is `/mnt/c/…` from inside
+  WSL; the CLI refuses a `C:\…` spelling there and names that one.
 - **There is no folder question in MCP mode**, and `--path` is refused there — including beside
   `--also`. The CLI says so rather than dropping the flag, so relay the refusal instead of retrying.
 - If the wiki is **already cloned**, `--path` is refused by design (it would strand the old folder,
   unpublished work and all). To move an existing folder, offer to run `commonground relocate
-  <folder> [wiki]` for them — it moves the files, remembers the new spot, and updates this
-  project's `./CLAUDE.md`.
+  "<folder>" [wiki]` for them. It moves the files and remembers the new spot, and nothing else needs
+  updating: no project's `./CLAUDE.md` names a folder.
 - An existing folder is **connected, not refreshed** — see step 5. Local mode is safe to pick for a
   user who already has a clone: nothing in it moves.
 
 ## 5. Point it
 
-Run `commonground init --mode <mcp|local> [--path <folder>] <wiki>`, then `commonground use <wiki>`.
+Run `commonground init --mode <mcp|local> [--path "<folder>"] <wiki>`, then `commonground use <wiki>`.
 `--mode` is required on a first bind and refused beside `--also`, `--drop` and `--refresh`; a
 re-`init` of a project that already has a router block inherits the mode recorded there, so leave it
 off unless the user asked to switch.
 
 **Adding or dropping instead?** The project is already pointed, so its mode and its primary are
 settled — don't pass `--mode` or a bare wiki name beside the flag:
-- add: `commonground init --also <wiki>` (local mode: add `--path <folder>` to choose where THAT
+- add: `commonground init --also <wiki>` (local mode: add `--path "<folder>"` to choose where THAT
   wiki's folder goes; same confirm-or-override as step 4, same refusal of a non-empty folder; an
   existing clone is connected, not refreshed). Nothing about the wikis it already reads changes.
 - drop: `commonground init --drop <wiki>`. Its folder, if any, is untouched; the project simply
@@ -304,7 +340,8 @@ and stop there.** Do not follow it with `commonground pull`, `push`, `sync` or `
 the setup": someone pointing a project has not asked you to reconcile their work, and a folder that
 is ahead of the server holds the only copy of whatever is in it. Reconciling is its own decision, made
 later, by them — offer `/commonground:pull` or `/commonground:push` as a next step if it's relevant
-and let them choose.
+and let them choose. A member cannot publish: offer `/commonground:pull` only, and relay the
+receipt's suggestion line in place of a publish (`suggest_change` only when this session has it).
 
 **Re-pointing an already-pointed project is the same command.** The block records the wiki it's bound
 to, and a project that named its wiki always keeps it until this command says otherwise — which is

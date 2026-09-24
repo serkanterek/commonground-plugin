@@ -928,6 +928,20 @@ function cliPath() {
   }
 }
 
+/**
+ * How Claude should SPELL a CLI command this hook hands it: `node "<cli>" <args>` when the bundled
+ * binary is known, else the bare `commonground <args>` (SER-327).
+ *
+ * Claude Code puts the plugin's `bin/` on PATH in the Bash tool only, and PowerShell cannot run an
+ * extensionless shebang file at all, so the bare word is a command that works in one of the two
+ * shells Claude may pick. `node` plus the quoted absolute path runs from both, survives a space in
+ * the path, and is the same form `recordProjectWiki` already uses. The bare fallback is for a
+ * machine with no bundle (a dev checkout), where there is no path to name.
+ */
+function cliCommand(cli, args) {
+  return cli ? `node "${cli}" ${args}` : `commonground ${args}`;
+}
+
 /** Does this path exist on THIS machine? Fail-open to `true` — never claim absence we can't prove. */
 function pathExists(p) {
   try {
@@ -1213,20 +1227,162 @@ function clonePath(teamId) {
 }
 
 /**
- * Does the folder at this wiki's clone path LOOK like a finished clone (SER-320)? Filesystem only,
- * no `git`: it runs at every session start, and a slow git must never turn into a false "your wiki
- * folder is missing". A finished clone has a `HEAD` and at least one ref; a `git clone` killed
- * mid-flight has the first and not the second, and the stub an old `init` manufactured in a
- * non-repository (`.git/info/` and nothing else) has neither.
+ * Does the folder at this wiki's clone path LOOK like a finished clone (SER-320)? Filesystem first:
+ * it runs at every session start, and a slow git must never turn into a false "your wiki folder is
+ * missing". A finished clone has a `HEAD` and at least one ref; a `git clone` killed mid-flight has
+ * the first and not the second, and the stub an old `init` manufactured in a non-repository
+ * (`.git/info/` and nothing else) has neither.
+ *
+ * Since SER-327 a finished clone also finished its CHECKOUT ({@link checkoutUnfinished}). That asks
+ * git only when the index is missing or empty, and a git that cannot answer leaves the folder
+ * counted as usable, for the reason above.
  */
 function cloneLooksUsable(teamId) {
   try {
-    const git = path.join(clonePath(teamId), '.git');
-    if (!fs.existsSync(path.join(git, 'HEAD'))) return false;
-    if (fs.existsSync(path.join(git, 'packed-refs'))) return true;
-    return fs.readdirSync(path.join(git, 'refs', 'heads')).length > 0;
+    const dir = clonePath(teamId);
+    const gitDir = gitDirOf(dir);
+    // `undefined` is "git could not say where a `.git` FILE points", never grounds for "missing".
+    if (gitDir === undefined) return true;
+    if (!gitDir || !fs.existsSync(path.join(gitDir, 'HEAD'))) return false;
+    // `null` is "git could not say", and that is never grounds for calling a folder missing.
+    return holdsRef(dir, gitDir) && checkoutUnfinished(dir, gitDir) !== true;
   } catch {
     return false;
+  }
+}
+
+/** What git said a `.git` FILE points to, per folder, for this process ({@link gitDirOf}). */
+const askedGitDirs = new Map();
+
+/**
+ * This clone's git directory: `<dir>/.git`, or where a `.git` FILE points (SER-327). `null` when
+ * there is none, and `undefined` when git could not answer.
+ *
+ * Filesystem first, because every clone the CLI makes has a `.git` directory. A clone made with
+ * `--separate-git-dir`, or a linked worktree, has a `.git` FILE naming a directory elsewhere, and a
+ * path joined onto it called that finished clone missing while the CLI, which asks git for the same
+ * directory (`checkoutUnfinished` in clone-state.ts), called it usable. Only that shape asks git,
+ * bounded like every git call here, and only a git that ANSWERED "not a repository" says there is
+ * none.
+ *
+ * Git's answer is kept per folder ({@link askedGitDirs}): a session start asks this of one folder up
+ * to four times, and each hook run is a process of its own, so a kept answer cannot go stale.
+ */
+function gitDirOf(dir) {
+  const dotGit = path.join(dir, '.git');
+  let info;
+  try {
+    info = fs.statSync(dotGit);
+  } catch {
+    return null;
+  }
+  if (info.isDirectory()) return dotGit;
+  if (!askedGitDirs.has(dir)) askedGitDirs.set(dir, askGitDir(dir));
+  return askedGitDirs.get(dir);
+}
+
+/** {@link gitDirOf}'s question to git, for a folder whose `.git` is a FILE. */
+function askGitDir(dir) {
+  try {
+    return gitRead(dir, ['rev-parse', '--absolute-git-dir']).trim() || null;
+  } catch (e) {
+    return e && typeof e.status === 'number' && e.status !== 0 ? null : undefined;
+  }
+}
+
+/** One bounded git read in the clone at `dir`: its stdout, or a throw. A slow git never stalls startup. */
+function gitRead(dir, args, timeout = 1000) {
+  return cp.execFileSync('git', ['-C', dir, ...args], {
+    encoding: 'utf8',
+    timeout,
+    stdio: ['ignore', 'pipe', 'ignore'],
+  });
+}
+
+/**
+ * Does this clone hold at least one ref? Filesystem first: `packed-refs`, or a loose ref under
+ * `refs/heads/`.
+ *
+ * A REFTABLE repository cannot be read that way (SER-327): its `refs/heads` is a stub FILE and the
+ * refs live in `.git/reftable/`, so the directory read threw and a finished clone was called
+ * missing, which also silenced its push nudge and its offline line. Anyone whose git config sets
+ * `init.defaultRefFormat=reftable` gets such a clone from the CLI, and reftable is Git 3.0's
+ * default. A linked worktree keeps no refs of its own either (they live in the main repository's
+ * git directory). For both shapes git answers, bounded like every git call here, which is what the
+ * CLI's `isUsableClone` asks too. Only a git that ANSWERED "no commit here" says no; one that could
+ * not answer (a timeout, no git at all) claims nothing, for the reason {@link cloneLooksUsable}
+ * gives.
+ */
+function holdsRef(dir, gitDir) {
+  if (fs.existsSync(path.join(gitDir, 'packed-refs'))) return true;
+  const heads = path.join(gitDir, 'refs', 'heads');
+  let listable = false;
+  try {
+    listable = fs.statSync(heads).isDirectory();
+  } catch {
+    // No `refs/heads` at all: git decides below.
+  }
+  if (listable) return fs.readdirSync(heads).length > 0;
+  try {
+    cp.execFileSync('git', ['-C', dir, 'rev-parse', '--verify', '--quiet', 'HEAD'], {
+      timeout: 1000,
+      stdio: 'ignore',
+    });
+    return true;
+  } catch (e) {
+    return !(e && typeof e.status === 'number' && e.status !== 0);
+  }
+}
+
+/**
+ * How many entries the clone's index holds, read from its header, or null when there is no index
+ * (SER-327). `-1` is an index this cannot read, which the caller treats as "finished": an unknown
+ * is never grounds for a claim.
+ */
+function indexEntryCount(gitDir) {
+  let fd;
+  try {
+    fd = fs.openSync(path.join(gitDir, 'index'), 'r');
+  } catch (e) {
+    return e && e.code === 'ENOENT' ? null : -1;
+  }
+  try {
+    // `DIRC`, a 4-byte version, then the 4-byte big-endian entry count — every index version.
+    const head = Buffer.alloc(12);
+    if (fs.readSync(fd, head, 0, 12, 0) < 12 || head.toString('latin1', 0, 4) !== 'DIRC') return -1;
+    return head.readUInt32BE(8);
+  } catch {
+    return -1;
+  } finally {
+    fs.closeSync(fd);
+  }
+}
+
+/**
+ * Did this clone's CHECKOUT die after its fetch landed (SER-327)? `true`, `false`, or `null` when git
+ * could not say.
+ *
+ * `git clone` writes HEAD and the refs before it checks out, so a checkout that fails on a path
+ * this machine cannot write (a name Windows refuses, a path over its length limit) leaves a folder
+ * that has every mark of a finished clone except an index. Read as one, it is worse than empty: git
+ * sees every published file as a staged deletion, and a push nudge built on that count steers the
+ * user into publishing the removal of the wiki. The CLI's `cloneState` (clone-state.ts) calls the
+ * same folder wreckage and re-clones it; `clone-usable-drift.test.ts` pins the two readings together.
+ *
+ * The rule is the CLI's: no index, or an EMPTY one, while HEAD's tree has files. Filesystem first
+ * (the index header), and git only in that rare shape, bounded like every git call here. An empty
+ * tree is a finished clone of an empty wiki, not an unfinished one. `gitDir` is {@link gitDirOf}'s
+ * answer when the caller already has it; a git directory nobody can locate is a question git could
+ * not answer.
+ */
+function checkoutUnfinished(dir, gitDir = gitDirOf(dir)) {
+  if (!gitDir) return null;
+  const entries = indexEntryCount(gitDir);
+  if (entries !== null && entries !== 0) return false;
+  try {
+    return gitRead(dir, ['ls-tree', '--name-only', 'HEAD']).trim().length > 0;
+  } catch {
+    return null;
   }
 }
 
@@ -1252,72 +1408,127 @@ function localCloneHead(teamId) {
   }
 }
 
-/**
- * True when the clone already contains commit `oid`. This is how the SessionStart nudge tells
- * DIRECTION without any network: if the hosted wiki's newest commit is already in the clone, the
- * local side is the one that's ahead (unpublished work → push); if it isn't, the clone hasn't seen
- * the team's latest yet (→ pull). Fail-open: any error means "don't claim to know".
- */
-function cloneHasCommit(teamId, oid) {
-  try {
-    const dir = clonePath(teamId);
-    if (!fs.existsSync(path.join(dir, '.git'))) return false;
-    cp.execFileSync('git', ['-C', dir, 'cat-file', '-e', `${oid}^{commit}`], {
-      timeout: 1000,
-      stdio: 'ignore',
-    });
-    return true;
-  } catch {
-    return false;
-  }
+/** The hosted history this clone last fetched: what every CLI fetch and publish moves. */
+const UPSTREAM = '@{upstream}';
+
+/** A commit id as the server sends one, and so never something git could read as an option. */
+function isCommitId(oid) {
+  return /^[0-9a-f]{7,64}$/i.test(String(oid || ''));
 }
 
 /**
- * What the wiki folder actually HOLDS: `{ pages, charter }`, or null when there is no folder
- * (SER-325).
+ * Where the clone's HEAD and `rev` meet (`git merge-base`), or null: `rev` is not here, the two
+ * share no history, or git could not say. `rev` is the hosted tip's commit id, or {@link UPSTREAM}.
  *
- * The state DTO describes the PUBLISHED wiki, so a local project seeded but never pushed is
- * reported empty and unchartered. Acting on that tells the user to start seeding a wiki whose
- * pages are sitting on their own disk. Only this side can see them.
- *
- * Filesystem only, bounded to three levels, and fail-open: a folder it cannot read says nothing
- * rather than claiming the wiki is empty, which is the claim that caused this.
+ * This is how the SessionStart nudge tells DIRECTION without any network (SER-327). The merge-base
+ * IS the hosted tip when the clone's history contains it, so anything past it is this folder's own
+ * (push); it is HEAD when the clone is only behind (pull); anything else is both. A test of whether
+ * the tip's OBJECT is here said "ahead" for a clone a blocked pull had fetched and never merged, and
+ * then described the pages that tip deleted as pages this folder holds.
  */
-function cloneContents(teamId) {
+function cloneMergeBase(teamId, rev) {
   try {
+    if (rev !== UPSTREAM && !isCommitId(rev)) return null;
     const dir = clonePath(teamId);
     if (!fs.existsSync(path.join(dir, '.git'))) return null;
-    let pages = 0;
-    let charter = false;
-    const walk = (rel, depth) => {
-      for (const entry of fs.readdirSync(rel ? path.join(dir, rel) : dir, { withFileTypes: true })) {
-        const name = entry.name;
-        // Dot-directories, the raw-source store and the injected tooling are not pages.
-        if (name.startsWith('.') || name === 'sources' || name === 'node_modules') continue;
-        const child = rel ? `${rel}/${name}` : name;
-        if (entry.isDirectory()) {
-          if (depth < 3) walk(child, depth + 1);
-          continue;
-        }
-        if (!name.toLowerCase().endsWith('.md')) continue;
-        if (name === 'index.md' || name === 'CLAUDE.md') continue;
-        if (name === 'wiki-charter.md') {
-          charter = true;
-          continue;
-        }
-        pages += 1;
-      }
-    };
-    walk('', 0);
-    return { pages, charter };
+    return gitRead(dir, ['merge-base', rev, 'HEAD']).trim() || null;
   } catch {
     return null;
   }
 }
 
 /**
- * What is sitting in the clone that `commonground push` would publish — `{ files, pages }` — or
- * null when there is no clone to look at (SER-325).
+ * Files the OS drops into any folder a person opens by hand (SER-325, `desktop.ini` since SER-327).
+ * Mirrors `isFolderNoiseName` in the agent's `transport.ts`, case-insensitively like it: Windows and
+ * a default macOS volume do not care about case, so `Desktop.ini` is the same litter as `desktop.ini`.
+ */
+const FOLDER_NOISE = new Set(['.ds_store', 'thumbs.db', 'desktop.ini']);
+function isFolderNoiseName(name) {
+  return FOLDER_NOISE.has(String(name).toLowerCase());
+}
+
+/**
+ * The charter's two paths: the root since SER-191, `company/` in every wiki chartered before it.
+ * Mirrors `CHARTER_PAGE_ID` and `LEGACY_CHARTER_PAGE_IDS` in `@commonground/shared`, which this
+ * dependency-free file cannot import.
+ */
+const CHARTER_PATHS = new Set(['wiki-charter.md', 'company/wiki-charter.md']);
+
+/**
+ * `{ files, pages, charter, holds }` for a list of changes, each `{ path, gone }` with a
+ * repo-relative path (SER-325, SER-327).
+ *
+ * Mirrors `unpublishedWork` in apps/sync-agent/src/transport.ts: the same folder-noise rule, the
+ * same idea of a page (markdown outside `sources/`, and never `index.md`, which is regenerated on
+ * publish). `commonground status` and the push nudge must report the same N for the same folder,
+ * and `unpublished-drift.test.ts` runs both on the same folders to hold them to it.
+ *
+ * `charter` says the charter is AMONG those pages. It is still counted as a page, as the CLI counts
+ * it, and flagged so an emit can call it the charter rather than one more page: one session was
+ * told "a charter" and "1 page(s)" about the same file (SER-327).
+ *
+ * `holds` is `{ pages, charter }` over the changes still ON DISK. A deletion is a change the next
+ * publish carries, so the counts keep it as the CLI does; it is not something the folder holds, and
+ * "the folder already holds a charter" was said about a charter the user had deleted from it.
+ */
+function describeChanges(changes) {
+  const kept = changes.filter((c) => !isFolderNoiseName(c.path.slice(c.path.lastIndexOf('/') + 1)));
+  const tally = (list) => {
+    let pages = 0;
+    let charter = false;
+    for (const { path: p } of list) {
+      if (!p.toLowerCase().endsWith('.md')) continue;
+      if (p === 'index.md' || p.startsWith('sources/')) continue;
+      pages += 1;
+      if (CHARTER_PATHS.has(p)) charter = true;
+    }
+    return { pages, charter };
+  };
+  return { files: kept.length, ...tally(kept), holds: tally(kept.filter((c) => !c.gone)) };
+}
+
+/**
+ * Every member of a case-twin group the INDEX holds, on a clone whose filesystem folds case, or an
+ * empty set (SER-327). Mirrors the CLI's rule in `unpublishedWork` (transport.ts): `caseTwins` over
+ * `git ls-files` when `core.ignorecase` is true, grouped by `pathFoldKey` (NFC, then lower case),
+ * both from `@commonground/shared`, which this dependency-free file cannot import.
+ *
+ * Such a clone holds ONE file for the whole group, so git reads the others as edited the moment it
+ * is checked out. That phantom is not work anyone can publish from here: push refuses the folder,
+ * and a nudge that counted it asked the user to publish, every session, a page they never touched.
+ * `unpublished-drift.test.ts` runs both sides on the same twin clone.
+ */
+function foldedTwinMembers(dir) {
+  const groups = new Map();
+  for (const p of gitRead(dir, ['ls-files', '-z'], 1500).split('\0')) {
+    if (!p) continue;
+    const key = p.normalize('NFC').toLowerCase();
+    if (!groups.has(key)) groups.set(key, new Set());
+    groups.get(key).add(p); // the raw spelling, as `caseTwins` keeps it
+  }
+  const members = new Set();
+  for (const group of groups.values()) if (group.size > 1) group.forEach((p) => members.add(p));
+  if (members.size === 0) return members;
+  try {
+    return gitRead(dir, ['config', '--bool', 'core.ignorecase']).trim() === 'true' ? members : new Set();
+  } catch {
+    return new Set(); // unset: git's own default, a filesystem that keeps case apart
+  }
+}
+
+/**
+ * `changes` without {@link foldedTwinMembers}. Only a TRACKED path can be a member, so a folder of
+ * new pages (the common shape) costs no git call here.
+ */
+function withoutFoldedTwins(dir, changes) {
+  if (!changes.some((c) => c.tracked)) return changes;
+  const members = foldedTwinMembers(dir);
+  return members.size === 0 ? changes : changes.filter((c) => !members.has(c.path));
+}
+
+/**
+ * What is sitting in the clone that `commonground push` would publish, `{ files, pages, charter,
+ * holds }` by {@link describeChanges}, or null when there is no clone to look at (SER-325).
  *
  * The sync nudge used to compare HEADs and nothing else, so a session that wrote five pages and
  * never committed them saw two identical HEADs and said nothing at all. That is the most common
@@ -1327,41 +1538,70 @@ function cloneContents(teamId) {
  * `--untracked-files=all` rather than git's default, which collapses a new folder to one entry and
  * would report "1 file" for a directory of pages. The injected tooling (`CLAUDE.md`, the maintainer
  * skill) is excluded through `.git/info/exclude`, so it is invisible here exactly as it is to the
- * publish itself.
+ * publish itself. Bounded and fail-open like every git call here: a slow or angry git says nothing
+ * rather than delaying the session's start.
  *
- * PAGE-SHAPED mirrors what the CLI counts: markdown outside `sources/`, and never `index.md`
- * (regenerated on publish). Bounded and fail-open like every git call here — a slow or angry git
- * says nothing rather than delaying the session's start.
+ * NUL-separated, as `statusEntries` in clone-state.ts reads it (SER-327): the paths are compared
+ * with the index's own spellings for the twin rule, so they must arrive raw, never C-quoted. The
+ * count is the CLI's either way.
+ *
+ * One `git status` per wiki per session start is the budget (SER-327): SessionStart reads this
+ * through `folderReading`, which asks once and only when an emit needs the answer.
  */
 function cloneWorkingTreeWork(teamId) {
   try {
     const dir = clonePath(teamId);
     if (!fs.existsSync(path.join(dir, '.git'))) return null;
-    const out = cp.execFileSync('git', ['-C', dir, 'status', '--porcelain', '--untracked-files=all'], {
-      encoding: 'utf8',
-      timeout: 1500,
-      stdio: ['ignore', 'pipe', 'ignore'],
-    });
-    // Mirrors `unpublishedWork` in apps/sync-agent/src/transport.ts (SER-325): the same rename
-    // split, the same folder-noise rule, the same idea of a page. `commonground status` and this
-    // nudge must report the same N for the same folder.
-    const NOISE = new Set(['.DS_Store', 'Thumbs.db', 'desktop.ini']);
-    const paths = out
-      .split('\n')
-      .filter((l) => l.trim().length > 0)
-      .map((line) => {
-        // `XY path`, and a rename prints `old -> new`; the destination is the one that exists.
-        const raw = line.slice(3).trim();
-        return (raw.includes(' -> ') ? raw.slice(raw.indexOf(' -> ') + 4) : raw).replace(/^"|"$/g, '');
-      })
-      .filter((p) => !NOISE.has(p.slice(p.lastIndexOf('/') + 1)));
-    let pages = 0;
-    for (const p of paths) {
-      if (!p.toLowerCase().endsWith('.md')) continue;
-      if (p === 'index.md' || p.startsWith('sources/')) continue;
-      pages += 1;
+    // A checkout that never finished has no index, so git reads every published file as a staged
+    // deletion (SER-327). That is not work: counting it is how a nudge would steer the user into
+    // publishing the removal of the whole wiki. An unknown answer claims nothing either.
+    if (checkoutUnfinished(dir) !== false) return null;
+    const fields = gitRead(dir, ['status', '--porcelain', '-z', '--untracked-files=all'], 1500).split('\0');
+    const changes = [];
+    for (let i = 0; i < fields.length; i += 1) {
+      const field = fields[i];
+      if (field.length < 4) continue; // the empty tail after the last NUL
+      const xy = field.slice(0, 2);
+      // `-z` puts a rename's NEW path first and its source in the next field; the new one publishes.
+      // Either column can hold the rename: an intent-to-add file (`git add -N`) that git pairs with
+      // a deleted one reads ` R`, and its source read as a second page.
+      if (/[RC]/.test(xy)) i += 1;
+      changes.push({ path: field.slice(3), tracked: xy !== '??', gone: xy.includes('D') });
     }
-    return { files: paths.length, pages };
+    return describeChanges(withoutFoldedTwins(dir, changes));
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * What the folder holds past `base`, where this clone's own history leaves the hosted one (SER-327):
+ * `{ files, pages, charter, holds }` by {@link describeChanges}, or null when that cannot be read.
+ *
+ * Unpublished work is not only uncommitted. `push` commits before it fetches and publishes, and
+ * `import` commits before it syncs, so a sign-in, network or fetch failure after the commit leaves
+ * the pages committed here and nowhere else. `git status` is clean over them, and the session was
+ * told its wiki was empty and should be seeded. The caller passes the MERGE-BASE of HEAD with the
+ * hosted history ({@link cloneMergeBase}), and only for a clone with commits past it: the hosted tip
+ * itself was the wrong base for a clone that was also behind, where what that tip deleted read as
+ * pages this folder added.
+ *
+ * Compared with the WORKING TREE, not HEAD, and deletions left out: a page committed here and then
+ * deleted from the folder is not something the folder holds. `base` is used only when it is a
+ * commit id, never as something git could read as an option.
+ */
+function cloneCommittedWork(teamId, base) {
+  try {
+    if (!isCommitId(base)) return null;
+    const dir = clonePath(teamId);
+    if (!fs.existsSync(path.join(dir, '.git'))) return null;
+    if (checkoutUnfinished(dir) !== false) return null;
+    const out = gitRead(dir, ['diff', '--name-only', '-z', '--no-ext-diff', '--diff-filter=ACMR', base, '--'], 1500);
+    const changes = out
+      .split('\0')
+      .filter(Boolean)
+      .map((p) => ({ path: p, tracked: true, gone: false }));
+    return describeChanges(withoutFoldedTwins(dir, changes));
   } catch {
     return null;
   }
@@ -1486,6 +1726,7 @@ module.exports = {
   verbatimBlock,
   pluginVersion,
   cliPath,
+  cliCommand,
   parseRecordWiki, // exported for the CLI-contract test, not for the hooks
   recordProjectWiki,
   sessionIdOf,
@@ -1498,9 +1739,11 @@ module.exports = {
   clonePath,
   localCloneHead,
   cloneLooksUsable,
-  cloneHasCommit,
-  cloneContents,
+  cloneMergeBase,
+  UPSTREAM,
   cloneWorkingTreeWork,
+  cloneCommittedWork,
+  isFolderNoiseName,
   matchKeywords,
   emitContext,
   governingClaudeMd,

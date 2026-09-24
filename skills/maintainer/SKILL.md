@@ -22,6 +22,10 @@ Everything below runs **in this session, on the user's tokens** — CommonGround
 curation (Model A). You produce plain markdown; the wiki is persisted either by editing the clone
 (local-clone mode) or by CommonGround's MCP write tools (MCP mode).
 
+**Running the CLI.** Every `commonground …` line in this file runs as
+`node "${CLAUDE_PLUGIN_ROOT}/bin/commonground" …`. That form works from both the Bash and the
+PowerShell tool; the bare word works only in Bash.
+
 ## Step 0 — which mode is this project in? (do this before any write)
 
 The two modes persist work in completely different places, so **never guess, and never infer it from
@@ -139,6 +143,16 @@ The curation procedures are also exposed as slash commands — **`/commonground:
   reorganising a wiki means **retagging**, never moving files (a move breaks every link into them).
 
 A **pageId** is the repo-relative path without `.md` (e.g. `products/acme/dev/retrieval-decision`).
+Prefer lowercase words joined by `-` and `/`. However it is spelled, a NEW page's id must be one
+every machine that clones the wiki can hold: none of `: * ? " < > |`; no part ending in a dot or a
+space; no Windows device name (`con`, `nul`, `com1`, `lpt1`); never two pages or folders that differ
+only in capitals (a Mac or Windows keeps them as ONE file); and the file path, .md included, at
+most 180 characters. A new page that breaks this is refused: by the server in MCP mode, and by
+`/commonground:push` for a file in a local clone, which names it and asks for a rename. A page that
+already exists keeps working however it is spelled, and lint reports it. The one exception is a
+published pair that differs only in capitals: a Mac or Windows clone holds the two as one file, so
+nothing can be published from there while the wiki holds the pair, and only a curator on a Linux
+machine, or CommonGround support, can rename one (then that clone pulls and publishes again).
 
 The wiki's one meta page is the **charter**, `wiki-charter` at the repo root (older wikis have it
 at `company/wiki-charter`; both are read).
@@ -385,6 +399,16 @@ the same kinds:
   first body line, or pure provenance). Arrives as ONE batched finding for the whole wiki, naming a
   sample and a count — report it as one line, and offer a backfill pass rather than a page-by-page
   to-do list.
+- **Unportable name**: names that some machine cloning the wiki cannot hold (a character Windows
+  refuses, a name ending in a dot or a space, a device name like `con`, a path too long for Windows),
+  or two names that differ only in capitals (ONE file on a Mac or Windows). One batched finding with
+  a sample and a count. There is no rename tool: the fix is a rename in a local clone (rename the
+  file, fix the links to it, publish). The push preview shows it as a rename, and `push` then asks
+  about the old name as a removal: confirm it as the same page under a new name. For a pair
+  differing only in capitals, give all but one a distinct new name, never just a different case of
+  the same one; that needs a clone on a Linux machine, whose disk tells the two apart. A flagged file
+  under `sources/` is a support repair, never a rename you make (rule 4). If nobody on the wiki has
+  the clone it takes, CommonGround support can do the rename.
 - **`missingLinks`** — "red links": body links to a page that doesn't exist yet (with the pages
   referencing each). Surface as "referenced but not written yet" — ready candidates to ingest next.
 

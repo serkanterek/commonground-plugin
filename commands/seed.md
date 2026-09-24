@@ -44,6 +44,10 @@ content for "shareability" — see the golden rules in the `maintainer` skill.
 
 Work through this conversationally — adapt to what's already true, don't robotically run every step.
 
+**Running the CLI.** Every `commonground …` line in this file runs as
+`node "${CLAUDE_PLUGIN_ROOT}/bin/commonground" …`. That form works from both the Bash and the
+PowerShell tool; the bare word works only in Bash.
+
 ## 0. Which wiki, and is this session signed in?
 
 Seeding is the FIRST thing a new user does, so this command cannot assume a signed-in machine or a
@@ -54,8 +58,12 @@ another command to come back afterwards.
 check it against the `commonground use` listing) is the **target**. A token that is an existing path
 is the **import folder**. Both may appear, in either order; neither is required.
 
-**1. Signed in?** Run `commonground status`. If it reports a team, you're signed in — go to 2. If it
-reports "not logged in" / "no team logged in", sign in **here**, inline:
+**1. Signed in?** Run `commonground status`. If `commonground` or `node` is not found, follow
+`/commonground:point` step 1's not-found branch: check the spelling first (run it the way the top of
+this file says), never install anything unasked, and only after installing Node or Git, or
+reinstalling the plugin, have them restart Claude Code before anything else runs. If it reports a
+team, you're signed
+in — go to 2. If it reports "not logged in" / "no team logged in", sign in **here**, inline:
 
 - The user needs a CommonGround account **with at least one wiki** first — the authorize screen has
   nothing to approve without one, and its button is hidden rather than left dead. No account yet →
@@ -146,7 +154,7 @@ while the project still has its old mode, seed the wiki where it already lives.
     **Acme Handbook** so I can seed into it?"* (`AskUserQuestion` when it's available). On yes, run
     `commonground init --mode local <wiki>` with point.md's confirm-or-override on the folder.
   - **This project already reads a wiki, or several** → add beside them:
-    `commonground init --also <wiki> [--path <folder>]`. Nothing it already reads changes, and the
+    `commonground init --also <wiki> [--path "<folder>"]`. Nothing it already reads changes, and the
     added wiki lands as a folder because this project is already local. In an MCP project that same
     command adds the wiki in MCP mode with no folder at all, which is the re-point above, not a
     thing to route around: seed it through the connector with the `wiki:` argument below until the
@@ -512,12 +520,16 @@ a root `index.md`, because the wiki regenerates its own catalog there. Same for 
 **Execute.**
 - **Local-clone mode** (admins/curators): know the CLI's limits — `commonground import` is
   **frontmatter-only** normalize (backfill/validate; it never merges or restructures bodies). So:
-  stage the kept clusters into a temp folder **preserving relative paths** (or use the folder
+  stage the kept clusters into a scratch folder **preserving relative paths** (or use the folder
   directly when everything is kept as-is); staging never moves a file — when the user chose to
   **file them**, the cluster name goes into each staged file's `tags:`, which is what groups it, so
-  a flat folder stays flat on disk. For clusters marked **Normalize**, do the
+  a flat folder stays flat on disk. Pick a scratch folder that the file tools and the shell spell the
+  same way: an absolute path under the user's home, such as `<home>/commonground-import-<wiki>` (on
+  Windows with forward slashes, `C:/Users/<you>/commonground-import-<wiki>`), never `/tmp`, which
+  the Bash tool on Windows maps to a different folder than the one the file tools write. For
+  clusters marked **Normalize**, do the
   restructuring/merging yourself in-session first, editing the staged files; then run
-  `commonground import <staged folder>`. It overlays the folder onto the clone, **backfills
+  `commonground import "<staged folder>"`, quoted. It overlays the folder onto the clone, **backfills
   missing/invalid frontmatter** (carrying `tags`/`aliases`/`created` onto the schema and preserving
   any other frontmatter key verbatim — an imported `tags:` is the source folder's own **legacy label**, not
   a category, so assign the charter category the cluster belongs to as well), **regenerates
@@ -525,14 +537,25 @@ a root `index.md`, because the wiki regenerates its own catalog there. Same for 
   or `CLAUDE.md`, and never overwrites anything already under `sources/`. Then it commits and
   pushes. **Relay the CLI's receipt to the user verbatim** — it names what wasn't imported and
   what frontmatter it couldn't carry; that's the answer to "can I retire the original?", so don't
-  summarise it away. One thing to say out loud: each page keeps its **real** date (its own
+  summarise it away. A file left out because some machine cannot hold its name (a character Windows
+  refuses, a name ending in a dot or a space, a device name like `con`, or a name that differs from a
+  page already there only in capitals) can come in under a new name: offer to rename it in the
+  staged folder and import again. If `import` refuses instead over a file ALREADY in the wiki folder
+  with such a name, nothing was committed or published: handle it as `/commonground:push` §3c says
+  (rename it in the wiki folder, then publish with `/commonground:push`; the imported files are
+  already there). A refusal saying two names `differ only in letter case, and this machine can hold
+  only one of them` means what it means there: nothing can be published from this machine, and no
+  rename here fixes it. One thing to say out loud: each page keeps its **real** date (its own
   frontmatter date, else the file's modification time), so genuinely old notes will read as old and
   `/commonground:lint` may flag them **stale** — that's the honest signal, not a bug.
 - **MCP mode (no local clone):** do the normalize in-session, honoring each cluster's triage
   choice (as-is = body untouched + frontmatter backfill; normalize = restructure/merge). Read the
   folder yourself (your Read / Glob tools — a remote MCP can't reach local files). For each doc:
   derive a `pageId` that mirrors the source folder's own structure — a flat folder stays flat, since
-  the cluster the user agreed to rides in `tags:`, not in the path — and write **valid frontmatter**
+  the cluster the user agreed to rides in `tags:`, not in the path — and that follows the **pageId
+  rule** in the `maintainer` skill. A Mac lets a note be called `Q3: plan?.md` and Windows cannot hold
+  that name, so the server refuses it as a new page: fold such a name to lowercase words joined by
+  `-`, and say which ones you renamed. Then write **valid frontmatter**
   (title from the H1/filename, and `updated` = the doc's own date if it has one,
   else today — don't restamp real modification dates). Don't add a `scope`: an imported folder never
   declared one, and inventing `company` puts an org word on somebody's own notes. **Carry the source's frontmatter across**: `tags`/`aliases`/`created` are
@@ -552,13 +575,13 @@ Import **copies**; it never adopts the folder. So, in this order:
 2. Name the canonical copy: **the wiki folder is the wiki** — the copy CommonGround syncs,
    publishes and serves. The folder you imported was left untouched and is now a separate copy that
    will drift.
-3. **Delete the temp staging folder** if this flow created one (it's a scratch copy, not the wiki —
+3. **Delete the scratch staging folder** if this flow created one (it's a scratch copy, not the wiki —
    the CLI receipt names it as the source). Never delete the user's own source folder.
 4. Offer the convergence choice when they imported a folder they actually work in: **repoint their
-   editor** at the wiki folder (plain markdown — it opens in Obsidian or any editor; the path is in
-   this project's `./CLAUDE.md`) so there is one copy again, or **keep working in the original** and
-   accept that every change needs another import run — which you do for them, on request — to
-   reach the wiki. Their call; just don't leave it unsaid.
+   editor** at the wiki folder (plain markdown — it opens in Obsidian or any editor; the path is on
+   the `Mode:` line of `commonground status`) so there is one copy again, or **keep working in the
+   original** and accept that every change needs another import run — which you do for them, on
+   request — to reach the wiki. Their call; just don't leave it unsaid.
 
 That leads into step 6.
 

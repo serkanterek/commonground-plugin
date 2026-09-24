@@ -108,17 +108,17 @@ var require_visit = __commonJS({
     visit.BREAK = BREAK;
     visit.SKIP = SKIP;
     visit.REMOVE = REMOVE;
-    function visit_(key, node, visitor, path) {
-      const ctrl = callVisitor(key, node, visitor, path);
+    function visit_(key, node, visitor, path2) {
+      const ctrl = callVisitor(key, node, visitor, path2);
       if (identity.isNode(ctrl) || identity.isPair(ctrl)) {
-        replaceNode(key, path, ctrl);
-        return visit_(key, ctrl, visitor, path);
+        replaceNode(key, path2, ctrl);
+        return visit_(key, ctrl, visitor, path2);
       }
       if (typeof ctrl !== "symbol") {
         if (identity.isCollection(node)) {
-          path = Object.freeze(path.concat(node));
+          path2 = Object.freeze(path2.concat(node));
           for (let i = 0; i < node.items.length; ++i) {
-            const ci = visit_(i, node.items[i], visitor, path);
+            const ci = visit_(i, node.items[i], visitor, path2);
             if (typeof ci === "number")
               i = ci - 1;
             else if (ci === BREAK)
@@ -129,13 +129,13 @@ var require_visit = __commonJS({
             }
           }
         } else if (identity.isPair(node)) {
-          path = Object.freeze(path.concat(node));
-          const ck = visit_("key", node.key, visitor, path);
+          path2 = Object.freeze(path2.concat(node));
+          const ck = visit_("key", node.key, visitor, path2);
           if (ck === BREAK)
             return BREAK;
           else if (ck === REMOVE)
             node.key = null;
-          const cv = visit_("value", node.value, visitor, path);
+          const cv = visit_("value", node.value, visitor, path2);
           if (cv === BREAK)
             return BREAK;
           else if (cv === REMOVE)
@@ -156,17 +156,17 @@ var require_visit = __commonJS({
     visitAsync.BREAK = BREAK;
     visitAsync.SKIP = SKIP;
     visitAsync.REMOVE = REMOVE;
-    async function visitAsync_(key, node, visitor, path) {
-      const ctrl = await callVisitor(key, node, visitor, path);
+    async function visitAsync_(key, node, visitor, path2) {
+      const ctrl = await callVisitor(key, node, visitor, path2);
       if (identity.isNode(ctrl) || identity.isPair(ctrl)) {
-        replaceNode(key, path, ctrl);
-        return visitAsync_(key, ctrl, visitor, path);
+        replaceNode(key, path2, ctrl);
+        return visitAsync_(key, ctrl, visitor, path2);
       }
       if (typeof ctrl !== "symbol") {
         if (identity.isCollection(node)) {
-          path = Object.freeze(path.concat(node));
+          path2 = Object.freeze(path2.concat(node));
           for (let i = 0; i < node.items.length; ++i) {
-            const ci = await visitAsync_(i, node.items[i], visitor, path);
+            const ci = await visitAsync_(i, node.items[i], visitor, path2);
             if (typeof ci === "number")
               i = ci - 1;
             else if (ci === BREAK)
@@ -177,13 +177,13 @@ var require_visit = __commonJS({
             }
           }
         } else if (identity.isPair(node)) {
-          path = Object.freeze(path.concat(node));
-          const ck = await visitAsync_("key", node.key, visitor, path);
+          path2 = Object.freeze(path2.concat(node));
+          const ck = await visitAsync_("key", node.key, visitor, path2);
           if (ck === BREAK)
             return BREAK;
           else if (ck === REMOVE)
             node.key = null;
-          const cv = await visitAsync_("value", node.value, visitor, path);
+          const cv = await visitAsync_("value", node.value, visitor, path2);
           if (cv === BREAK)
             return BREAK;
           else if (cv === REMOVE)
@@ -210,23 +210,23 @@ var require_visit = __commonJS({
       }
       return visitor;
     }
-    function callVisitor(key, node, visitor, path) {
+    function callVisitor(key, node, visitor, path2) {
       if (typeof visitor === "function")
-        return visitor(key, node, path);
+        return visitor(key, node, path2);
       if (identity.isMap(node))
-        return visitor.Map?.(key, node, path);
+        return visitor.Map?.(key, node, path2);
       if (identity.isSeq(node))
-        return visitor.Seq?.(key, node, path);
+        return visitor.Seq?.(key, node, path2);
       if (identity.isPair(node))
-        return visitor.Pair?.(key, node, path);
+        return visitor.Pair?.(key, node, path2);
       if (identity.isScalar(node))
-        return visitor.Scalar?.(key, node, path);
+        return visitor.Scalar?.(key, node, path2);
       if (identity.isAlias(node))
-        return visitor.Alias?.(key, node, path);
+        return visitor.Alias?.(key, node, path2);
       return void 0;
     }
-    function replaceNode(key, path, node) {
-      const parent = path[path.length - 1];
+    function replaceNode(key, path2, node) {
+      const parent = path2[path2.length - 1];
       if (identity.isCollection(parent)) {
         parent.items[key] = node;
       } else if (identity.isPair(parent)) {
@@ -836,10 +836,10 @@ var require_Collection = __commonJS({
     var createNode = require_createNode();
     var identity = require_identity();
     var Node = require_Node();
-    function collectionFromPath(schema, path, value) {
+    function collectionFromPath(schema, path2, value) {
       let v = value;
-      for (let i = path.length - 1; i >= 0; --i) {
-        const k = path[i];
+      for (let i = path2.length - 1; i >= 0; --i) {
+        const k = path2[i];
         if (typeof k === "number" && Number.isInteger(k) && k >= 0) {
           const a = [];
           a[k] = v;
@@ -858,7 +858,7 @@ var require_Collection = __commonJS({
         sourceObjects: /* @__PURE__ */ new Map()
       });
     }
-    var isEmptyPath = (path) => path == null || typeof path === "object" && !!path[Symbol.iterator]().next().done;
+    var isEmptyPath = (path2) => path2 == null || typeof path2 === "object" && !!path2[Symbol.iterator]().next().done;
     var Collection = class extends Node.NodeBase {
       constructor(type, schema) {
         super(type);
@@ -888,11 +888,11 @@ var require_Collection = __commonJS({
        * be a Pair instance or a `{ key, value }` object, which may not have a key
        * that already exists in the map.
        */
-      addIn(path, value) {
-        if (isEmptyPath(path))
+      addIn(path2, value) {
+        if (isEmptyPath(path2))
           this.add(value);
         else {
-          const [key, ...rest] = path;
+          const [key, ...rest] = path2;
           const node = this.get(key, true);
           if (identity.isCollection(node))
             node.addIn(rest, value);
@@ -906,8 +906,8 @@ var require_Collection = __commonJS({
        * Removes a value from the collection.
        * @returns `true` if the item was found and removed.
        */
-      deleteIn(path) {
-        const [key, ...rest] = path;
+      deleteIn(path2) {
+        const [key, ...rest] = path2;
         if (rest.length === 0)
           return this.delete(key);
         const node = this.get(key, true);
@@ -921,8 +921,8 @@ var require_Collection = __commonJS({
        * scalar values from their surrounding node; to disable set `keepScalar` to
        * `true` (collections are always returned intact).
        */
-      getIn(path, keepScalar) {
-        const [key, ...rest] = path;
+      getIn(path2, keepScalar) {
+        const [key, ...rest] = path2;
         const node = this.get(key, true);
         if (rest.length === 0)
           return !keepScalar && identity.isScalar(node) ? node.value : node;
@@ -940,8 +940,8 @@ var require_Collection = __commonJS({
       /**
        * Checks if the collection includes a value with the key `key`.
        */
-      hasIn(path) {
-        const [key, ...rest] = path;
+      hasIn(path2) {
+        const [key, ...rest] = path2;
         if (rest.length === 0)
           return this.has(key);
         const node = this.get(key, true);
@@ -951,8 +951,8 @@ var require_Collection = __commonJS({
        * Sets a value in this collection. For `!!set`, `value` needs to be a
        * boolean to add/remove the item from the set.
        */
-      setIn(path, value) {
-        const [key, ...rest] = path;
+      setIn(path2, value) {
+        const [key, ...rest] = path2;
         if (rest.length === 0) {
           this.set(key, value);
         } else {
@@ -3467,9 +3467,9 @@ var require_Document = __commonJS({
           this.contents.add(value);
       }
       /** Adds a value to the document. */
-      addIn(path, value) {
+      addIn(path2, value) {
         if (assertCollection(this.contents))
-          this.contents.addIn(path, value);
+          this.contents.addIn(path2, value);
       }
       /**
        * Create a new `Alias` node, ensuring that the target `node` has the required anchor.
@@ -3544,14 +3544,14 @@ var require_Document = __commonJS({
        * Removes a value from the document.
        * @returns `true` if the item was found and removed.
        */
-      deleteIn(path) {
-        if (Collection.isEmptyPath(path)) {
+      deleteIn(path2) {
+        if (Collection.isEmptyPath(path2)) {
           if (this.contents == null)
             return false;
           this.contents = null;
           return true;
         }
-        return assertCollection(this.contents) ? this.contents.deleteIn(path) : false;
+        return assertCollection(this.contents) ? this.contents.deleteIn(path2) : false;
       }
       /**
        * Returns item at `key`, or `undefined` if not found. By default unwraps
@@ -3566,10 +3566,10 @@ var require_Document = __commonJS({
        * scalar values from their surrounding node; to disable set `keepScalar` to
        * `true` (collections are always returned intact).
        */
-      getIn(path, keepScalar) {
-        if (Collection.isEmptyPath(path))
+      getIn(path2, keepScalar) {
+        if (Collection.isEmptyPath(path2))
           return !keepScalar && identity.isScalar(this.contents) ? this.contents.value : this.contents;
-        return identity.isCollection(this.contents) ? this.contents.getIn(path, keepScalar) : void 0;
+        return identity.isCollection(this.contents) ? this.contents.getIn(path2, keepScalar) : void 0;
       }
       /**
        * Checks if the document includes a value with the key `key`.
@@ -3580,10 +3580,10 @@ var require_Document = __commonJS({
       /**
        * Checks if the document includes a value at `path`.
        */
-      hasIn(path) {
-        if (Collection.isEmptyPath(path))
+      hasIn(path2) {
+        if (Collection.isEmptyPath(path2))
           return this.contents !== void 0;
-        return identity.isCollection(this.contents) ? this.contents.hasIn(path) : false;
+        return identity.isCollection(this.contents) ? this.contents.hasIn(path2) : false;
       }
       /**
        * Sets a value in this document. For `!!set`, `value` needs to be a
@@ -3600,13 +3600,13 @@ var require_Document = __commonJS({
        * Sets a value in this document. For `!!set`, `value` needs to be a
        * boolean to add/remove the item from the set.
        */
-      setIn(path, value) {
-        if (Collection.isEmptyPath(path)) {
+      setIn(path2, value) {
+        if (Collection.isEmptyPath(path2)) {
           this.contents = value;
         } else if (this.contents == null) {
-          this.contents = Collection.collectionFromPath(this.schema, Array.from(path), value);
+          this.contents = Collection.collectionFromPath(this.schema, Array.from(path2), value);
         } else if (assertCollection(this.contents)) {
-          this.contents.setIn(path, value);
+          this.contents.setIn(path2, value);
         }
       }
       /**
@@ -3992,10 +3992,10 @@ var require_resolve_block_map = __commonJS({
       let offset = bm.offset;
       let commentEnd = null;
       for (const collItem of bm.items) {
-        const { start, key, sep: sep2, value } = collItem;
+        const { start, key, sep: sep3, value } = collItem;
         const keyProps = resolveProps.resolveProps(start, {
           indicator: "explicit-key-ind",
-          next: key ?? sep2?.[0],
+          next: key ?? sep3?.[0],
           offset,
           onError,
           parentIndent: bm.indent,
@@ -4009,7 +4009,7 @@ var require_resolve_block_map = __commonJS({
             else if ("indent" in key && key.indent !== bm.indent)
               onError(offset, "BAD_INDENT", startColMsg);
           }
-          if (!keyProps.anchor && !keyProps.tag && !sep2) {
+          if (!keyProps.anchor && !keyProps.tag && !sep3) {
             commentEnd = keyProps.end;
             if (keyProps.comment) {
               if (map.comment)
@@ -4033,7 +4033,7 @@ var require_resolve_block_map = __commonJS({
         ctx.atKey = false;
         if (utilMapIncludes.mapIncludes(ctx, map.items, keyNode))
           onError(keyStart, "DUPLICATE_KEY", "Map keys must be unique");
-        const valueProps = resolveProps.resolveProps(sep2 ?? [], {
+        const valueProps = resolveProps.resolveProps(sep3 ?? [], {
           indicator: "map-value-ind",
           next: value,
           offset: keyNode.range[2],
@@ -4049,7 +4049,7 @@ var require_resolve_block_map = __commonJS({
             if (ctx.options.strict && keyProps.start < valueProps.found.offset - 1024)
               onError(keyNode.range, "KEY_OVER_1024_CHARS", "The : indicator must be at most 1024 chars after the start of an implicit block mapping key");
           }
-          const valueNode = value ? composeNode(ctx, value, valueProps, onError) : composeEmptyNode(ctx, offset, sep2, null, valueProps, onError);
+          const valueNode = value ? composeNode(ctx, value, valueProps, onError) : composeEmptyNode(ctx, offset, sep3, null, valueProps, onError);
           if (ctx.schema.compat)
             utilFlowIndentCheck.flowIndentCheck(bm.indent, value, onError);
           offset = valueNode.range[2];
@@ -4140,7 +4140,7 @@ var require_resolve_end = __commonJS({
       let comment = "";
       if (end) {
         let hasSpace = false;
-        let sep2 = "";
+        let sep3 = "";
         for (const token of end) {
           const { source, type } = token;
           switch (type) {
@@ -4154,13 +4154,13 @@ var require_resolve_end = __commonJS({
               if (!comment)
                 comment = cb;
               else
-                comment += sep2 + cb;
-              sep2 = "";
+                comment += sep3 + cb;
+              sep3 = "";
               break;
             }
             case "newline":
               if (comment)
-                sep2 += source;
+                sep3 += source;
               hasSpace = true;
               break;
             default:
@@ -4203,18 +4203,18 @@ var require_resolve_flow_collection = __commonJS({
       let offset = fc.offset + fc.start.source.length;
       for (let i = 0; i < fc.items.length; ++i) {
         const collItem = fc.items[i];
-        const { start, key, sep: sep2, value } = collItem;
+        const { start, key, sep: sep3, value } = collItem;
         const props = resolveProps.resolveProps(start, {
           flow: fcName,
           indicator: "explicit-key-ind",
-          next: key ?? sep2?.[0],
+          next: key ?? sep3?.[0],
           offset,
           onError,
           parentIndent: fc.indent,
           startOnNewline: false
         });
         if (!props.found) {
-          if (!props.anchor && !props.tag && !sep2 && !value) {
+          if (!props.anchor && !props.tag && !sep3 && !value) {
             if (i === 0 && props.comma)
               onError(props.comma, "UNEXPECTED_TOKEN", `Unexpected , in ${fcName}`);
             else if (i < fc.items.length - 1)
@@ -4268,8 +4268,8 @@ var require_resolve_flow_collection = __commonJS({
             }
           }
         }
-        if (!isMap && !sep2 && !props.found) {
-          const valueNode = value ? composeNode(ctx, value, props, onError) : composeEmptyNode(ctx, props.end, sep2, null, props, onError);
+        if (!isMap && !sep3 && !props.found) {
+          const valueNode = value ? composeNode(ctx, value, props, onError) : composeEmptyNode(ctx, props.end, sep3, null, props, onError);
           coll.items.push(valueNode);
           offset = valueNode.range[2];
           if (isBlock(value))
@@ -4281,7 +4281,7 @@ var require_resolve_flow_collection = __commonJS({
           if (isBlock(key))
             onError(keyNode.range, "BLOCK_IN_FLOW", blockMsg);
           ctx.atKey = false;
-          const valueProps = resolveProps.resolveProps(sep2 ?? [], {
+          const valueProps = resolveProps.resolveProps(sep3 ?? [], {
             flow: fcName,
             indicator: "map-value-ind",
             next: value,
@@ -4292,8 +4292,8 @@ var require_resolve_flow_collection = __commonJS({
           });
           if (valueProps.found) {
             if (!isMap && !props.found && ctx.options.strict) {
-              if (sep2)
-                for (const st of sep2) {
+              if (sep3)
+                for (const st of sep3) {
                   if (st === valueProps.found)
                     break;
                   if (st.type === "newline") {
@@ -4310,7 +4310,7 @@ var require_resolve_flow_collection = __commonJS({
             else
               onError(valueProps.start, "MISSING_CHAR", `Missing , or : between ${fcName} items`);
           }
-          const valueNode = value ? composeNode(ctx, value, valueProps, onError) : valueProps.found ? composeEmptyNode(ctx, valueProps.end, sep2, null, valueProps, onError) : null;
+          const valueNode = value ? composeNode(ctx, value, valueProps, onError) : valueProps.found ? composeEmptyNode(ctx, valueProps.end, sep3, null, valueProps, onError) : null;
           if (valueNode) {
             if (isBlock(value))
               onError(valueNode.range, "BLOCK_IN_FLOW", blockMsg);
@@ -4490,7 +4490,7 @@ var require_resolve_block_scalar = __commonJS({
           chompStart = i + 1;
       }
       let value = "";
-      let sep2 = "";
+      let sep3 = "";
       let prevMoreIndented = false;
       for (let i = 0; i < contentStart; ++i)
         value += lines[i][0].slice(trimIndent) + "\n";
@@ -4507,24 +4507,24 @@ var require_resolve_block_scalar = __commonJS({
           indent = "";
         }
         if (type === Scalar.Scalar.BLOCK_LITERAL) {
-          value += sep2 + indent.slice(trimIndent) + content;
-          sep2 = "\n";
+          value += sep3 + indent.slice(trimIndent) + content;
+          sep3 = "\n";
         } else if (indent.length > trimIndent || content[0] === "	") {
-          if (sep2 === " ")
-            sep2 = "\n";
-          else if (!prevMoreIndented && sep2 === "\n")
-            sep2 = "\n\n";
-          value += sep2 + indent.slice(trimIndent) + content;
-          sep2 = "\n";
+          if (sep3 === " ")
+            sep3 = "\n";
+          else if (!prevMoreIndented && sep3 === "\n")
+            sep3 = "\n\n";
+          value += sep3 + indent.slice(trimIndent) + content;
+          sep3 = "\n";
           prevMoreIndented = true;
         } else if (content === "") {
-          if (sep2 === "\n")
+          if (sep3 === "\n")
             value += "\n";
           else
-            sep2 = "\n";
+            sep3 = "\n";
         } else {
-          value += sep2 + content;
-          sep2 = " ";
+          value += sep3 + content;
+          sep3 = " ";
           prevMoreIndented = false;
         }
       }
@@ -4706,25 +4706,25 @@ var require_resolve_flow_scalar = __commonJS({
       if (!match)
         return source;
       let res = match[1];
-      let sep2 = " ";
+      let sep3 = " ";
       let pos = first.lastIndex;
       line.lastIndex = pos;
       while (match = line.exec(source)) {
         if (match[1] === "") {
-          if (sep2 === "\n")
-            res += sep2;
+          if (sep3 === "\n")
+            res += sep3;
           else
-            sep2 = "\n";
+            sep3 = "\n";
         } else {
-          res += sep2 + match[1];
-          sep2 = " ";
+          res += sep3 + match[1];
+          sep3 = " ";
         }
         pos = line.lastIndex;
       }
       const last = /[ \t]*(.*)/sy;
       last.lastIndex = pos;
       match = last.exec(source);
-      return res + sep2 + (match?.[1] ?? "");
+      return res + sep3 + (match?.[1] ?? "");
     }
     function doubleQuotedValue(source, onError) {
       let res = "";
@@ -5534,14 +5534,14 @@ var require_cst_stringify = __commonJS({
         }
       }
     }
-    function stringifyItem({ start, key, sep: sep2, value }) {
+    function stringifyItem({ start, key, sep: sep3, value }) {
       let res = "";
       for (const st of start)
         res += st.source;
       if (key)
         res += stringifyToken(key);
-      if (sep2)
-        for (const st of sep2)
+      if (sep3)
+        for (const st of sep3)
           res += st.source;
       if (value)
         res += stringifyToken(value);
@@ -5566,9 +5566,9 @@ var require_cst_visit = __commonJS({
     visit.BREAK = BREAK;
     visit.SKIP = SKIP;
     visit.REMOVE = REMOVE;
-    visit.itemAtPath = (cst, path) => {
+    visit.itemAtPath = (cst, path2) => {
       let item = cst;
-      for (const [field, index] of path) {
+      for (const [field, index] of path2) {
         const tok = item?.[field];
         if (tok && "items" in tok) {
           item = tok.items[index];
@@ -5577,23 +5577,23 @@ var require_cst_visit = __commonJS({
       }
       return item;
     };
-    visit.parentCollection = (cst, path) => {
-      const parent = visit.itemAtPath(cst, path.slice(0, -1));
-      const field = path[path.length - 1][0];
+    visit.parentCollection = (cst, path2) => {
+      const parent = visit.itemAtPath(cst, path2.slice(0, -1));
+      const field = path2[path2.length - 1][0];
       const coll = parent?.[field];
       if (coll && "items" in coll)
         return coll;
       throw new Error("Parent collection not found");
     };
-    function _visit(path, item, visitor) {
-      let ctrl = visitor(item, path);
+    function _visit(path2, item, visitor) {
+      let ctrl = visitor(item, path2);
       if (typeof ctrl === "symbol")
         return ctrl;
       for (const field of ["key", "value"]) {
         const token = item[field];
         if (token && "items" in token) {
           for (let i = 0; i < token.items.length; ++i) {
-            const ci = _visit(Object.freeze(path.concat([[field, i]])), token.items[i], visitor);
+            const ci = _visit(Object.freeze(path2.concat([[field, i]])), token.items[i], visitor);
             if (typeof ci === "number")
               i = ci - 1;
             else if (ci === BREAK)
@@ -5604,10 +5604,10 @@ var require_cst_visit = __commonJS({
             }
           }
           if (typeof ctrl === "function" && field === "key")
-            ctrl = ctrl(item, path);
+            ctrl = ctrl(item, path2);
         }
       }
-      return typeof ctrl === "function" ? ctrl(item, path) : ctrl;
+      return typeof ctrl === "function" ? ctrl(item, path2) : ctrl;
     }
     exports2.visit = visit;
   }
@@ -5620,7 +5620,7 @@ var require_cst = __commonJS({
     var cstScalar = require_cst_scalar();
     var cstStringify = require_cst_stringify();
     var cstVisit = require_cst_visit();
-    var BOM = "\uFEFF";
+    var BOM2 = "\uFEFF";
     var DOCUMENT = "";
     var FLOW_END = "";
     var SCALAR = "";
@@ -5628,7 +5628,7 @@ var require_cst = __commonJS({
     var isScalar = (token) => !!token && (token.type === "scalar" || token.type === "single-quoted-scalar" || token.type === "double-quoted-scalar" || token.type === "block-scalar");
     function prettyToken(token) {
       switch (token) {
-        case BOM:
+        case BOM2:
           return "<BOM>";
         case DOCUMENT:
           return "<DOC>";
@@ -5642,7 +5642,7 @@ var require_cst = __commonJS({
     }
     function tokenType(source) {
       switch (source) {
-        case BOM:
+        case BOM2:
           return "byte-order-mark";
         case DOCUMENT:
           return "doc-mode";
@@ -5704,7 +5704,7 @@ var require_cst = __commonJS({
     exports2.setScalarValue = cstScalar.setScalarValue;
     exports2.stringify = cstStringify.stringify;
     exports2.visit = cstVisit.visit;
-    exports2.BOM = BOM;
+    exports2.BOM = BOM2;
     exports2.DOCUMENT = DOCUMENT;
     exports2.FLOW_END = FLOW_END;
     exports2.SCALAR = SCALAR;
@@ -6708,18 +6708,18 @@ var require_parser = __commonJS({
         if (this.type === "map-value-ind") {
           const prev = getPrevProps(this.peek(2));
           const start = getFirstKeyStartProps(prev);
-          let sep2;
+          let sep3;
           if (scalar.end) {
-            sep2 = scalar.end;
-            sep2.push(this.sourceToken);
+            sep3 = scalar.end;
+            sep3.push(this.sourceToken);
             delete scalar.end;
           } else
-            sep2 = [this.sourceToken];
+            sep3 = [this.sourceToken];
           const map = {
             type: "block-map",
             offset: scalar.offset,
             indent: scalar.indent,
-            items: [{ start, key: scalar, sep: sep2 }]
+            items: [{ start, key: scalar, sep: sep3 }]
           };
           this.onKeyLine = true;
           this.stack[this.stack.length - 1] = map;
@@ -6872,15 +6872,15 @@ var require_parser = __commonJS({
                 } else if (isFlowToken(it.key) && !includesToken(it.sep, "newline")) {
                   const start2 = getFirstKeyStartProps(it.start);
                   const key = it.key;
-                  const sep2 = it.sep;
-                  sep2.push(this.sourceToken);
+                  const sep3 = it.sep;
+                  sep3.push(this.sourceToken);
                   delete it.key;
                   delete it.sep;
                   this.stack.push({
                     type: "block-map",
                     offset: this.offset,
                     indent: this.indent,
-                    items: [{ start: start2, key, sep: sep2 }]
+                    items: [{ start: start2, key, sep: sep3 }]
                   });
                 } else if (start.length > 0) {
                   it.sep = it.sep.concat(start, this.sourceToken);
@@ -7074,13 +7074,13 @@ var require_parser = __commonJS({
             const prev = getPrevProps(parent);
             const start = getFirstKeyStartProps(prev);
             fixFlowSeqItems(fc);
-            const sep2 = fc.end.splice(1, fc.end.length);
-            sep2.push(this.sourceToken);
+            const sep3 = fc.end.splice(1, fc.end.length);
+            sep3.push(this.sourceToken);
             const map = {
               type: "block-map",
               offset: fc.offset,
               indent: fc.indent,
-              items: [{ start, key: fc, sep: sep2 }]
+              items: [{ start, key: fc, sep: sep3 }]
             };
             this.onKeyLine = true;
             this.stack[this.stack.length - 1] = map;
@@ -7359,10 +7359,9 @@ var require_dist = __commonJS({
 });
 
 // ../../apps/sync-agent/dist/cli.js
-var import_node_child_process3 = require("node:child_process");
 var import_node_fs5 = require("node:fs");
 var import_promises7 = require("node:fs/promises");
-var import_node_path10 = require("node:path");
+var import_node_path11 = require("node:path");
 
 // ../../apps/sync-agent/dist/args.js
 function takeFlagValue(rest, flag) {
@@ -7388,15 +7387,15 @@ function takeFlagValue(rest, flag) {
 }
 
 // ../../apps/sync-agent/dist/backend.js
-var import_node_path3 = require("node:path");
+var import_node_path4 = require("node:path");
 var import_node_fs2 = require("node:fs");
 
 // ../../apps/sync-agent/dist/config.js
 var import_node_fs = require("node:fs");
 var import_promises = require("node:fs/promises");
 var import_node_crypto = require("node:crypto");
-var import_node_os = require("node:os");
-var import_node_path = require("node:path");
+var import_node_os3 = require("node:os");
+var import_node_path2 = require("node:path");
 
 // ../../apps/sync-agent/dist/errors.js
 var AgentError = class extends Error {
@@ -7476,6 +7475,121 @@ function ask(verb, env) {
   return VERBS[verb][audienceOf(env)];
 }
 
+// ../../apps/sync-agent/dist/user-path.js
+var import_node_os2 = require("node:os");
+var import_node_path = __toESM(require("node:path"), 1);
+
+// ../../apps/sync-agent/dist/host.js
+var import_node_os = require("node:os");
+function hostOs(platform = process.platform, kernelRelease = (0, import_node_os.release)(), env = process.env) {
+  if (platform === "win32")
+    return "windows";
+  if (platform === "darwin")
+    return "macos";
+  if (platform === "linux" && (env.WSL_DISTRO_NAME || env.WSL_INTEROP || /microsoft/i.test(kernelRelease)))
+    return "wsl";
+  return "linux";
+}
+function hostShell(platform = process.platform, env = process.env) {
+  if (platform !== "win32")
+    return "posix";
+  return env.MSYSTEM ? "git-bash" : "windows-native";
+}
+function hostProbe(env = process.env) {
+  const os = hostOs(process.platform, (0, import_node_os.release)(), env);
+  const distro = os === "wsl" && env.WSL_DISTRO_NAME ? env.WSL_DISTRO_NAME : void 0;
+  return { os, shell: hostShell(process.platform, env), ...distro ? { distro } : {} };
+}
+
+// ../../apps/sync-agent/dist/user-path.js
+function hostPathContext() {
+  const os = hostOs();
+  return {
+    flavour: os === "windows" ? "win32" : os === "wsl" ? "wsl" : "posix",
+    home: (0, import_node_os2.homedir)(),
+    cwd: process.cwd()
+  };
+}
+var WIN_DRIVE = /^([A-Za-z]):(?=[\\/]|$)/;
+var WIN_DRIVE_GLUED = /^[A-Za-z]:[^\\/]/;
+var MSYS_DRIVE = /^\/(?:mnt\/)?([A-Za-z])(?=\/|$)/;
+var UNC = /^[\\/]{2}[^\\/]/;
+var MSYS_ROOTED_MNT = /^[A-Za-z]:\\(?:.*?\\)?Git\\mnt\\([A-Za-z])(?:\\(.*))?$/i;
+function normalizeUserPath(input, ctx = hostPathContext(), opts = {}) {
+  const P = ctx.flavour === "win32" ? import_node_path.default.win32 : import_node_path.default.posix;
+  let raw = input.trim();
+  const quoted = /^(["'])(.*)\1$/s.exec(raw);
+  if (quoted)
+    raw = quoted[2];
+  if (!raw)
+    throw new AgentError("no folder given for the wiki");
+  if (raw === "~")
+    raw = ctx.home;
+  else if (raw.startsWith("~/") || raw.startsWith("~\\"))
+    raw = P.join(ctx.home, raw.slice(2));
+  const relativeRefusal = () => new AgentError(`"${input}" is a relative path: give the full folder path (e.g. ${P.join(ctx.home, "Documents", "my-wiki")})`);
+  const relativeOrResolved = () => {
+    if (opts.relative !== "resolve")
+      throw relativeRefusal();
+    return P.resolve(ctx.cwd, raw);
+  };
+  let absolute;
+  if (ctx.flavour === "win32") {
+    absolute = win32Absolute(raw, input, relativeOrResolved);
+  } else {
+    const drive = WIN_DRIVE.exec(raw);
+    if (drive)
+      throw windowsPathOnUnix(input, raw, drive[1], ctx);
+    if (ctx.flavour === "wsl" && WIN_DRIVE_GLUED.test(raw)) {
+      throw new AgentError(`"${input}" looks like a Windows folder whose backslashes were lost on the way. Inside WSL, write it the Linux way, like /mnt/c/Users/you/wiki, or use a folder in your Linux home (like ~/wiki)`);
+    }
+    absolute = P.isAbsolute(raw) ? P.normalize(raw) : relativeOrResolved();
+  }
+  return withoutTrailingSeparator(absolute, P);
+}
+function win32Absolute(raw, input, relativeOrResolved) {
+  const P = import_node_path.default.win32;
+  const msys = MSYS_DRIVE.exec(raw);
+  let candidate;
+  if (msys) {
+    candidate = `${msys[1].toUpperCase()}:\\${raw.slice(msys[0].length).replace(/^\/+/, "")}`;
+  } else if (WIN_DRIVE_GLUED.test(raw)) {
+    throw new AgentError(`"${input}" looks like a Windows folder whose backslashes were lost on the way; write it with forward slashes, like C:/Users/you/wiki`);
+  } else if (WIN_DRIVE.test(raw)) {
+    candidate = /^[A-Za-z]:$/.test(raw) ? `${raw}\\` : raw;
+  } else if (UNC.test(raw)) {
+    return P.normalize(raw);
+  } else if (raw.startsWith("/") || raw.startsWith("\\")) {
+    throw new AgentError(`"${input}" has no drive: a Windows folder starts with its drive, like C:\\Users\\you\\wiki`);
+  } else {
+    candidate = relativeOrResolved();
+  }
+  const normalized = P.normalize(candidate);
+  const absolute = normalized.charAt(0).toUpperCase() + normalized.slice(1);
+  const rewritten = MSYS_ROOTED_MNT.exec(absolute);
+  if (rewritten) {
+    const drive = rewritten[1].toUpperCase();
+    const rest = (rewritten[2] ?? "").replace(/\\/g, "/");
+    throw new AgentError(`"${input}" reached CommonGround as ${absolute}: Git Bash turns a /mnt/${rewritten[1].toLowerCase()}/... folder into one inside its own install folder. Write it the Windows way instead, like ${drive}:/${rest}`);
+  }
+  return absolute;
+}
+function windowsPathOnUnix(input, raw, letter, ctx) {
+  if (ctx.flavour !== "wsl") {
+    return new AgentError(`"${input}" is a Windows folder path, and this machine is not running Windows: give the full folder path the way this machine writes it (e.g. ${import_node_path.default.posix.join(ctx.home, "Documents", "my-wiki")})`);
+  }
+  const rest = raw.slice(2).replace(/\\/g, "/").replace(/^\/+/, "");
+  const wslSpelling = `/mnt/${letter.toLowerCase()}${rest ? `/${rest}` : ""}`;
+  return new AgentError(`"${input}" is a Windows folder, and CommonGround is running inside WSL, where that folder is ${wslSpelling}. ` + byAudience(`Give it as ${wslSpelling}, or better, pick a folder in your Linux home (like ~/wiki): git is much faster there.`, `Offer to use ${wslSpelling} instead, or better, a folder in their Linux home (like ~/wiki): git is much faster there.`));
+}
+function withoutTrailingSeparator(p, P) {
+  const root = P.parse(p).root;
+  let out = p;
+  while (out.length > root.length && out.endsWith(P.sep))
+    out = out.slice(0, -1);
+  return out;
+}
+
 // ../../apps/sync-agent/dist/config.js
 var AGENT_CONFIG_DIR = ".commonground";
 var CREDENTIALS_FILE = "credentials.json";
@@ -7485,23 +7599,23 @@ function envDir(name, fallback) {
   return value && value.trim() ? value : fallback;
 }
 function defaultConfigHome() {
-  return (0, import_node_path.join)((0, import_node_os.homedir)(), ".commonground");
+  return (0, import_node_path2.join)((0, import_node_os3.homedir)(), ".commonground");
 }
 function agentConfigHome() {
   return envDir("COMMONGROUND_CONFIG_HOME", defaultConfigHome());
 }
 function agentDataHome() {
-  return envDir("COMMONGROUND_HOME", (0, import_node_path.join)((0, import_node_os.homedir)(), "CommonGround"));
+  return envDir("COMMONGROUND_HOME", (0, import_node_path2.join)((0, import_node_os3.homedir)(), "CommonGround"));
 }
 function storePath(configHome = agentConfigHome()) {
-  return (0, import_node_path.join)(configHome, CREDENTIALS_FILE);
+  return (0, import_node_path2.join)(configHome, CREDENTIALS_FILE);
 }
 function legacyStorePath(dataHome = agentDataHome()) {
-  return (0, import_node_path.join)(dataHome, AGENT_CONFIG_DIR, "config.json");
+  return (0, import_node_path2.join)(dataHome, AGENT_CONFIG_DIR, "config.json");
 }
 var PROFILES_FILE = "profiles.json";
 function profilesPath(configHome = agentConfigHome()) {
-  return (0, import_node_path.join)(configHome, PROFILES_FILE);
+  return (0, import_node_path2.join)(configHome, PROFILES_FILE);
 }
 async function readTeamProfile(teamId, configHome = agentConfigHome()) {
   try {
@@ -7516,24 +7630,24 @@ async function writeTeamProfile(teamId, profile, configHome = agentConfigHome())
     return;
   }
   try {
-    const path = profilesPath(configHome);
+    const path2 = profilesPath(configHome);
     let store = { teams: {} };
     try {
-      const parsed = JSON.parse(await (0, import_promises.readFile)(path, "utf8"));
+      const parsed = JSON.parse(await (0, import_promises.readFile)(path2, "utf8"));
       if (parsed && typeof parsed === "object" && parsed.teams)
         store = { teams: parsed.teams };
     } catch {
     }
     store.teams[teamId] = { ...store.teams[teamId], ...profile };
-    await (0, import_promises.mkdir)((0, import_node_path.dirname)(path), { recursive: true });
-    await (0, import_promises.writeFile)(path, `${JSON.stringify(store, null, 2)}
+    await (0, import_promises.mkdir)((0, import_node_path2.dirname)(path2), { recursive: true });
+    await (0, import_promises.writeFile)(path2, `${JSON.stringify(store, null, 2)}
 `, "utf8");
   } catch {
   }
 }
 var STATE_FILE = "state.json";
 function statePath(configHome = agentConfigHome()) {
-  return (0, import_node_path.join)(configHome, STATE_FILE);
+  return (0, import_node_path2.join)(configHome, STATE_FILE);
 }
 async function readActiveWiki(configHome = agentConfigHome()) {
   try {
@@ -7545,31 +7659,31 @@ async function readActiveWiki(configHome = agentConfigHome()) {
   }
 }
 async function writeActiveWiki(teamId, configHome = agentConfigHome()) {
-  const path = statePath(configHome);
+  const path2 = statePath(configHome);
   let state = {};
   try {
-    const parsed = JSON.parse(await (0, import_promises.readFile)(path, "utf8"));
+    const parsed = JSON.parse(await (0, import_promises.readFile)(path2, "utf8"));
     if (parsed && typeof parsed === "object")
       state = parsed;
   } catch {
   }
   state.activeWiki = teamId;
-  await (0, import_promises.mkdir)((0, import_node_path.dirname)(path), { recursive: true });
-  await (0, import_promises.writeFile)(path, `${JSON.stringify(state, null, 2)}
+  await (0, import_promises.mkdir)((0, import_node_path2.dirname)(path2), { recursive: true });
+  await (0, import_promises.writeFile)(path2, `${JSON.stringify(state, null, 2)}
 `, "utf8");
 }
 async function setPushNudgePref(value, configHome = agentConfigHome()) {
-  const path = statePath(configHome);
+  const path2 = statePath(configHome);
   let state = {};
   try {
-    const parsed = JSON.parse(await (0, import_promises.readFile)(path, "utf8"));
+    const parsed = JSON.parse(await (0, import_promises.readFile)(path2, "utf8"));
     if (parsed && typeof parsed === "object")
       state = parsed;
   } catch {
   }
   state.prefs = { ...state.prefs, pushNudge: value };
-  await (0, import_promises.mkdir)((0, import_node_path.dirname)(path), { recursive: true });
-  await (0, import_promises.writeFile)(path, `${JSON.stringify(state, null, 2)}
+  await (0, import_promises.mkdir)((0, import_node_path2.dirname)(path2), { recursive: true });
+  await (0, import_promises.writeFile)(path2, `${JSON.stringify(state, null, 2)}
 `, "utf8");
 }
 async function multiWikiNoticed(configHome = agentConfigHome()) {
@@ -7581,18 +7695,18 @@ async function multiWikiNoticed(configHome = agentConfigHome()) {
   }
 }
 async function markMultiWikiNoticed(configHome = agentConfigHome(), now = () => /* @__PURE__ */ new Date()) {
-  const path = statePath(configHome);
+  const path2 = statePath(configHome);
   let state = {};
   try {
-    const parsed = JSON.parse(await (0, import_promises.readFile)(path, "utf8"));
+    const parsed = JSON.parse(await (0, import_promises.readFile)(path2, "utf8"));
     if (parsed && typeof parsed === "object")
       state = parsed;
   } catch {
   }
   state.multiWikiNoticedAt = now().toISOString();
   try {
-    await (0, import_promises.mkdir)((0, import_node_path.dirname)(path), { recursive: true });
-    await (0, import_promises.writeFile)(path, `${JSON.stringify(state, null, 2)}
+    await (0, import_promises.mkdir)((0, import_node_path2.dirname)(path2), { recursive: true });
+    await (0, import_promises.writeFile)(path2, `${JSON.stringify(state, null, 2)}
 `, "utf8");
   } catch {
   }
@@ -7627,7 +7741,7 @@ function wikiLabel(listing) {
   return name ? `${name} (${listing.teamId})` : listing.teamId;
 }
 function uuidClonePath(teamId, dataHome = agentDataHome()) {
-  return (0, import_node_path.join)(dataHome, teamId);
+  return (0, import_node_path2.join)(dataHome, teamId);
 }
 var WINDOWS_RESERVED = /* @__PURE__ */ new Set([
   "con",
@@ -7651,24 +7765,24 @@ async function resolveClonePath(teamId, configHome = agentConfigHome(), dataHome
   if (profile.clonePath)
     return profile.clonePath;
   if (profile.cloneDir)
-    return (0, import_node_path.join)(dataHome, profile.cloneDir);
+    return (0, import_node_path2.join)(dataHome, profile.cloneDir);
   const uuid = uuidClonePath(teamId, dataHome);
   if ((0, import_node_fs.existsSync)(uuid))
     return uuid;
   const named = cloneDirName(profile);
   if (!named)
     return uuid;
-  const preferred = (0, import_node_path.join)(dataHome, named);
+  const preferred = (0, import_node_path2.join)(dataHome, named);
   if (!(0, import_node_fs.existsSync)(preferred))
     return preferred;
-  const suffixed = (0, import_node_path.join)(dataHome, `${named}-${teamId.slice(0, 8)}`);
+  const suffixed = (0, import_node_path2.join)(dataHome, `${named}-${teamId.slice(0, 8)}`);
   return (0, import_node_fs.existsSync)(suffixed) ? uuid : suffixed;
 }
 async function writeCloneLocation(teamId, patch, configHome) {
-  const path = profilesPath(configHome);
+  const path2 = profilesPath(configHome);
   let store = { teams: {} };
   try {
-    const parsed = JSON.parse(await (0, import_promises.readFile)(path, "utf8"));
+    const parsed = JSON.parse(await (0, import_promises.readFile)(path2, "utf8"));
     if (parsed && typeof parsed === "object" && parsed.teams)
       store = { teams: parsed.teams };
   } catch (e) {
@@ -7681,11 +7795,11 @@ async function writeCloneLocation(teamId, patch, configHome) {
     cloneDir: patch.cloneDir
   };
   try {
-    await (0, import_promises.mkdir)((0, import_node_path.dirname)(path), { recursive: true });
-    await (0, import_promises.writeFile)(path, `${JSON.stringify(store, null, 2)}
+    await (0, import_promises.mkdir)((0, import_node_path2.dirname)(path2), { recursive: true });
+    await (0, import_promises.writeFile)(path2, `${JSON.stringify(store, null, 2)}
 `, "utf8");
   } catch (e) {
-    throw new AgentError(`could not record your wiki's location in ${path} (${e.message}). Nothing was cloned \u2014 fix that file's permissions and try again.`);
+    throw new AgentError(`could not record your wiki's location in ${path2} (${e.message}). Nothing was cloned \u2014 fix that file's permissions and try again.`);
   }
 }
 async function setClonePath(teamId, clonePath, configHome = agentConfigHome()) {
@@ -7697,25 +7811,12 @@ async function forgetCloneLocation(teamId, configHome = agentConfigHome()) {
 async function setCloneDir(teamId, cloneDir, configHome = agentConfigHome()) {
   await writeCloneLocation(teamId, { cloneDir }, configHome);
 }
-function expandHome(p) {
-  if (p === "~")
-    return (0, import_node_os.homedir)();
-  if (p.startsWith("~/") || p.startsWith("~\\"))
-    return (0, import_node_path.join)((0, import_node_os.homedir)(), p.slice(2));
-  return p;
-}
 function normalizeClonePath(candidate, configHome = agentConfigHome(), dataHome = agentDataHome()) {
-  const raw = expandHome(candidate.trim());
-  if (!raw)
-    throw new AgentError("no folder given for the wiki");
-  if (!(0, import_node_path.isAbsolute)(raw)) {
-    throw new AgentError(`"${candidate}" is a relative path \u2014 give the full folder path (e.g. ${(0, import_node_path.join)((0, import_node_os.homedir)(), "Documents", "my-wiki")})`);
-  }
-  const target = (0, import_node_path.resolve)(raw);
-  if (isInside(target, configHome) || isInside(configHome, target)) {
+  const target = normalizeUserPath(candidate);
+  if (isInsidePath(target, configHome) || isInsidePath(configHome, target)) {
     throw new AgentError(`${target} overlaps your CommonGround sign-in at ${configHome} \u2014 pick a folder outside it, so clearing the wiki can never sign you out`);
   }
-  if ((0, import_node_path.resolve)(dataHome) === target) {
+  if ((0, import_node_path2.resolve)(dataHome) === target) {
     throw new AgentError(`${target} is the folder that holds every wiki \u2014 pick a folder inside it (or anywhere else), not it`);
   }
   return target;
@@ -7743,16 +7844,16 @@ function isMissing(e) {
   return e?.code === "ENOENT";
 }
 function resolveRealPath(p) {
-  let head = (0, import_node_path.resolve)(p);
+  let head = (0, import_node_path2.resolve)(p);
   const tail = [];
   for (; ; ) {
     try {
-      return (0, import_node_path.join)((0, import_node_fs.realpathSync)(head), ...tail);
+      return (0, import_node_path2.join)((0, import_node_fs.realpathSync)(head), ...tail);
     } catch {
-      const parent = (0, import_node_path.dirname)(head);
+      const parent = (0, import_node_path2.dirname)(head);
       if (parent === head)
-        return (0, import_node_path.resolve)(p);
-      tail.unshift((0, import_node_path.basename)(head));
+        return (0, import_node_path2.resolve)(p);
+      tail.unshift((0, import_node_path2.basename)(head));
       head = parent;
     }
   }
@@ -7760,10 +7861,33 @@ function resolveRealPath(p) {
 function caseFolds() {
   return process.platform === "darwin" || process.platform === "win32";
 }
-function isInside(parent, child) {
-  const fold = (s) => caseFolds() ? s.toLowerCase() : s;
-  const rel = (0, import_node_path.relative)(fold(resolveRealPath(parent)), fold(resolveRealPath(child)));
-  return rel === "" || !rel.startsWith("..") && !(0, import_node_path.isAbsolute)(rel);
+function isInsidePath(parent, child) {
+  const fold = (s) => caseFolds() ? s.normalize("NFC").toLowerCase() : s.normalize("NFC");
+  const rel = (0, import_node_path2.relative)(fold(resolveRealPath(parent)), fold(resolveRealPath(child)));
+  return rel === "" || !rel.startsWith("..") && !(0, import_node_path2.isAbsolute)(rel);
+}
+function insideByIdentity(homes) {
+  const identity = (p) => {
+    try {
+      const s = (0, import_node_fs.statSync)(p, { bigint: true });
+      return s.ino === 0n ? null : `${s.dev}:${s.ino}`;
+    } catch {
+      return null;
+    }
+  };
+  const ids = new Set(homes.map(identity).filter((id) => id !== null));
+  const memo = /* @__PURE__ */ new Map();
+  const inside = (p) => {
+    const known = memo.get(p);
+    if (known !== void 0)
+      return known;
+    const id = identity(p);
+    const parent = (0, import_node_path2.dirname)(p);
+    const answer = id !== null && ids.has(id) || parent !== p && inside(parent);
+    memo.set(p, answer);
+    return answer;
+  };
+  return (child) => ids.size > 0 && inside((0, import_node_path2.resolve)(child));
 }
 async function fsyncDir(dir) {
   const fh = await (0, import_promises.open)(dir, "r");
@@ -7783,20 +7907,20 @@ var StoreFileError = class extends AgentError {
     this.fault = fault;
   }
 };
-async function readStoreFile(path) {
+async function readStoreFile(path2) {
   let raw;
   let adoptable;
   try {
     let followedLink = false;
     let fh;
     try {
-      fh = await (0, import_promises.open)(path, import_node_fs.constants.O_RDONLY | O_NOFOLLOW);
+      fh = await (0, import_promises.open)(path2, import_node_fs.constants.O_RDONLY | O_NOFOLLOW);
     } catch (e) {
       const code = e.code;
       if (code !== "ELOOP" && code !== "EMLINK")
         throw e;
       followedLink = true;
-      fh = await (0, import_promises.open)(path, "r");
+      fh = await (0, import_promises.open)(path2, "r");
     }
     try {
       const st = await fh.stat();
@@ -7809,7 +7933,7 @@ async function readStoreFile(path) {
   } catch (e) {
     if (isMissing(e))
       return null;
-    throw new StoreFileError(`can't read your CommonGround sign-in at ${path} (${e.message}) \u2014 fix or delete that file, then ${byAudience('run "commonground login"', "offer to sign them in again")}`, "unreadable");
+    throw new StoreFileError(`can't read your CommonGround sign-in at ${path2} (${e.message}) \u2014 fix or delete that file, then ${byAudience('run "commonground login"', "offer to sign them in again")}`, "unreadable");
   }
   let parsed;
   try {
@@ -7819,15 +7943,15 @@ async function readStoreFile(path) {
   }
   const teams = parsed?.teams;
   if (!teams || typeof teams !== "object") {
-    throw new StoreFileError(`your CommonGround sign-in at ${path} is corrupt \u2014 fix or delete that file, then ${byAudience('run "commonground login"', "offer to sign them in again")}`, "corrupt");
+    throw new StoreFileError(`your CommonGround sign-in at ${path2} is corrupt \u2014 fix or delete that file, then ${byAudience('run "commonground login"', "offer to sign them in again")}`, "corrupt");
   }
   return { store: parsed, raw, adoptable };
 }
-async function writeStoreFile(path, raw, opts = {}) {
-  const dir = (0, import_node_path.dirname)(path);
+async function writeStoreFile(path2, raw, opts = {}) {
+  const dir = (0, import_node_path2.dirname)(path2);
   await (0, import_promises.mkdir)(dir, { recursive: true, mode: 448 });
   await (0, import_promises.chmod)(dir, 448);
-  const tmp = `${path}.${(0, import_node_crypto.randomUUID)()}.tmp`;
+  const tmp = `${path2}.${(0, import_node_crypto.randomUUID)()}.tmp`;
   let published = false;
   try {
     const fh = await (0, import_promises.open)(tmp, "wx", 384);
@@ -7840,14 +7964,14 @@ async function writeStoreFile(path, raw, opts = {}) {
     }
     if (opts.exclusive) {
       try {
-        await (0, import_promises.link)(tmp, path);
+        await (0, import_promises.link)(tmp, path2);
         published = true;
       } catch (e) {
         if (e.code !== "EEXIST")
           throw e;
       }
     } else {
-      await (0, import_promises.rename)(tmp, path);
+      await (0, import_promises.rename)(tmp, path2);
       published = true;
     }
     if (published)
@@ -7865,13 +7989,13 @@ function coveredBy(subset, live) {
 }
 async function removeLegacyStore(legacyPath) {
   await (0, import_promises.unlink)(legacyPath).catch(() => void 0);
-  await (0, import_promises.rmdir)((0, import_node_path.dirname)(legacyPath)).catch(() => void 0);
+  await (0, import_promises.rmdir)((0, import_node_path2.dirname)(legacyPath)).catch(() => void 0);
 }
 async function relocateLegacyStore(configHome, dataHome, legacyPath, legacy) {
   if (!legacy.adoptable)
     return;
   const dest = storePath(configHome);
-  if (isInside(dataHome, dest))
+  if (isInsidePath(dataHome, dest))
     return;
   if (!await writeStoreFile(dest, legacy.raw, { exclusive: true }))
     return;
@@ -7944,7 +8068,7 @@ function heldWikis(configHome) {
 function notLoggedIn(teamId, configHome) {
   const home = configHome ?? agentConfigHome();
   const store = storePath(home);
-  const elsewhere = envDir("COMMONGROUND_CONFIG_HOME", "") && (0, import_node_path.resolve)(home) !== (0, import_node_path.resolve)(defaultConfigHome()) && (0, import_node_fs.existsSync)(storePath(defaultConfigHome())) ? ` (a sign-in also exists at ${storePath(defaultConfigHome())}, but COMMONGROUND_CONFIG_HOME points at ${home})` : "";
+  const elsewhere = envDir("COMMONGROUND_CONFIG_HOME", "") && (0, import_node_path2.resolve)(home) !== (0, import_node_path2.resolve)(defaultConfigHome()) && (0, import_node_fs.existsSync)(storePath(defaultConfigHome())) ? ` (a sign-in also exists at ${storePath(defaultConfigHome())}, but COMMONGROUND_CONFIG_HOME points at ${home})` : "";
   const empty = ` (no credentials at ${store})`;
   if (!teamId)
     return new AgentError(`no team logged in \u2014 ${byAudience('run "commonground login" first', "offer to sign them in")}${empty}${elsewhere}`);
@@ -7958,7 +8082,7 @@ function notLoggedIn(teamId, configHome) {
 // ../../apps/sync-agent/dist/transport.js
 var import_node_child_process = require("node:child_process");
 var import_promises2 = require("node:fs/promises");
-var import_node_path2 = require("node:path");
+var import_node_path3 = require("node:path");
 var import_node_util = require("node:util");
 
 // ../shared/dist/scope.js
@@ -8443,8 +8567,8 @@ function getErrorMap() {
 
 // ../../node_modules/.pnpm/zod@3.25.76/node_modules/zod/v3/helpers/parseUtil.js
 var makeIssue = (params) => {
-  const { data, path, errorMaps, issueData } = params;
-  const fullPath = [...path, ...issueData.path || []];
+  const { data, path: path2, errorMaps, issueData } = params;
+  const fullPath = [...path2, ...issueData.path || []];
   const fullIssue = {
     ...issueData,
     path: fullPath
@@ -8560,11 +8684,11 @@ var errorUtil;
 
 // ../../node_modules/.pnpm/zod@3.25.76/node_modules/zod/v3/types.js
 var ParseInputLazyPath = class {
-  constructor(parent, value, path, key) {
+  constructor(parent, value, path2, key) {
     this._cachedPath = [];
     this.parent = parent;
     this.data = value;
-    this._path = path;
+    this._path = path2;
     this._key = key;
   }
   get path() {
@@ -12198,9 +12322,9 @@ function isCharterPageId(pageId) {
   return CHARTER_PAGE_IDS.includes(pageId);
 }
 function resolveCharterPageId(pageIds) {
-  const present = new Set(pageIds);
+  const present2 = new Set(pageIds);
   for (const candidate of CHARTER_PAGE_IDS)
-    if (present.has(candidate))
+    if (present2.has(candidate))
       return candidate;
   return null;
 }
@@ -12311,8 +12435,8 @@ var MACHINE_FILES = {
   index: WIKI_LAYOUT.indexFile,
   log: WIKI_LAYOUT.logFile
 };
-function pageIdFromPath(path) {
-  return path.replace(/\.md$/, "");
+function pageIdFromPath(path2) {
+  return path2.replace(/\.md$/, "");
 }
 
 // ../shared/dist/wiki/scope.js
@@ -12440,8 +12564,8 @@ function validateFrontmatter(input) {
   if (result.success)
     return { ok: true, value: result.data };
   const errors = result.error.issues.map((issue) => {
-    const path = issue.path.join(".");
-    return path ? `${path}: ${issue.message}` : issue.message;
+    const path2 = issue.path.join(".");
+    return path2 ? `${path2}: ${issue.message}` : issue.message;
   });
   return { ok: false, errors };
 }
@@ -12561,6 +12685,51 @@ function catalogCategoryBuckets(entries, compare) {
     }
   }
   return [...buckets.entries()].sort((a, b) => compare(a[0], b[0]));
+}
+
+// ../shared/dist/wiki/portable.js
+var FORBIDDEN_CHAR = /[<>:"|?*\u0000-\u001f]/;
+var DEVICE_NAME = /^(con|prn|aux|nul|com[1-9¹²³]|lpt[1-9¹²³]|conin\$|conout\$)$/i;
+var MAX_PORTABLE_PATH = 180;
+function portablePathProblem(relPath) {
+  const path2 = relPath.normalize("NFC");
+  if (path2.length > MAX_PORTABLE_PATH) {
+    return `the path is ${path2.length} characters long, and Windows cannot open a path that long inside a wiki folder (keep it to ${MAX_PORTABLE_PATH} at most)`;
+  }
+  for (const part of path2.split("/")) {
+    const bad = FORBIDDEN_CHAR.exec(part);
+    if (bad) {
+      const ch = bad[0];
+      const shown = ch < " " ? "a control character" : `"${ch}"`;
+      return `${shown} cannot be part of a file or folder name on Windows`;
+    }
+    if (/[. ]$/.test(part))
+      return "a file or folder name cannot end with a dot or a space on Windows";
+    const base = part.split(".")[0].replace(/ +$/, "");
+    if (DEVICE_NAME.test(base))
+      return `"${base}" is a name Windows keeps for a device`;
+  }
+  return null;
+}
+function pathFoldKey(path2) {
+  return path2.normalize("NFC").toLowerCase();
+}
+function caseTwins(paths) {
+  const byKey = /* @__PURE__ */ new Map();
+  for (const p of paths) {
+    const key = pathFoldKey(p);
+    const group = byKey.get(key) ?? /* @__PURE__ */ new Set();
+    group.add(p);
+    byKey.set(key, group);
+  }
+  return [...byKey.values()].filter((g) => g.size > 1).map((g) => [...g].sort()).sort((a, b) => a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0);
+}
+function twinDifference(spellings) {
+  if (new Set(spellings.map((s) => s.toLowerCase())).size <= 1)
+    return "case";
+  if (new Set(spellings.map((s) => s.normalize("NFC"))).size <= 1)
+    return "accents";
+  return "both";
 }
 
 // ../shared/dist/seeding/question-sets.js
@@ -12765,9 +12934,9 @@ function gitAuth(url, token) {
   };
 }
 async function cloneRepo(url, dir, access3 = {}) {
-  const parent = (0, import_node_path2.dirname)(dir);
+  const parent = (0, import_node_path3.dirname)(dir);
   await (0, import_promises2.mkdir)(parent, { recursive: true });
-  await runGit(parent, ["clone", url, dir], access3.env, access3.args);
+  await runGit(parent, ["clone", url, dir], access3.env, [...access3.args ?? [], "-c", "core.autocrlf=false"]);
 }
 async function fetchOrigin(dir, access3 = {}) {
   await runGit(dir, ["fetch", "origin"], access3.env, access3.args);
@@ -12800,29 +12969,66 @@ function whatSurvived() {
 }
 function gitVersionVerdict(probe) {
   if (!probe.version) {
-    return "CommonGround could not ask this machine which git it has; a git older than 2.31 is the usual cause, and updating git (https://git-scm.com/downloads) is the safe first try. ";
+    return "CommonGround could not tell which version of git this machine has, so it cannot say whether the version played a part. Updating git (https://git-scm.com/downloads) is one thing worth trying. ";
   }
   if (!probe.headerChannel) {
-    return `This machine's git is ${probe.version}, which is older than CommonGround can sign in with; updating git (https://git-scm.com/downloads) fixes it. `;
+    return `This machine's git is ${probe.version}, which is older than 2.31, so it used the older of git's two ways to send your sign-in, and that way failed too. Updating git (https://git-scm.com/downloads) is one fix worth trying; the version alone is not proven to be the cause. `;
   }
-  return `This machine's git is ${probe.version}, which is new enough, so the version is not the cause: something on this machine is answering for the sign-in instead, usually a credential helper or a proxy. `;
+  return `This machine's git is ${probe.version}, which is new enough, so the version is not the cause. Something else on this machine is getting in the way of the sign-in, usually a credential helper or a proxy. `;
+}
+function gitMissing(os) {
+  const head = "git is not installed on this machine (or not on PATH), and a local wiki folder needs it. ";
+  switch (os) {
+    case "windows":
+      return head + byAudience("Install Git for Windows (winget install --id Git.Git -e --source winget, or the installer from https://git-scm.com/downloads/win), then restart Claude Code (or open a new terminal) so it sees the new git, and try again.", "Offer to walk them through installing Git for Windows (winget install --id Git.Git -e --source winget, or the installer from https://git-scm.com/downloads/win). Claude Code only sees the new git after a restart, so ask them to restart Claude Code before trying again.");
+    case "wsl":
+      return head + byAudience("Install it inside WSL (sudo apt install git), not Git for Windows, then try again.", "Offer to help them install it inside WSL (sudo apt install git), not Git for Windows, then try again.");
+    default:
+      return head + "Install git (https://git-scm.com/downloads), then try again.";
+  }
+}
+var NAMES_THE_FILE = /^error: (?:invalid path .+|unable to create file .+)$/im;
+function unwritableFile(stderr, os) {
+  const line = NAMES_THE_FILE.exec(stderr)?.[0];
+  return line ? couldNotWrite(line.trim(), os) : null;
+}
+function checkoutFailure(stderr, os = hostOs()) {
+  const line = NAMES_THE_FILE.exec(stderr)?.[0] ?? /^(?:error|fatal): .+$/im.exec(stderr)?.[0];
+  return couldNotWrite(line?.trim() ?? "", os);
+}
+function couldNotWrite(line, os) {
+  const shown = line.length > 240 ? `${line.slice(0, 150)}\u2026${line.slice(-80)}` : line;
+  const head = `the wiki downloaded, but this machine could not write one of its files${shown ? ` (git said: ${shown})` : ""}. ${whatSurvived()}. `;
+  const renameIt = byAudience("Ask a curator of the wiki, or CommonGround support, to rename that page, then try again.", "Suggest they ask a curator of the wiki, or CommonGround support, to rename that page, then try again.");
+  if (/name too long/i.test(line)) {
+    if (os !== "windows")
+      return head + "One of its file names is longer than this machine can hold. " + renameIt;
+    return head + "The path is longer than Windows allows by default. " + byAudience('Turn on long paths for git (git config --global core.longpaths true), or put the wiki folder somewhere with a shorter path ("commonground init --mode local --path <folder>"), then try again.', "Offer to turn on long paths for git (git config --global core.longpaths true), or to put the wiki folder somewhere with a shorter path (/commonground:point in local mode, naming a folder), then try again.");
+  }
+  if (/^error: invalid path/i.test(line)) {
+    return head + (os === "windows" ? 'A page name Windows cannot hold is the usual cause (Windows refuses : * ? " < > |, names like con or nul, and names ending in a dot or a space). ' : "git refuses to write that name on this machine. ") + renameIt;
+  }
+  return head + byAudience("Check that the disk has room and the wiki folder is writable and not held open by another program, then try again.", "Suggest they check that the disk has room and the wiki folder is writable and not held open by another program, then try again.");
 }
 function lastWord(stderr) {
   const lines = stderr.split("\n").map((l) => l.trim()).filter(Boolean);
   const verdict = [...lines].reverse().find((l) => /^(fatal|error):/i.test(l));
   return (verdict ?? lines[lines.length - 1] ?? "").slice(0, 300);
 }
-async function explainGitFailure(err) {
-  if (err.spawnCode === "ENOENT") {
-    return "git is not installed on this machine (or not on PATH), and a local wiki folder needs it. Install git (https://git-scm.com/downloads), then try again.";
-  }
+async function explainGitFailure(err, os = hostOs()) {
+  if (err.spawnCode === "ENOENT")
+    return gitMissing(os);
   const stderr = err.stderr;
+  const unwritable = unwritableFile(stderr, os);
+  if (unwritable)
+    return unwritable;
   if (/authentication failed for|remote: authentication required/i.test(stderr)) {
     return `CommonGround did not accept this machine's sign-in: it was revoked, or it has expired. ${whatSurvived()}; ${ask("login")}.`;
   }
   if (/could not read username for/i.test(stderr)) {
     const probe = await gitProbe();
-    return `git could not present your CommonGround sign-in to the server. ${whatSurvived()}. ` + gitVersionVerdict(probe) + "Your sign-in itself is fine: do not store it in a file, a keychain or the wiki address to work around this.";
+    const word2 = lastWord(stderr);
+    return `git could not present your CommonGround sign-in to the server${word2 ? ` (git said: ${word2})` : ""}. ${whatSurvived()}. ` + gitVersionVerdict(probe) + "Your sign-in itself is fine: do not store it in a file, a keychain or the wiki address to work around this.";
   }
   if (/could not resolve host|failed to connect|connection refused|connection timed out|operation timed out|network is unreachable|ssl/i.test(stderr)) {
     return `could not reach CommonGround (${lastWord(stderr)}). ${whatSurvived()}; check the connection and try again.`;
@@ -12865,16 +13071,60 @@ async function revParse(dir, ref) {
   }
 }
 async function isWorkingTreeClean(dir) {
-  const out = await runGit(dir, ["status", "--porcelain", "--untracked-files=no"]);
-  return out.trim().length === 0;
+  const out = await runGit(dir, ["status", "--porcelain", "-z", "--untracked-files=no"]);
+  if (out.length === 0)
+    return true;
+  const twins = await foldedTwinPaths(dir);
+  if (twins.size === 0)
+    return false;
+  return parseStatusZ(out).every((e) => twins.has(e.path));
 }
-var FOLDER_NOISE = /* @__PURE__ */ new Set([".DS_Store", "Thumbs.db"]);
-function isFolderNoise(path) {
-  return FOLDER_NOISE.has(path.slice(path.lastIndexOf("/") + 1));
+function parseStatusZ(out) {
+  const fields = out.split("\0");
+  const entries = [];
+  for (let i = 0; i < fields.length; i++) {
+    const field = fields[i];
+    if (field.length < 4)
+      continue;
+    const xy = field.slice(0, 2);
+    const orig = /[RC]/.test(xy) ? fields[++i] : void 0;
+    entries.push({ xy, path: field.slice(3), ...orig ? { orig } : {} });
+  }
+  return entries;
+}
+async function foldsCase(dir) {
+  try {
+    return (await runGit(dir, ["config", "--bool", "core.ignorecase"])).trim() === "true";
+  } catch {
+    return false;
+  }
+}
+async function foldedTwinPaths(dir) {
+  if (!await foldsCase(dir))
+    return /* @__PURE__ */ new Set();
+  const tracked = (await runGit(dir, ["ls-files", "-z"])).split("\0").filter(Boolean);
+  return new Set(caseTwins(tracked).flat());
+}
+async function stageEverything(dir, env) {
+  await runGit(dir, ["add", "-A"], env, ["-c", "core.safecrlf=false"]);
+}
+async function runGitOverPaths(dir, args, paths) {
+  const CHUNK = 100;
+  for (let i = 0; i < paths.length; i += CHUNK) {
+    await runGit(dir, [...args, "--", ...paths.slice(i, i + CHUNK)]);
+  }
+}
+var FOLDER_NOISE = /* @__PURE__ */ new Set([".ds_store", "thumbs.db", "desktop.ini"]);
+function isFolderNoiseName(name) {
+  return FOLDER_NOISE.has(name.toLowerCase());
+}
+function isFolderNoise(path2) {
+  return isFolderNoiseName(path2.slice(path2.lastIndexOf("/") + 1));
 }
 async function unpublishedWork(dir) {
-  const out = await runGit(dir, ["status", "--porcelain", "--untracked-files=all"]);
-  const paths = out.split("\n").map((line) => line.slice(3).trim()).filter(Boolean).map((p) => p.includes(" -> ") ? p.slice(p.indexOf(" -> ") + 4) : p).map((p) => p.replace(/^"(.*)"$/, "$1")).filter((p) => !isFolderNoise(p));
+  const out = await runGit(dir, ["status", "--porcelain", "-z", "--untracked-files=all"]);
+  const twins = out ? await foldedTwinPaths(dir) : /* @__PURE__ */ new Set();
+  const paths = parseStatusZ(out).map((e) => e.path).filter((p) => !isFolderNoise(p) && !twins.has(p));
   const pages = paths.filter((p) => p.toLowerCase().endsWith(".md") && p !== WIKI_LAYOUT.indexFile && !p.startsWith(`${WIKI_LAYOUT.sourcesDir}/`));
   return { pages: pages.length, files: paths.length };
 }
@@ -12884,7 +13134,32 @@ async function aheadBehind(dir, local, remote) {
   return { ahead: ahead || 0, behind: behind || 0 };
 }
 async function fastForward(dir, ref) {
-  await runGit(dir, ["merge", "--ff-only", ref]);
+  await settleFoldedTwins(dir, ref);
+  await keepingFoldedFiles(dir, () => runGit(dir, ["merge", "--ff-only", ref]));
+}
+async function settleFoldedTwins(dir, ref) {
+  const twins = await foldedTwinPaths(dir);
+  if (twins.size === 0)
+    return;
+  const changed = parseStatusZ(await runGit(dir, ["status", "--porcelain", "-z", "--untracked-files=all"]));
+  if (changed.some((e) => e.xy !== "??" && !twins.has(e.path) && !isFolderNoise(e.path)))
+    return;
+  const dirty = new Set(changed.map((e) => e.path));
+  const phantom = new Set(changed.filter((e) => e.xy === " M").map((e) => e.path));
+  const touched = new Set((await runGit(dir, ["diff", "--name-only", "--no-renames", "-z", "HEAD", ref])).split("\0").filter(Boolean));
+  const restore = caseTwins(twins).filter((group) => group.some((p) => !dirty.has(p))).flatMap((group) => group.filter((p) => phantom.has(p) && touched.has(p)));
+  await runGitOverPaths(dir, ["--literal-pathspecs", "checkout"], restore);
+}
+async function keepingFoldedFiles(dir, move) {
+  if (!await foldsCase(dir)) {
+    await move();
+    return;
+  }
+  const missing = async () => (await runGit(dir, ["ls-files", "--deleted", "-z"])).split("\0").filter(Boolean);
+  const before = new Set(await missing());
+  await move();
+  const lost = (await missing()).filter((p) => !before.has(p));
+  await runGitOverPaths(dir, ["--literal-pathspecs", "checkout"], lost);
 }
 async function headOid(dir) {
   return (await runGit(dir, ["rev-parse", "HEAD"])).trim();
@@ -12905,7 +13180,8 @@ async function mergeBase(dir, a, b) {
   return (await runGit(dir, ["merge-base", a, b])).trim();
 }
 async function snapshotWorkingTree(dir, message, author) {
-  const tmpIndex = (0, import_node_path2.join)(dir, ".git", `commonground-snapshot-${process.pid}-${Date.now()}.index`);
+  const gitDir = (await runGit(dir, ["rev-parse", "--absolute-git-dir"])).trim();
+  const tmpIndex = (0, import_node_path3.join)(gitDir, `commonground-snapshot-${process.pid}-${Date.now()}.index`);
   const env = {
     GIT_INDEX_FILE: tmpIndex,
     // merged over process.env by runGit
@@ -12916,18 +13192,18 @@ async function snapshotWorkingTree(dir, message, author) {
   };
   try {
     await runGit(dir, ["read-tree", "HEAD"], env);
-    await runGit(dir, ["add", "-A"], env);
+    await stageEverything(dir, env);
     const tree = (await runGit(dir, ["write-tree"], env)).trim();
     return (await runGit(dir, ["commit-tree", tree, "-p", "HEAD", "-m", message], env)).trim();
   } finally {
-    await (0, import_promises2.rm)(tmpIndex, { force: true }).catch(() => void 0);
+    await (0, import_promises2.rm)(tmpIndex, { force: true, recursive: true, maxRetries: 3 }).catch(() => void 0);
   }
 }
 async function createBranch(dir, name, at) {
   await runGit(dir, ["branch", name, at]);
 }
 async function resetHardTo(dir, ref) {
-  await runGit(dir, ["reset", "--hard", ref]);
+  await keepingFoldedFiles(dir, () => runGit(dir, ["reset", "--hard", ref]));
 }
 async function archiveHead(dir, outPath) {
   await runGit(dir, ["archive", "--format=tar", "-o", outPath, "HEAD"]);
@@ -12943,7 +13219,7 @@ var LocalSyncBackend = class {
     return Promise.resolve(this.cfg.memberships[token] ?? null);
   }
   remoteAccess(teamId) {
-    return Promise.resolve({ url: (0, import_node_path3.join)(this.cfg.reposDir, `${teamId}.git`), env: {} });
+    return Promise.resolve({ url: (0, import_node_path4.join)(this.cfg.reposDir, `${teamId}.git`), env: {} });
   }
 };
 function clientHeader() {
@@ -12951,7 +13227,7 @@ function clientHeader() {
     const entry = process.argv[1];
     if (!entry)
       return {};
-    const manifest = JSON.parse((0, import_node_fs2.readFileSync)((0, import_node_path3.join)((0, import_node_path3.dirname)(entry), "..", ".claude-plugin", "plugin.json"), "utf8"));
+    const manifest = JSON.parse((0, import_node_fs2.readFileSync)((0, import_node_path4.join)((0, import_node_path4.dirname)(entry), "..", ".claude-plugin", "plugin.json"), "utf8"));
     const v = manifest?.version;
     return typeof v === "string" && v ? { "x-commonground-client": `plugin/${v}` } : {};
   } catch {
@@ -13026,9 +13302,9 @@ var HttpSyncBackend = class {
     };
   }
   /** Append a path to the API base, preserving any base path prefix (mirrors {@link remoteAccess}). */
-  endpoint(path) {
+  endpoint(path2) {
     const url = new URL(this.cfg.apiBaseUrl);
-    url.pathname = `${url.pathname.replace(/\/$/, "")}${path}`;
+    url.pathname = `${url.pathname.replace(/\/$/, "")}${path2}`;
     return url;
   }
   /**
@@ -13118,7 +13394,7 @@ var HttpSyncBackend = class {
 
 // ../../apps/sync-agent/dist/commands.js
 var import_promises6 = require("node:fs/promises");
-var import_node_path7 = require("node:path");
+var import_node_path8 = require("node:path");
 
 // ../core/dist/git/engine.js
 var import_node_child_process2 = require("node:child_process");
@@ -13200,9 +13476,9 @@ function parseSections(lines) {
       continue;
     if (/^[—–:-]/.test(text))
       continue;
-    const sep2 = SEPARATORS.map((s) => ({ s, at: text.indexOf(s) })).filter((x) => x.at !== -1).sort((a, b) => a.at - b.at)[0];
-    const label = (sep2 ? text.slice(0, sep2.at) : text).trim();
-    const hint = sep2 ? text.slice(sep2.at + sep2.s.length).trim() : "";
+    const sep3 = SEPARATORS.map((s) => ({ s, at: text.indexOf(s) })).filter((x) => x.at !== -1).sort((a, b) => a.at - b.at)[0];
+    const label = (sep3 ? text.slice(0, sep3.at) : text).trim();
+    const hint = sep3 ? text.slice(sep3.at + sep3.s.length).trim() : "";
     if (label)
       sections.push({ label, hint });
   }
@@ -13624,7 +13900,7 @@ var PageParseError = class extends Error {
     this.name = "PageParseError";
   }
 };
-var FRONTMATTER_FENCE = /^---\r?\n([\s\S]*?)\r?\n---[ \t]*\r?\n?/;
+var FRONTMATTER_FENCE = /^\ufeff?---\r?\n([\s\S]*?)\r?\n---[ \t]*\r?\n?/;
 function orderedFrontmatter(fm) {
   const out = { title: fm.title };
   if (fm.summary !== void 0)
@@ -13655,7 +13931,7 @@ function orderedFrontmatter(fm) {
   return out;
 }
 function normalizeBody(body) {
-  return body.replace(/^\s*\n/, "").trimEnd();
+  return body.replace(/\r\n/g, "\n").replace(/^\s*\n/, "").trimEnd();
 }
 function serializePage(frontmatter, body) {
   const yaml = (0, import_yaml.stringify)(orderedFrontmatter(frontmatter)).trimEnd();
@@ -13777,9 +14053,9 @@ function placeholderEntry(pageId) {
 
 // ../core/dist/wiki/import-normalize.js
 var import_yaml2 = __toESM(require_dist(), 1);
-var FRONTMATTER_FENCE2 = /^---\r?\n([\s\S]*?)\r?\n---[ \t]*\r?\n?/;
+var FRONTMATTER_FENCE2 = /^\ufeff?---\r?\n([\s\S]*?)\r?\n---[ \t]*\r?\n?/;
 function firstH1(body) {
-  for (const line of body.split("\n")) {
+  for (const line of body.split(/\r?\n/)) {
     const m = /^#[ \t]+(.+?)[ \t]*$/.exec(line);
     if (m)
       return m[1];
@@ -13804,7 +14080,7 @@ function splitFrontmatter(content) {
     } catch {
     }
   }
-  return { old: {}, body: content };
+  return { old: {}, body: content.replace(/^\ufeff/, "") };
 }
 function stringArray(v) {
   if (typeof v === "string")
@@ -13888,17 +14164,21 @@ function backfill(file, opts) {
 function normalizeImport(files, opts) {
   const out = [];
   const skipped = [];
-  const seen = /* @__PURE__ */ new Set();
+  const seen = /* @__PURE__ */ new Map();
   for (const file of files) {
     const pageId = pageIdFromPath(file.relPath);
-    if (seen.has(pageId)) {
-      skipped.push({ relPath: file.relPath, reason: "duplicate pageId" });
+    const first = seen.get(pathFoldKey(pageId));
+    if (first !== void 0) {
+      skipped.push({
+        relPath: file.relPath,
+        reason: pageIdFromPath(first) === pageId ? "duplicate pageId" : `differs only in letter case from ${first}, which a Mac or Windows disk holds as the same file`
+      });
       continue;
     }
     try {
       parsePage(file.content);
       out.push({ relPath: file.relPath, content: file.content, pageId, action: "kept" });
-      seen.add(pageId);
+      seen.set(pathFoldKey(pageId), file.relPath);
       continue;
     } catch {
     }
@@ -13916,7 +14196,7 @@ function normalizeImport(files, opts) {
       action: "normalized",
       ...lost ? { loss } : {}
     });
-    seen.add(pageId);
+    seen.set(pathFoldKey(pageId), file.relPath);
   }
   return { files: out, skipped };
 }
@@ -14067,7 +14347,7 @@ function isExternalUrl(ref) {
 var WIKILINK_RE = /\[\[([^\][]+?)\]\]/g;
 var MDLINK_RE = /(?<!!)\[[^\]]*\]\(([^)]+)\)/g;
 function stripCode(body) {
-  const lines = body.split("\n");
+  const lines = body.split(/\r?\n/);
   const out = [];
   let fence = null;
   for (const line of lines) {
@@ -14212,8 +14492,8 @@ function detectBrokenCitations(input) {
     for (const ref of p.sources) {
       if (isExternalUrl(ref))
         continue;
-      const path = ref.startsWith(`${WIKI_LAYOUT.sourcesDir}/`) ? ref : `${WIKI_LAYOUT.sourcesDir}/${ref}`;
-      if (!input.sourcePaths.has(path))
+      const path2 = ref.startsWith(`${WIKI_LAYOUT.sourcesDir}/`) ? ref : `${WIKI_LAYOUT.sourcesDir}/${ref}`;
+      if (!input.sourcePaths.has(path2))
         broken.push(`source "${ref}"`);
     }
     if (broken.length > 0) {
@@ -14583,8 +14863,71 @@ function detectUncategorisedPages(input) {
     }
   ];
 }
+function detectUnportableNames(input) {
+  const flagged = [];
+  const paths = /* @__PURE__ */ new Set();
+  const twins = caseTwins(input.treePaths);
+  for (const group of twins) {
+    const differ = twinDifference(group);
+    const how = differ === "case" ? "differ only in letter case" : differ === "accents" ? "look the same, but store their accented letters differently" : "differ only in letter case and in how their accented letters are stored";
+    flagged.push(`${group.join(" + ")} (${how})`);
+    for (const p of group)
+      paths.add(p);
+  }
+  const isSource = (p) => p.startsWith(`${WIKI_LAYOUT.sourcesDir}/`);
+  let windows = 0;
+  let windowsByHand = 0;
+  for (const path2 of [...input.treePaths].sort()) {
+    const problem = portablePathProblem(path2);
+    if (problem === null)
+      continue;
+    flagged.push(`${path2} (${problem})`);
+    paths.add(path2);
+    windows++;
+    if (!isSource(path2))
+      windowsByHand++;
+  }
+  if (flagged.length === 0)
+    return [];
+  const isPage = (p) => p.endsWith(".md") && p !== WIKI_LAYOUT.indexFile && p !== WIKI_LAYOUT.logFile && !isSource(p) && !p.startsWith(`${WIKI_LAYOUT.configDir}/`);
+  const effects = [];
+  if (windows > 0)
+    effects.push("a copy on Windows can stop partway through downloading");
+  if (twins.length > 0) {
+    effects.push("a copy on a Mac or Windows keeps only one file of each set it sees as the same name and cannot publish");
+  }
+  const twinsByHand = twins.some((group) => !group.some(isSource));
+  const byHand = [];
+  if (windowsByHand > 0)
+    byHand.push("rename each file flagged for Windows to lowercase words joined by - and /");
+  if (twinsByHand) {
+    byHand.push(`give all but one file of each same-name set a distinct new name${windowsByHand > 0 ? "" : " of lowercase words joined by - and /"}, not just a different case or accent (lowercasing one twin can give it the other's exact name)`);
+  }
+  const actions = [];
+  if (byHand.length > 0) {
+    actions.push(`${byHand.join(", and ")}, then fix the links to each renamed page.`);
+    if (twinsByHand)
+      actions.push("A Mac or Windows copy holds only one file of a same-name set, so renaming those takes a Linux machine.");
+  }
+  if ([...paths].some(isSource)) {
+    actions.push(byHand.length > 0 ? "Leave the flagged files under `sources/` as they are and ask support to rename them: sources are append-only, and pages cite them by path." : "ask CommonGround support to rename the flagged files under `sources/`: sources are append-only and pages cite them by path, so they are never renamed by hand");
+  }
+  if (byHand.length > 0)
+    actions.push("CommonGround has no rename yet, so if no one on this wiki can move the files, ask support to do it");
+  return [
+    {
+      kind: "unportable-name",
+      pageIds: [...paths].filter(isPage).map(pageIdFromPath),
+      detail: `${paths.size} file(s) in this wiki cannot be held on every machine, so ${effects.join(", and ")}: ${sampled(flagged)}`,
+      suggestedAction: actions.join(" ")
+    }
+  ];
+}
 function runDeterministicLint(input) {
   return [
+    // First: a name a laptop cannot hold is the one finding that stops a teammate reading the wiki
+    // at all, so it leads the report rather than trailing the category checks.
+    ...detectUnportableNames(input),
     ...detectStale(input),
     ...detectOrphans(input),
     ...detectBrokenCitations(input),
@@ -14744,9 +15087,32 @@ function categoryCohesion(input) {
   };
 }
 
+// ../../apps/sync-agent/dist/fs-retry.js
+var TRANSIENT_WIN32 = /* @__PURE__ */ new Set(["EBUSY", "EPERM", "EACCES", "ENOTEMPTY"]);
+var TRANSIENT_POSIX = /* @__PURE__ */ new Set(["EBUSY"]);
+function isTransientFsError(e, platform = process.platform) {
+  const code = e?.code;
+  return typeof code === "string" && (platform === "win32" ? TRANSIENT_WIN32 : TRANSIENT_POSIX).has(code);
+}
+async function withFsRetry(op, opts = {}) {
+  const platform = opts.platform ?? process.platform;
+  const attempts = Math.max(1, opts.attempts ?? 5);
+  const baseMs = opts.baseMs ?? 100;
+  const sleep = opts.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms)));
+  for (let i = 1; ; i++) {
+    try {
+      return await op();
+    } catch (e) {
+      if (i >= attempts || !isTransientFsError(e, platform))
+        throw e;
+      await sleep(baseMs * 2 ** (i - 1));
+    }
+  }
+}
+
 // ../../apps/sync-agent/dist/health.js
 var import_promises3 = require("node:fs/promises");
-var import_node_path4 = require("node:path");
+var import_node_path5 = require("node:path");
 
 // ../../apps/sync-agent/dist/wiki-paths.js
 var RESERVED_ROOT_NAMES = ["CLAUDE.md", WIKI_LAYOUT.indexFile, WIKI_LAYOUT.logFile];
@@ -14783,7 +15149,7 @@ async function walk(root, keep) {
       const childRel = rel ? `${rel}/${e.name}` : e.name;
       if (e.isDirectory()) {
         if (!RESERVED_SEGMENTS.has(e.name.normalize("NFC").toLowerCase()))
-          await descend((0, import_node_path4.join)(abs, e.name), childRel);
+          await descend((0, import_node_path5.join)(abs, e.name), childRel);
       } else if (e.isFile() && keep(childRel)) {
         out.push(childRel);
       }
@@ -14801,7 +15167,7 @@ async function readWorkingTree(dir) {
   for (const rel of await walk(dir, isPageFile)) {
     let raw;
     try {
-      raw = await (0, import_promises3.readFile)((0, import_node_path4.join)(dir, rel), "utf8");
+      raw = await (0, import_promises3.readFile)((0, import_node_path5.join)(dir, rel), "utf8");
     } catch {
       continue;
     }
@@ -14815,10 +15181,10 @@ async function readWorkingTree(dir) {
       });
     }
   }
-  const sourcePaths = new Set((await walk((0, import_node_path4.join)(dir, WIKI_LAYOUT.sourcesDir), () => true).catch(() => [])).map((rel) => `${WIKI_LAYOUT.sourcesDir}/${rel}`));
+  const sourcePaths = new Set((await walk((0, import_node_path5.join)(dir, WIKI_LAYOUT.sourcesDir), () => true).catch(() => [])).map((rel) => `${WIKI_LAYOUT.sourcesDir}/${rel}`));
   return { pages, sourcePaths, unparseable };
 }
-async function localLint(dir, now = /* @__PURE__ */ new Date()) {
+async function localLint(dir, now, treePaths) {
   const { pages, sourcePaths, unparseable } = await readWorkingTree(dir);
   const graph = buildLinkGraph(pages);
   const categoryVocabulary = categoryOrderFromPages(pages);
@@ -14846,6 +15212,7 @@ async function localLint(dir, now = /* @__PURE__ */ new Date()) {
       // vocabulary, and a second hand-rolled "which page is the charter" is precisely the defect
       // SER-196's review found. The clone and the hosted lint must read one charter.
       categoryVocabulary,
+      treePaths,
       now,
       staleDays: STALE_DAYS
     }),
@@ -14877,7 +15244,7 @@ async function localCoverage(dir, profile = {}) {
 // ../../apps/sync-agent/dist/injection.js
 var import_promises4 = require("node:fs/promises");
 var import_node_module = require("node:module");
-var import_node_path5 = require("node:path");
+var import_node_path6 = require("node:path");
 var require2 = (0, import_node_module.createRequire)(__commongroundImportMetaUrl);
 async function resolveMaintainerSkillPayload() {
   let pkgPath;
@@ -14888,7 +15255,7 @@ async function resolveMaintainerSkillPayload() {
   }
   const pkg = JSON.parse(await (0, import_promises4.readFile)(pkgPath, "utf8"));
   const files = Array.isArray(pkg.files) ? pkg.files.filter((f) => typeof f === "string") : [];
-  return { dir: (0, import_node_path5.dirname)(pkgPath), files };
+  return { dir: (0, import_node_path6.dirname)(pkgPath), files };
 }
 var ROUTER_START = "<!-- commonground:router-rule:start -->";
 var ROUTER_END = "<!-- commonground:router-rule:end -->";
@@ -14944,9 +15311,9 @@ var CHARTER_FILE_NOTE = "its charter page `wiki-charter.md` (older wikis: `compa
 var CHARTER_PAGE_NOTE = "`wiki-charter` is the charter page, which says in full when to consult a wiki and what does not belong there";
 function localParagraph(count) {
   if (count === 1) {
-    return `This project reads the CommonGround wiki below, a local clone on this machine (its folder is named at session start; \`commonground status\` prints it on demand). When a question touches its subject, start at its \`index.md\` (the catalog) and open only the pages you need; ${CHARTER_FILE_NOTE}. ${citeClause(false)} ${captureClause(false, "local")}`;
+    return `This project reads the CommonGround wiki below, a local clone on this machine (its folder is named at session start; \`/commonground:status\` shows it on demand). When a question touches its subject, start at its \`index.md\` (the catalog) and open only the pages you need; ${CHARTER_FILE_NOTE}. ${citeClause(false)} ${captureClause(false, "local")}`;
   }
-  return `This project reads ${count} CommonGround wikis, each a local clone on this machine (each clone's folder is named at session start; \`commonground status <wiki>\` prints it on demand). When a question touches a wiki's subject, start at that wiki's \`index.md\` (its catalog) and open only the pages you need; ${CHARTER_FILE_NOTE}. ${citeClause(true)} ` + captureClause(true, "local");
+  return `This project reads ${count} CommonGround wikis, each a local clone on this machine (each clone's folder is named at session start; \`/commonground:status <wiki>\` shows it on demand). When a question touches a wiki's subject, start at that wiki's \`index.md\` (its catalog) and open only the pages you need; ${CHARTER_FILE_NOTE}. ${citeClause(true)} ` + captureClause(true, "local");
 }
 function mcpParagraph(count, primaryLabel) {
   if (count === 1) {
@@ -15023,12 +15390,13 @@ function parseRouterBlock(claudeMd) {
 async function charterVoiceFromWiki(wikiDir) {
   let raw = "";
   for (const pageId of CHARTER_PAGE_IDS) {
-    raw = await readFileOr((0, import_node_path5.join)(wikiDir, `${pageId}.md`), "");
+    raw = await readFileOr((0, import_node_path6.join)(wikiDir, `${pageId}.md`), "");
     if (raw)
       break;
   }
   if (!raw)
     return null;
+  raw = raw.replace(/^\uFEFF/, "");
   const fence = raw.startsWith("---") ? /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/.exec(raw) : null;
   if (fence && /^status:\s*(deprecated|hypothetical)\s*$/m.test(fence[1]))
     return null;
@@ -15049,35 +15417,52 @@ var EXCLUDED = [
   "/CLAUDE.md",
   `/${WIKI_LAYOUT.configDir}/maintainer-skill/`,
   "/.claude/",
-  ".DS_Store",
-  "Thumbs.db"
+  // Folder litter in ANY letter case (SER-327). git matches exclude patterns case-sensitively unless
+  // `core.ignorecase` is on, which it is not on Linux, so a `Desktop.ini` copied in from a Windows
+  // share was counted as litter by `isFolderNoiseName` and then published by `add -A` anyway.
+  ".[Dd][Ss]_[Ss][Tt][Oo][Rr][Ee]",
+  "[Tt][Hh][Uu][Mm][Bb][Ss].[Dd][Bb]",
+  "[Dd][Ee][Ss][Kk][Tt][Oo][Pp].[Ii][Nn][Ii]"
 ];
+var ATTRIBUTES = ["*.md text=auto eol=lf", `/${WIKI_LAYOUT.sourcesDir}/** !text !eol`];
 function withoutRouterBlocks(claudeMd) {
   return claudeMd.replace(BLOCK_RE, "").replace(BRIEF_BLOCK_RE, "").split("\n").filter((line) => {
     const t = line.trim();
     return t !== ROUTER_START && t !== ROUTER_END && t !== BRIEF_START && t !== BRIEF_END;
   }).join("\n").trimEnd();
 }
+var BOM = "\uFEFF";
+function eolOf(text) {
+  const crlf = text.match(/\r\n/g)?.length ?? 0;
+  const lf = (text.match(/\n/g)?.length ?? 0) - crlf;
+  return crlf > lf ? "\r\n" : "\n";
+}
 async function injectRouterRule(dir, rule = CLONE_ROUTER_RULE) {
-  const path = (0, import_node_path5.join)(dir, "CLAUDE.md");
-  const cleaned = withoutRouterBlocks(await readFileOr(path, ""));
-  const next = cleaned.length > 0 ? `${cleaned}
+  const path2 = (0, import_node_path6.join)(dir, "CLAUDE.md");
+  const existing = await readFileOr(path2, "");
+  const bom = existing.startsWith(BOM) ? BOM : "";
+  const eol = eolOf(existing);
+  const ours = (s) => s.replace(/\r\n/g, "\n").replace(/\n/g, eol);
+  const cleaned = withoutRouterBlocks(existing.slice(bom.length));
+  const next = cleaned.length > 0 ? `${bom}${cleaned}${ours(`
 
 ${rule}
-` : `${rule}
-`;
-  await (0, import_promises4.writeFile)(path, next, "utf8");
+`)}` : `${bom}${ours(`${rule}
+`)}`;
+  await withFsRetry(() => (0, import_promises4.writeFile)(path2, next, "utf8"));
 }
 var PROJECT_SETTINGS = [".claude", "settings.json"];
 var WIKI_ENV_KEY = "COMMONGROUND_WIKI";
 var WIKI_SET_ENV_KEY = "COMMONGROUND_WIKIS";
 async function writeProjectWikiEnv(dir, teamId, alsoTeamIds = []) {
-  const path = (0, import_node_path5.join)(dir, ...PROJECT_SETTINGS);
-  const existing = await readFileOr(path, "");
+  const path2 = (0, import_node_path6.join)(dir, ...PROJECT_SETTINGS);
+  const existing = await readFileOr(path2, "");
+  const bom = existing.startsWith(BOM) ? BOM : "";
+  const text = existing.slice(bom.length);
   let settings = {};
-  if (existing.trim()) {
+  if (text.trim()) {
     try {
-      const parsed = JSON.parse(existing);
+      const parsed = JSON.parse(text);
       if (!parsed || typeof parsed !== "object" || Array.isArray(parsed))
         return "unreadable";
       settings = parsed;
@@ -15099,53 +15484,64 @@ async function writeProjectWikiEnv(dir, teamId, alsoTeamIds = []) {
     delete env[WIKI_SET_ENV_KEY];
   else
     env[WIKI_SET_ENV_KEY] = wanted;
-  await (0, import_promises4.mkdir)((0, import_node_path5.dirname)(path), { recursive: true });
-  await (0, import_promises4.writeFile)(path, `${JSON.stringify({ ...settings, env }, null, 2)}
-`, "utf8");
+  await (0, import_promises4.mkdir)((0, import_node_path6.dirname)(path2), { recursive: true });
+  const json = `${JSON.stringify({ ...settings, env }, null, 2)}
+`.replace(/\n/g, eolOf(existing));
+  await (0, import_promises4.writeFile)(path2, `${bom}${json}`, "utf8");
   return "written";
 }
 async function injectSkill(dir, payload) {
   const resolved = payload === void 0 ? await resolveMaintainerSkillPayload() : payload;
   if (!resolved)
     return;
-  const dest = (0, import_node_path5.join)(dir, WIKI_LAYOUT.configDir, "maintainer-skill");
+  const dest = (0, import_node_path6.join)(dir, WIKI_LAYOUT.configDir, "maintainer-skill");
   await (0, import_promises4.mkdir)(dest, { recursive: true });
   for (const file of resolved.files) {
-    await (0, import_promises4.copyFile)((0, import_node_path5.join)(resolved.dir, file), (0, import_node_path5.join)(dest, file));
+    await withFsRetry(() => (0, import_promises4.copyFile)((0, import_node_path6.join)(resolved.dir, file), (0, import_node_path6.join)(dest, file)));
   }
 }
 async function excludeInjected(dir) {
-  const path = (0, import_node_path5.join)(dir, ".git", "info", "exclude");
-  const existing = await readFileOr(path, "");
+  await appendMissingLines(dir, "exclude", EXCLUDED);
+}
+async function attributesInjected(dir) {
+  await appendMissingLines(dir, "attributes", ATTRIBUTES);
+}
+async function refreshCloneTooling(dir) {
+  await excludeInjected(dir);
+  await attributesInjected(dir);
+}
+async function appendMissingLines(dir, file, lines) {
+  const path2 = await infoPath(dir, file);
+  if (path2 === null)
+    throw new Error(`${dir} is not a git repository \u2014 refusing to write tooling into it`);
+  const existing = await readFileOr(path2, "");
   const have = new Set(existing.split("\n").map((l) => l.trim()));
-  const missing = EXCLUDED.filter((line) => !have.has(line));
+  const missing = lines.filter((line) => !have.has(line));
   if (missing.length === 0)
     return;
-  if (!await exists((0, import_node_path5.join)(dir, ".git"))) {
-    throw new Error(`${dir} is not a git repository \u2014 refusing to write tooling into it`);
-  }
-  await (0, import_promises4.mkdir)((0, import_node_path5.dirname)(path), { recursive: true });
+  await (0, import_promises4.mkdir)((0, import_node_path6.dirname)(path2), { recursive: true });
   const body = existing.trimEnd();
-  await (0, import_promises4.writeFile)(path, `${body ? `${body}
+  await withFsRetry(() => (0, import_promises4.writeFile)(path2, `${body ? `${body}
 ` : ""}${missing.join("\n")}
-`, "utf8");
+`, "utf8"));
 }
 async function injectAll(dir, naming, teamId) {
-  await excludeInjected(dir);
+  await refreshCloneTooling(dir);
   await injectRouterRule(dir, cloneRouterRule(await charterVoiceFromWiki(dir), naming, teamId));
   await injectSkill(dir);
 }
-async function exists(path) {
-  try {
-    await (0, import_promises4.access)(path);
-    return true;
-  } catch {
-    return false;
-  }
+async function infoPath(dir, file) {
+  const dotGit = (0, import_node_path6.join)(dir, ".git");
+  const info = await (0, import_promises4.lstat)(dotGit).catch(() => null);
+  if (!info)
+    return null;
+  if (info.isDirectory())
+    return (0, import_node_path6.join)(dotGit, "info", file);
+  return (0, import_node_path6.resolve)(dir, (await runGit(dir, ["rev-parse", "--git-path", `info/${file}`])).trim());
 }
-async function readFileOr(path, fallback) {
+async function readFileOr(path2, fallback) {
   try {
-    return await (0, import_promises4.readFile)(path, "utf8");
+    return await (0, import_promises4.readFile)(path2, "utf8");
   } catch {
     return fallback;
   }
@@ -15153,7 +15549,7 @@ async function readFileOr(path, fallback) {
 
 // ../../apps/sync-agent/dist/clone-state.js
 var import_promises5 = require("node:fs/promises");
-var import_node_path6 = require("node:path");
+var import_node_path7 = require("node:path");
 var INJECTED_SKILL_DIR = "maintainer-skill";
 async function isUsableClone(dir) {
   let top;
@@ -15170,34 +15566,90 @@ async function isUsableClone(dir) {
   return await revParse(dir, "HEAD") !== null;
 }
 async function holdsNoRefs(gitDir) {
-  const packed = await (0, import_promises5.readFile)((0, import_node_path6.join)(gitDir, "packed-refs"), "utf8").catch(() => "");
+  if (await (0, import_promises5.lstat)((0, import_node_path7.join)(gitDir, "reftable")).then((s) => s.isDirectory(), () => false)) {
+    return runGit((0, import_node_path7.dirname)(gitDir), ["for-each-ref", "--count=1"]).then((out) => out.trim() === "", () => false);
+  }
+  const packed = await (0, import_promises5.readFile)((0, import_node_path7.join)(gitDir, "packed-refs"), "utf8").catch(() => "");
   if (packed.split("\n").some((l) => l.trim() && !l.startsWith("#") && !l.startsWith("^")))
     return false;
   const walk2 = async (d) => {
     for (const e of await (0, import_promises5.readdir)(d, { withFileTypes: true }).catch(() => [])) {
-      if (e.isDirectory() ? !await walk2((0, import_node_path6.join)(d, e.name)) : true)
+      if (e.isDirectory() ? !await walk2((0, import_node_path7.join)(d, e.name)) : true)
         return false;
     }
     return true;
   };
-  return walk2((0, import_node_path6.join)(gitDir, "refs"));
+  return walk2((0, import_node_path7.join)(gitDir, "refs"));
 }
 async function isLitter(dir, name) {
-  const path = (0, import_node_path6.join)(dir, name);
-  const info = await (0, import_promises5.lstat)(path);
-  if (name === ".DS_Store" || name === "Thumbs.db")
+  const path2 = (0, import_node_path7.join)(dir, name);
+  const info = await (0, import_promises5.lstat)(path2);
+  if (isFolderNoiseName(name))
     return info.isFile();
   if (name === ".git")
-    return info.isDirectory() && await holdsNoRefs(path);
+    return info.isDirectory() && await holdsNoRefs(path2);
   if (name === "CLAUDE.md") {
-    return info.isFile() && withoutRouterBlocks(await (0, import_promises5.readFile)(path, "utf8")).trim() === "";
+    return info.isFile() && withoutRouterBlocks(await (0, import_promises5.readFile)(path2, "utf8")).trim() === "";
   }
   if (name === WIKI_LAYOUT.configDir) {
     if (!info.isDirectory())
       return false;
-    return (await (0, import_promises5.readdir)(path)).every((n) => n === INJECTED_SKILL_DIR);
+    return (await (0, import_promises5.readdir)(path2)).every((n) => n === INJECTED_SKILL_DIR);
   }
   return false;
+}
+async function statusEntries(dir, env, opts = {}) {
+  const args = ["status", "--porcelain=v1", "-z", "--untracked-files=all", ...opts.ignored ? ["--ignored=matching"] : []];
+  return parseStatusZ(await runGit(dir, args, env));
+}
+async function checkoutUnfinished(dir) {
+  const [gitDir = "", indexPath = ""] = (await runGit(dir, ["rev-parse", "--absolute-git-dir", "--git-path", "index"])).split("\n");
+  if (await present((0, import_node_path7.resolve)(dir, indexPath))) {
+    if ((await runGit(dir, ["ls-files", "-z"])).length > 0)
+      return "no";
+  }
+  if ((await runGit(dir, ["ls-tree", "-r", "-z", "--name-only", "HEAD"])).length === 0)
+    return "no";
+  if (await holdsLocalHistory(dir))
+    return "dirty";
+  const probe = (0, import_node_path7.join)(gitDir, `commonground-probe-${process.pid}-${Date.now()}.index`);
+  try {
+    const env = { GIT_INDEX_FILE: probe };
+    await runGit(dir, ["read-tree", "HEAD"], env);
+    for (const entry of await statusEntries(dir, env, { ignored: true })) {
+      if (entry.xy === " D")
+        continue;
+      if (!await isOursOrLitter(dir, entry.path))
+        return "dirty";
+    }
+    return "clean";
+  } finally {
+    await (0, import_promises5.rm)(probe, { force: true }).catch(() => void 0);
+  }
+}
+async function holdsLocalHistory(dir) {
+  const refs = (await runGit(dir, ["for-each-ref", "--format=%(refname)", "refs/heads", "refs/stash"])).split("\n").filter(Boolean);
+  if (refs.length !== 1 || refs.includes("refs/stash"))
+    return true;
+  const unpushed = await runGit(dir, ["rev-list", "--count", "HEAD", "--branches", "--not", "--remotes"]);
+  return unpushed.trim() !== "0";
+}
+async function isOursOrLitter(dir, relPath) {
+  if (isFolderNoiseName(relPath.slice(relPath.lastIndexOf("/") + 1)))
+    return true;
+  if (relPath.startsWith(`${WIKI_LAYOUT.configDir}/${INJECTED_SKILL_DIR}/`))
+    return true;
+  if (relPath === "CLAUDE.md") {
+    const text = await (0, import_promises5.readFile)((0, import_node_path7.join)(dir, relPath), "utf8").catch(() => null);
+    return text !== null && withoutRouterBlocks(text).trim() === "";
+  }
+  return false;
+}
+async function unfinishedCheckout(dir) {
+  return await isUsableClone(dir) && await checkoutUnfinished(dir) !== "no";
+}
+async function present(path2) {
+  return (0, import_promises5.access)(path2).then(() => true, () => false);
 }
 async function cloneState(dir) {
   let info;
@@ -15215,8 +15667,10 @@ async function cloneState(dir) {
   }
   if (!info.isDirectory())
     return "foreign";
-  if (await isUsableClone(dir))
-    return "usable";
+  if (await isUsableClone(dir)) {
+    const unfinished = await checkoutUnfinished(dir);
+    return unfinished === "no" ? "usable" : unfinished === "clean" ? "wreckage" : "foreign";
+  }
   const names = await (0, import_promises5.readdir)(dir);
   for (const name of names) {
     if (!await isLitter(dir, name))
@@ -15230,7 +15684,7 @@ async function clearWreckage(dir) {
     throw new Error(`${dir} is not clone wreckage \u2014 refusing to clear it`);
   }
   for (const name of await (0, import_promises5.readdir)(dir)) {
-    await (0, import_promises5.rm)((0, import_node_path6.join)(dir, name), { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+    await (0, import_promises5.rm)((0, import_node_path7.join)(dir, name), { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   }
 }
 
@@ -15315,14 +15769,14 @@ function matchWiki(listings, query) {
     return exact;
   return listings.filter((l) => l.teamId.toLowerCase().startsWith(q) || field(l.wikiName) !== "" && field(l.wikiName).startsWith(q) || field(l.scopeSlug) !== "" && field(l.scopeSlug).startsWith(q));
 }
-function apiUrl(apiBaseUrl, path) {
+function apiUrl(apiBaseUrl, path2) {
   const url = new URL(apiBaseUrl);
-  url.pathname = `${url.pathname.replace(/\/$/, "")}${path}`;
+  url.pathname = `${url.pathname.replace(/\/$/, "")}${path2}`;
   return url;
 }
 var PENDING_FILE = "device-login.json";
 function pendingPath(configHome) {
-  return (0, import_node_path7.join)(configHome, PENDING_FILE);
+  return (0, import_node_path8.join)(configHome, PENDING_FILE);
 }
 async function writePendingLogin(configHome, p) {
   await (0, import_promises6.mkdir)(configHome, { recursive: true, mode: 448 });
@@ -15496,7 +15950,13 @@ async function initProject(deps, opts) {
     const sections2 = [];
     for (const id of alsoIds) {
       const w = await connectLocalWiki(deps, id, bindings.get(id), names.get(id) ?? null, clonePaths[id], opts.onClone);
-      also2.push({ teamId: id, clonePath: w.dir, cloned: w.cloned, ...w.cloned ? {} : { standing: w.standing } });
+      also2.push({
+        teamId: id,
+        clonePath: w.dir,
+        cloned: w.cloned,
+        ...w.cloned ? {} : { standing: w.standing },
+        ...w.earlierAttempt ? { earlierAttempt: w.earlierAttempt } : {}
+      });
       sections2.push({ teamId: id, voice: w.voice, name: w.name });
     }
     await injectRouterRule(projectDir, routerRuleForMode("local", { voice: primary2.voice, teamId, name: primary2.name, also: sections2 }));
@@ -15510,6 +15970,7 @@ async function initProject(deps, opts) {
       // project chose, so the only question is whether it agrees with the clone (SER-237).
       wikiEnv: await writeProjectWikiEnv(projectDir, teamId, alsoIds),
       ...primary2.cloned ? {} : { standing: primary2.standing },
+      ...primary2.earlierAttempt ? { earlierAttempt: primary2.earlierAttempt } : {},
       also: also2,
       dropped
     };
@@ -15533,15 +15994,29 @@ async function initProject(deps, opts) {
     dropped
   };
 }
-async function connectLocalWiki(deps, teamId, binding, name, path, onClone) {
-  if (path) {
+async function connectLocalWiki(deps, teamId, binding, name, path2, onClone) {
+  let earlier;
+  if (path2) {
+    const target = normalizeClonePath(path2, deps.configHome, deps.dataHome);
     const existing = await resolveClonePath(teamId, deps.configHome, deps.dataHome);
-    if (await cloneState(existing) === "usable") {
-      throw new AgentError(`this wiki is already cloned at ${existing} \u2014 ` + byAudience(`to move it, run "commonground relocate ${path} ${teamId}" (which moves the folder and updates this project's CLAUDE.md), not "init --path"`, `to move it, offer to relocate it for them (that moves the folder and updates this project's CLAUDE.md); "init --path" cannot`));
+    const standing2 = await cloneState(existing);
+    const same = await samePlace(existing, target);
+    if (standing2 === "usable" && !same) {
+      throw new AgentError(`this wiki is already cloned at ${existing}. ` + byAudience(
+        // Quoted, the way a folder with a space in it (C:\Users\John Smith\wiki) survives a paste.
+        `To move it to ${target}, run: commonground relocate "${target}" ${teamId} (it moves the folder; "init --path" cannot).`,
+        `To move it to ${target}, offer to relocate it for them; "init --path" cannot.`
+      ));
     }
-    const target = normalizeClonePath(path, deps.configHome, deps.dataHome);
-    const there = await cloneState(target);
-    await setClonePath(teamId, there === "wreckage" ? target : await validateClonePath(target, deps.configHome, deps.dataHome), deps.configHome);
+    if (standing2 === "foreign" && !same && await unfinishedCheckout(existing).catch(() => false)) {
+      throw new AgentError(`the wiki folder at ${existing} never finished downloading, and it holds files that did not come from the wiki. Setting the wiki up at ${target} would leave them in a folder nothing points to, so nothing was changed. Move anything you want to keep out of ${existing}, then ` + byAudience('run the same "commonground init" again.', "offer /commonground:point in local mode again, naming the same folder."));
+    }
+    if (standing2 === "wreckage" && !same)
+      earlier = existing;
+    if (!same) {
+      const there = await cloneState(target);
+      await setClonePath(teamId, there === "wreckage" ? target : await validateClonePath(target, deps.configHome, deps.dataHome), deps.configHome);
+    }
   }
   const dir = await resolveCloneTarget(deps, teamId, binding.token);
   const cloned = await ensureClone(deps, teamId, dir, () => deps.backend.remoteAccess(teamId), onClone);
@@ -15550,7 +16025,28 @@ async function connectLocalWiki(deps, teamId, binding, name, path, onClone) {
   }
   const standing = cloned ? null : await standingAgainstHosted(deps, teamId);
   const voice = await charterVoiceFromWiki(dir);
-  return { dir, cloned, standing, voice, name };
+  const earlierAttempt = earlier ? await clearEarlierAttempt(earlier) : void 0;
+  return { dir, cloned, standing, voice, name, ...earlierAttempt ? { earlierAttempt } : {} };
+}
+async function clearEarlierAttempt(dir) {
+  if (await cloneState(dir) !== "wreckage")
+    return null;
+  if ((await (0, import_promises6.readdir)(dir)).length === 0)
+    return null;
+  try {
+    await clearWreckage(dir);
+    return { path: dir, cleared: true };
+  } catch {
+    return { path: dir, cleared: false };
+  }
+}
+async function samePlace(a, b) {
+  const real = (p) => (0, import_promises6.realpath)(p).catch(() => null);
+  const [ra, rb] = await Promise.all([real(a), real(b)]);
+  if (ra === null || rb === null)
+    return false;
+  const folds = process.platform === "darwin" || process.platform === "win32";
+  return folds ? pathFoldKey(ra) === pathFoldKey(rb) : ra === rb;
 }
 async function readMcpWiki(deps, teamId, name) {
   const read = deps.backend.fetchCharter ? await deps.backend.fetchCharter(teamId) : { fail: "unsupported" };
@@ -15566,18 +16062,18 @@ async function standingAgainstHosted(deps, teamId) {
 }
 async function detectRouterBlock(projectDir) {
   try {
-    return parseRouterBlock(await (0, import_promises6.readFile)((0, import_node_path7.join)(projectDir, "CLAUDE.md"), "utf8"));
+    return parseRouterBlock(await (0, import_promises6.readFile)((0, import_node_path8.join)(projectDir, "CLAUDE.md"), "utf8"));
   } catch {
     return null;
   }
 }
 async function findRouterBlock(startDir) {
-  let dir = (0, import_node_path7.resolve)(startDir);
+  let dir = (0, import_node_path8.resolve)(startDir);
   for (let depth = 0; depth < 64; depth++) {
     const found = await detectRouterBlock(dir);
     if (found)
       return { ...found, dir };
-    const parent = (0, import_node_path7.dirname)(dir);
+    const parent = (0, import_node_path8.dirname)(dir);
     if (parent === dir)
       return null;
     dir = parent;
@@ -15602,35 +16098,60 @@ async function relocateClone(deps, opts) {
   const from = await resolveClonePath(teamId, deps.configHome, deps.dataHome);
   const standing = await cloneState(from);
   if (standing === "foreign")
-    throw new AgentError(notAWikiFolder(from));
+    throw await foreignFolder(from);
   if (standing !== "usable") {
     throw new AgentError(`there is no wiki folder to move \u2014 nothing is cloned for this team yet. ` + byAudience(`Run "commonground init --mode local --path <folder> ${teamId}" to clone it where you want it.`, `Offer /commonground:point in local mode, naming the folder, to clone it where they want it.`));
   }
-  const to = await validateClonePath(opts.to, deps.configHome, deps.dataHome);
-  if (to === from)
-    throw new AgentError(`your wiki is already at ${from}`);
+  const target = normalizeUserPath(opts.to);
+  if (await samePlace(target, from)) {
+    throw new AgentError(`your wiki is already at ${from}, so there is nothing to move.`);
+  }
+  const to = await validateClonePath(target, deps.configHome, deps.dataHome);
   await setClonePath(teamId, to, deps.configHome);
-  try {
-    await (0, import_promises6.mkdir)((0, import_node_path7.dirname)(to), { recursive: true });
-    try {
-      await (0, import_promises6.rename)(from, to);
-    } catch (e) {
-      if (e.code !== "EXDEV")
-        throw e;
-      await (0, import_promises6.cp)(from, to, { recursive: true, preserveTimestamps: true });
-      await (0, import_promises6.rm)(from, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
-    }
-  } catch (e) {
+  const undo = async () => {
     await setClonePath(teamId, from, deps.configHome).catch(() => void 0);
-    throw new AgentError(`could not move ${from} to ${to} (${e.message}) \u2014 nothing changed`);
+  };
+  try {
+    await (0, import_promises6.mkdir)((0, import_node_path8.dirname)(to), { recursive: true });
+    await withFsRetry(() => (0, import_promises6.rename)(from, to));
+  } catch (e) {
+    if (e.code !== "EXDEV") {
+      await undo();
+      throw new AgentError(explainMoveFailure(e, from, to));
+    }
+    try {
+      await (0, import_promises6.cp)(from, to, { recursive: true, preserveTimestamps: true });
+    } catch (copyError) {
+      const partialLeft = await (0, import_promises6.rm)(to, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }).then(() => false, () => true);
+      await undo();
+      throw new AgentError(explainMoveFailure(copyError, from, to) + (partialLeft ? ` A partial copy is left at ${to}; delete it before trying again.` : ""));
+    }
+    try {
+      await (0, import_promises6.rm)(from, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+    } catch (removeError) {
+      throw new AgentError(oldFolderLeft(removeError, from, to));
+    }
   }
   return { teamId, from, to, projectDir };
 }
-var isReservedImportPath = isReservedPath;
-function isInside2(parent, child) {
-  const rel = (0, import_node_path7.relative)((0, import_node_path7.resolve)(parent), (0, import_node_path7.resolve)(child));
-  return rel === "" || !rel.startsWith("..") && !(0, import_node_path7.isAbsolute)(rel);
+function windowsHolders() {
+  return "Obsidian or an editor with a file in it open, File Explorer, a terminal whose folder is inside it, " + // The one holder with a command to stop it, so the one clause said per reader (SER-327).
+  byAudience(`git's file watcher (run "git fsmonitor--daemon stop" inside the folder)`, "git's file watcher (offer to stop it for them)") + ", or this Claude Code session if it is running inside the wiki folder";
 }
+function heldOnWindows(e, platform) {
+  return platform === "win32" && isTransientFsError(e, "win32");
+}
+function explainMoveFailure(e, from, to, platform = process.platform) {
+  if (heldOnWindows(e, platform)) {
+    return `Windows would not let CommonGround move ${from}: a program still has it open. The usual holders are ${windowsHolders()}. Close it and try again. Nothing changed.`;
+  }
+  return `could not move ${from} to ${to} (${e instanceof Error ? e.message : String(e)}). Nothing changed.`;
+}
+function oldFolderLeft(e, from, to, platform = process.platform) {
+  const why2 = heldOnWindows(e, platform) ? `a program still has it open, usually ${windowsHolders()}` : e instanceof Error ? e.message : String(e);
+  return `your wiki moved to ${to} and works from there, but the old folder at ${from} could not be removed (${why2}). Everything in it is already in the new folder: close whatever holds it, then delete ${from}.`;
+}
+var isReservedImportPath = isReservedPath;
 async function importWiki(deps, opts) {
   const { sourceDir, teamId } = opts;
   const binding = await bindingFor(deps, teamId);
@@ -15641,14 +16162,18 @@ async function importWiki(deps, opts) {
     throw new AgentError(`not a folder: ${sourceDir}`);
   const dir = await resolveClonePath(teamId, deps.configHome, deps.dataHome);
   await ensureClone(deps, teamId, dir, () => deps.backend.remoteAccess(teamId), opts.onClone);
-  const guardedHomes = [
-    deps.configHome,
-    ...isInside2(deps.dataHome, sourceDir) ? [] : [deps.dataHome]
-  ];
-  const notImported = await overlaySource(sourceDir, dir, guardedHomes);
+  const twins = await trackedTwins(dir);
+  if (twins.length > 0)
+    throw new AgentError(importNeedsRename(dir, twins));
+  const dataHomeHoldsSource = isInsidePath(deps.dataHome, sourceDir) || insideByIdentity([deps.dataHome])(sourceDir);
+  const guardedHomes = [deps.configHome, ...dataHomeHoldsSource ? [] : [deps.dataHome]];
+  const { notImported, refused } = await overlaySource(sourceDir, dir, guardedHomes);
   const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
-  const { normalized, skipped, lossy } = await normalizeAndReindex(dir, sourceDir, teamId, today);
-  await runGit(dir, ["add", "-A"]);
+  const { normalized, skipped, lossy } = await normalizeAndReindex(dir, sourceDir, teamId, today, refused);
+  const renames = await unportableChanges(dir);
+  if (renames.length > 0)
+    throw new AgentError(importNeedsRename(dir, renames));
+  await stageAll(dir);
   const staged = (await runGit(dir, ["diff", "--cached", "--name-only"])).split("\n").filter(Boolean);
   if (staged.length === 0) {
     return {
@@ -15673,7 +16198,7 @@ async function importWiki(deps, opts) {
     "commit",
     "-m",
     // `ingest: ` to match the hosted writes' `<op>: ` shape (SER-220) — one history, one grammar.
-    `ingest: import wiki from ${(0, import_node_path7.basename)(sourceDir)}`
+    `ingest: import wiki from ${(0, import_node_path8.basename)(sourceDir)}`
   ]);
   const synced = await sync(deps, teamId);
   return {
@@ -15688,47 +16213,117 @@ async function importWiki(deps, opts) {
     ...lossy.length ? { lossy } : {}
   };
 }
+function importNeedsRename(dir, problems) {
+  const twins = problems.filter((p) => p.kind === "twin");
+  if (twins.length > 0) {
+    return `nothing was imported into ${dir}, and nothing was committed or published:
+` + twins.map((p) => `  ${p.reason}
+`).join("");
+  }
+  const them = problems.length === 1 ? "it" : "them";
+  return `${problems.length} file name(s) in ${dir} would break the wiki on another machine, so the import stopped before anything was committed or published:
+` + problems.map((p) => `  ${p.path}: ${p.reason}
+`).join("") + `The imported files are in the wiki folder, not yet published. ` + byAudience(`Rename ${them} in the wiki folder, then publish with "commonground push".`, `Offer to rename ${them} in the wiki folder, then publish with /commonground:push.`);
+}
 async function overlaySource(sourceDir, dir, guardedHomes) {
-  const allowed = (src, alsoReject) => {
-    const rel = (0, import_node_path7.relative)(sourceDir, src);
+  const relOf = (src) => (0, import_node_path8.relative)(sourceDir, src).split(import_node_path8.sep).join("/");
+  const inGuardedHome = insideByIdentity(guardedHomes);
+  const admissible = (src, alsoReject) => {
+    const rel = relOf(src);
     if (rel === "")
       return true;
     if (isReservedImportPath(rel) || alsoReject(rel))
       return false;
-    return !guardedHomes.some((home) => isInside2(home, src));
+    if (isFolderNoiseName((0, import_node_path8.basename)(src)))
+      return false;
+    return !guardedHomes.some((home) => isInsidePath(home, src)) && !inGuardedHome(src);
   };
-  await (0, import_promises6.cp)(sourceDir, dir, {
+  const refused = /* @__PURE__ */ new Map();
+  const names = foldIndex((await runGit(dir, ["ls-files", "-z"])).split("\0").filter(Boolean));
+  const candidates = (await walkFiles(sourceDir, () => true)).filter((rel) => admissible((0, import_node_path8.join)(sourceDir, rel), () => false)).sort();
+  for (const rel of candidates) {
+    const problem = portablePathProblem(rel);
+    const twin = problem ? null : names.clash(rel);
+    if (problem) {
+      refused.set(rel, `${problem}, so it was not copied; rename it in the source folder and import again`);
+    } else if (twin) {
+      refused.set(rel, `it and "${twin}", already in the wiki, differ only in ${twinHow([twin, sameDepth(rel, twin)])}; a Mac or Windows disk holds only one of the two, so it was not copied`);
+    } else {
+      names.add(rel);
+    }
+  }
+  const allowed = (src, alsoReject) => {
+    if (!admissible(src, alsoReject))
+      return false;
+    const rel = relOf(src);
+    if (rel === "")
+      return true;
+    return !refused.has(rel) && !portablePathProblem(rel) && names.clash(rel) === null;
+  };
+  await withFsRetry(() => (0, import_promises6.cp)(sourceDir, dir, {
     recursive: true,
     force: true,
     filter: (src) => allowed(src, isRawSourcePath)
-  });
+  }));
   const notImported = [];
   for (const relPath of RESERVED_ROOT_NAMES) {
-    if (await pathExists2((0, import_node_path7.join)(sourceDir, relPath))) {
+    if (await pathExists2((0, import_node_path8.join)(sourceDir, relPath))) {
       notImported.push({ relPath, reason: RESERVED_ROOT_REASON[relPath] });
     }
   }
-  const sourcesDir = (0, import_node_path7.join)(sourceDir, WIKI_LAYOUT.sourcesDir);
+  for (const [relPath, reason] of refused)
+    notImported.push({ relPath, reason });
+  const sourcesDir = (0, import_node_path8.join)(sourceDir, WIKI_LAYOUT.sourcesDir);
   if (await isDir(sourcesDir)) {
     for (const rel of await walkFiles(sourcesDir, () => true)) {
-      const existing = (0, import_node_path7.join)(dir, WIKI_LAYOUT.sourcesDir, rel);
-      if (await pathExists2(existing) && await differs(existing, (0, import_node_path7.join)(sourcesDir, rel))) {
+      if (refused.has(`${WIKI_LAYOUT.sourcesDir}/${rel}`))
+        continue;
+      const existing = (0, import_node_path8.join)(dir, WIKI_LAYOUT.sourcesDir, rel);
+      if (await pathExists2(existing) && await differs(existing, (0, import_node_path8.join)(sourcesDir, rel))) {
         notImported.push({
           relPath: `${WIKI_LAYOUT.sourcesDir}/${rel}`,
           reason: "a DIFFERENT raw source already exists at this path \u2014 sources/ is immutable"
         });
       }
     }
-    await (0, import_promises6.cp)(sourcesDir, (0, import_node_path7.join)(dir, WIKI_LAYOUT.sourcesDir), {
+    await withFsRetry(() => (0, import_promises6.cp)(sourcesDir, (0, import_node_path8.join)(dir, WIKI_LAYOUT.sourcesDir), {
       recursive: true,
       force: false,
       // copy-if-absent: an existing raw source keeps its original bytes…
       errorOnExist: false,
       // …and a collision is a reported no-op, not a thrown import
       filter: (src) => allowed(src, () => false)
-    });
+    }));
   }
-  return notImported;
+  return { notImported, refused: new Set(refused.keys()) };
+}
+function foldIndex(existing) {
+  const exact = /* @__PURE__ */ new Set();
+  const byKey = /* @__PURE__ */ new Map();
+  const prefixes = (path2) => {
+    const parts = path2.split("/");
+    return parts.map((_, i) => parts.slice(0, i + 1).join("/"));
+  };
+  const add = (path2) => {
+    for (const prefix of prefixes(path2)) {
+      exact.add(prefix);
+      if (!byKey.has(pathFoldKey(prefix)))
+        byKey.set(pathFoldKey(prefix), prefix);
+    }
+  };
+  for (const path2 of existing)
+    add(path2);
+  const clash = (path2) => {
+    for (const prefix of prefixes(path2)) {
+      if (exact.has(prefix))
+        continue;
+      const hit = byKey.get(pathFoldKey(prefix));
+      if (hit !== void 0)
+        return hit;
+    }
+    return null;
+  };
+  return { clash, add };
 }
 async function differs(a, b) {
   try {
@@ -15762,7 +16357,7 @@ async function walkFiles(root, keep, onUnreadableDir) {
       const childRel = rel ? `${rel}/${e.name}` : e.name;
       if (e.isDirectory()) {
         if (!RESERVED_SEGMENTS.has(e.name.normalize("NFC").toLowerCase())) {
-          await walk2((0, import_node_path7.join)(abs, e.name), childRel);
+          await walk2((0, import_node_path8.join)(abs, e.name), childRel);
         }
       } else if (e.isFile() && keep(childRel)) {
         out.push(childRel);
@@ -15775,13 +16370,13 @@ async function walkFiles(root, keep, onUnreadableDir) {
 async function walkMarkdown(root, onUnreadableDir) {
   return walkFiles(root, (rel) => rel.endsWith(".md"), onUnreadableDir);
 }
-async function normalizeAndReindex(dir, sourceDir, teamId, today) {
-  const importedRel = (await walkMarkdown(sourceDir)).filter(isWikiPagePath);
+async function normalizeAndReindex(dir, sourceDir, teamId, today, refused = /* @__PURE__ */ new Set()) {
+  const importedRel = (await walkMarkdown(sourceDir)).filter((rel) => isWikiPagePath(rel) && !refused.has(rel));
   const importFiles = [];
   for (const relPath of importedRel) {
     try {
-      const content = await (0, import_promises6.readFile)((0, import_node_path7.join)(dir, relPath), "utf8");
-      const mtime = await mtimeDate((0, import_node_path7.join)(sourceDir, relPath));
+      const content = await (0, import_promises6.readFile)((0, import_node_path8.join)(dir, relPath), "utf8");
+      const mtime = await mtimeDate((0, import_node_path8.join)(sourceDir, relPath));
       importFiles.push({ relPath, content, ...mtime ? { mtime } : {} });
     } catch {
       continue;
@@ -15789,7 +16384,7 @@ async function normalizeAndReindex(dir, sourceDir, teamId, today) {
   }
   const result = normalizeImport(importFiles, { today });
   for (const f of result.files)
-    await (0, import_promises6.writeFile)((0, import_node_path7.join)(dir, f.relPath), f.content, "utf8");
+    await withFsRetry(() => (0, import_promises6.writeFile)((0, import_node_path8.join)(dir, f.relPath), f.content, "utf8"));
   if (result.skipped.length > 0) {
     const lines = result.skipped.map((s) => `  ${s.relPath}: ${s.reason}`).join("\n");
     process.stderr.write(
@@ -15840,32 +16435,33 @@ function renderIndex(tree) {
   });
 }
 async function currentIndex(dir) {
-  return (0, import_promises6.readFile)((0, import_node_path7.join)(dir, WIKI_LAYOUT.indexFile), "utf8").catch(() => "");
+  return (await (0, import_promises6.readFile)((0, import_node_path8.join)(dir, WIKI_LAYOUT.indexFile), "utf8").catch(() => "")).replace(/\r\n/g, "\n");
 }
 async function writeIndex(dir, tree) {
-  await (0, import_promises6.writeFile)((0, import_node_path7.join)(dir, WIKI_LAYOUT.indexFile), renderIndex(tree), "utf8");
+  const text = renderIndex(tree);
+  await withFsRetry(() => (0, import_promises6.writeFile)((0, import_node_path8.join)(dir, WIKI_LAYOUT.indexFile), text, "utf8"));
 }
 async function rebuildIndex(dir) {
   const tree = await readWorkingTree(dir);
   await writeIndex(dir, tree);
   return tree.unparseable;
 }
-async function mtimeDate(path) {
+async function mtimeDate(path2) {
   try {
-    return (await (0, import_promises6.stat)(path)).mtime.toISOString().slice(0, 10);
+    return (await (0, import_promises6.stat)(path2)).mtime.toISOString().slice(0, 10);
   } catch {
     return void 0;
   }
 }
-async function isDir(path) {
+async function isDir(path2) {
   try {
-    return (await (0, import_promises6.stat)(path)).isDirectory();
+    return (await (0, import_promises6.stat)(path2)).isDirectory();
   } catch {
     return false;
   }
 }
-function pageIdFromPath2(path) {
-  return path.endsWith(".md") ? path.slice(0, -3) : path;
+function pageIdFromPath2(path2) {
+  return path2.endsWith(".md") ? path2.slice(0, -3) : path2;
 }
 function kindFromStatus(status2) {
   switch (status2[0]) {
@@ -15896,35 +16492,48 @@ async function resolveCloneTarget(deps, teamId, token) {
 async function recordAndAnnounce(deps, teamId, dir, onClone, reclaimed = false) {
   const profile = await readTeamProfile(teamId, deps.configHome);
   if (!profile.clonePath) {
-    if ((0, import_node_path7.resolve)((0, import_node_path7.dirname)(dir)) === (0, import_node_path7.resolve)(deps.dataHome)) {
-      await setCloneDir(teamId, (0, import_node_path7.basename)(dir), deps.configHome);
+    if ((0, import_node_path8.resolve)((0, import_node_path8.dirname)(dir)) === (0, import_node_path8.resolve)(deps.dataHome)) {
+      await setCloneDir(teamId, (0, import_node_path8.basename)(dir), deps.configHome);
     } else {
-      await setClonePath(teamId, (0, import_node_path7.resolve)(dir), deps.configHome);
+      await setClonePath(teamId, (0, import_node_path8.resolve)(dir), deps.configHome);
     }
   }
   onClone?.(dir, reclaimed);
 }
 async function cloneFresh(deps, teamId, dir, origin, onClone, reclaimed = false) {
   await recordAndAnnounce(deps, teamId, dir, onClone, reclaimed);
-  await cloneRepo(origin.url, dir, origin);
+  try {
+    await cloneRepo(origin.url, dir, origin);
+  } catch (e) {
+    if (!(e instanceof GitError) || !CHECKOUT_FAILED.test(e.stderr))
+      throw e;
+    await clearWreckage(dir).catch(() => void 0);
+    throw new AgentError(checkoutFailure(e.stderr));
+  }
   await injectTooling(deps, teamId, dir);
 }
+var CHECKOUT_FAILED = /unable to checkout working tree|clone succeeded, but checkout failed/i;
 function notAWikiFolder(dir) {
   return `there is a folder at ${dir}, but it is not a CommonGround wiki folder: it has other files in it and no wiki history. Nothing in it was touched and nothing was fetched. Move or rename that folder, then try again. Or ` + byAudience('pick another place with "commonground init --mode local --path <folder>"', "offer to put the wiki folder somewhere else (/commonground:point in local mode, naming a folder)");
+}
+async function foreignFolder(dir) {
+  if (!await unfinishedCheckout(dir).catch(() => false))
+    return new AgentError(notAWikiFolder(dir));
+  return new AgentError(`the wiki folder at ${dir} never finished downloading, and it now holds files that did not come from the wiki. Nothing in it was touched. Move those files out of it, then ` + byAudience('run "commonground pull" again.', "pull again (offer /commonground:pull)."));
 }
 async function ensureClone(deps, teamId, dir, origin, onClone) {
   const standing = await cloneState(dir);
   if (standing === "usable")
     return false;
   if (standing === "foreign")
-    throw new AgentError(notAWikiFolder(dir));
+    throw await foreignFolder(dir);
   const access3 = await origin();
   return withFetchLock(dir, async () => {
     const now = await cloneState(dir);
     if (now === "usable")
       return false;
     if (now === "foreign")
-      throw new AgentError(notAWikiFolder(dir));
+      throw await foreignFolder(dir);
     if (now === "wreckage")
       await clearWreckage(dir);
     await cloneFresh(deps, teamId, dir, access3, onClone, now === "wreckage");
@@ -15932,8 +16541,8 @@ async function ensureClone(deps, teamId, dir, origin, onClone) {
   });
 }
 async function withFetchLock(dir, work) {
-  const lock = (0, import_node_path7.join)((0, import_node_path7.dirname)(dir), `.${(0, import_node_path7.basename)(dir)}.fetching`);
-  await (0, import_promises6.mkdir)((0, import_node_path7.dirname)(dir), { recursive: true });
+  const lock = (0, import_node_path8.join)((0, import_node_path8.dirname)(dir), `.${(0, import_node_path8.basename)(dir)}.fetching`);
+  await (0, import_promises6.mkdir)((0, import_node_path8.dirname)(dir), { recursive: true });
   const take = async () => {
     const fh = await (0, import_promises6.open)(lock, "wx");
     try {
@@ -15957,7 +16566,7 @@ async function withFetchLock(dir, work) {
   try {
     return await work();
   } finally {
-    await (0, import_promises6.rm)(lock, { force: true });
+    await (0, import_promises6.rm)(lock, { force: true }).catch(() => void 0);
   }
 }
 function isAlive(pid) {
@@ -15970,10 +16579,12 @@ function isAlive(pid) {
 }
 async function requireClone(deps, teamId, dir) {
   const standing = await cloneState(dir);
-  if (standing === "usable")
+  if (standing === "usable") {
+    await refreshCloneTooling(dir);
     return;
+  }
   if (standing === "foreign")
-    throw new AgentError(notAWikiFolder(dir));
+    throw await foreignFolder(dir);
   const label = wikiLabel({ teamId, ...await readTeamProfile(teamId, deps.configHome) });
   throw new AgentError(`there is no wiki folder for ${label} on this machine yet \u2014 ${byAudience('run "commonground pull" first', "pull it first (offer /commonground:pull)")}`);
 }
@@ -16052,6 +16663,10 @@ async function sync(deps, teamId, opts = {}) {
   await injectTooling(deps, teamId, dir);
   if (ahead > 0) {
     if (can(binding.role, "wiki:edit")) {
+      const twins = await trackedTwins(dir);
+      if (twins.length > 0) {
+        return { teamId, clonePath: dir, action: "needs-rename", ahead, behind, renames: twins };
+      }
       const pushed = toPageChanges(await diffNameStatus(dir, remote, "HEAD"));
       const deletions = toPageChanges(await diffNameStatus(dir, remote, "HEAD", { noRenames: true })).filter((p) => p.kind === "deleted");
       if (deletions.length > 0 && !opts.allowDeletes) {
@@ -16081,7 +16696,7 @@ async function sync(deps, teamId, opts = {}) {
   return { teamId, clonePath: dir, action: "up-to-date", ahead, behind };
 }
 async function commitAllIfAny(dir, binding, message) {
-  await runGit(dir, ["add", "-A"]);
+  await stageAll(dir);
   const staged = (await runGit(dir, ["diff", "--cached", "--name-only"])).split("\n").filter(Boolean);
   if (staged.length === 0)
     return false;
@@ -16098,15 +16713,10 @@ async function commitAllIfAny(dir, binding, message) {
   noteLocalCommit();
   return true;
 }
-async function runGitOverPaths(dir, args, paths) {
-  const CHUNK = 100;
-  for (let i = 0; i < paths.length; i += CHUNK) {
-    await runGit(dir, [...args, "--", ...paths.slice(i, i + CHUNK)]);
-  }
-}
 async function snapshotToDraft(dir, binding, label) {
   const l = label ?? (/* @__PURE__ */ new Date()).toISOString().replace(/[:.]/g, "-");
   const branch = `draft/${l}`;
+  await refreshCloneTooling(dir);
   const snapshot = await snapshotWorkingTree(dir, `commonground draft ${l}`, agentAuthor(binding));
   await createBranch(dir, branch, snapshot);
   return branch;
@@ -16149,27 +16759,29 @@ async function pull(deps, teamId, opts = {}) {
   }
   const incoming = toPageChanges(await diffNameStatus(dir, await mergeBase(dir, "HEAD", remote), remote));
   if (ahead === 0 && !blocksMerge) {
+    let merged = true;
     try {
       await fastForward(dir, remote);
     } catch (e) {
-      if (e instanceof GitError && /would be overwritten by/i.test(e.stderr)) {
-        return { teamId, clonePath: dir, action: "blocked", ahead, behind, dirty, unpublished, pages: incoming };
-      }
-      throw e;
+      if (!(e instanceof GitError) || !/would be overwritten by/i.test(e.stderr))
+        throw e;
+      merged = false;
     }
-    await injectTooling(deps, teamId, dir);
-    return {
-      teamId,
-      clonePath: dir,
-      action: "fast-forwarded",
-      ahead: 0,
-      behind,
-      // The ff moved HEAD; it did not touch the untracked pages sitting beside it. They are still
-      // unpublished, and the receipt is the one place the user would hear so.
-      dirty,
-      unpublished,
-      pages: incoming
-    };
+    if (merged) {
+      await injectTooling(deps, teamId, dir);
+      return {
+        teamId,
+        clonePath: dir,
+        action: "fast-forwarded",
+        ahead: 0,
+        behind,
+        // The ff moved HEAD; it did not touch the untracked pages sitting beside it. They are still
+        // unpublished, and the receipt is the one place the user would hear so.
+        dirty,
+        unpublished,
+        pages: incoming
+      };
+    }
   }
   if (!opts.takeRemote) {
     return { teamId, clonePath: dir, action: "blocked", ahead, behind, dirty, unpublished, pages: incoming };
@@ -16185,6 +16797,86 @@ async function pull(deps, teamId, opts = {}) {
     pages: incoming,
     draftBranch
   };
+}
+function twinHow(spellings) {
+  switch (twinDifference(spellings)) {
+    case "case":
+      return "letter case";
+    case "accents":
+      return "how their accents are encoded";
+    case "both":
+      return "letter case and in how their accents are encoded";
+  }
+}
+function twinProblem(group) {
+  const quoted = group.map((p) => `"${p}"`);
+  const names = `${quoted.slice(0, -1).join(", ")} and ${quoted[quoted.length - 1]}`;
+  return {
+    kind: "twin",
+    path: group[0],
+    twins: group,
+    reason: `${names} differ only in ${twinHow(group)}, and this machine can hold only one of them, so nothing can be published from here. A curator on a Linux machine, or CommonGround support, can rename one; after that, pull and publish again.`
+  };
+}
+async function trackedTwins(dir) {
+  if (!await foldsCase(dir))
+    return [];
+  return caseTwins((await runGit(dir, ["ls-files", "-z"])).split("\0").filter(Boolean)).map(twinProblem);
+}
+async function unportableChanges(dir) {
+  const entries = await statusEntries(dir);
+  const tracked = (await runGit(dir, ["ls-files", "-z"])).split("\0").filter(Boolean);
+  const fresh = entries.filter((e) => e.xy === "??" || "ARC".includes(e.xy[0]) && e.xy[1] !== "D").map((e) => e.path).filter((p) => !isFolderNoiseName((0, import_node_path8.basename)(p)));
+  const leaving = new Set(entries.filter((e) => e.xy.includes("D")).map((e) => e.path));
+  const freshSet = new Set(fresh);
+  const staying = tracked.filter((p) => !leaving.has(p) && !freshSet.has(p));
+  const problems = [];
+  const names = foldIndex(staying);
+  for (const path2 of [...fresh].sort()) {
+    const problem = portablePathProblem(path2);
+    const twin = problem ? null : names.clash(path2);
+    if (problem)
+      problems.push({ kind: "name", path: path2, reason: problem });
+    else if (twin)
+      problems.push(caseClash(path2, twin));
+    else
+      names.add(path2);
+  }
+  if (await foldsCase(dir)) {
+    for (const group of caseTwins(tracked.filter((p) => !freshSet.has(p))))
+      problems.push(twinProblem(group));
+  }
+  return problems;
+}
+function sameDepth(path2, prefix) {
+  return path2.split("/").slice(0, prefix.split("/").length).join("/");
+}
+function caseClash(path2, twin) {
+  return {
+    kind: "name",
+    path: path2,
+    reason: `it and "${twin}" differ only in ${twinHow([twin, sameDepth(path2, twin)])}, and a Mac or Windows disk holds only one of the two`
+  };
+}
+async function replayNameProblems(dir, remote, myEdits, myDeletions) {
+  const hosted = (await runGit(dir, ["ls-tree", "-r", "-z", "--name-only", remote])).split("\0").filter(Boolean);
+  const gone = new Set(myDeletions);
+  const names = foldIndex(hosted.filter((p) => !gone.has(p)));
+  const problems = [];
+  for (const path2 of [...myEdits].sort()) {
+    const twin = names.clash(path2);
+    if (twin)
+      problems.push(caseClash(path2, twin));
+    else
+      names.add(path2);
+  }
+  if (await foldsCase(dir))
+    problems.push(...caseTwins(hosted).map(twinProblem));
+  return problems;
+}
+async function stageAll(dir) {
+  await refreshCloneTooling(dir);
+  await stageEverything(dir);
 }
 async function push(deps, teamId, opts = {}) {
   const binding = await bindingFor(deps, teamId);
@@ -16205,6 +16897,10 @@ async function push(deps, teamId, opts = {}) {
     return { teamId, clonePath: dir, action: "read-only", ahead: 0, behind: 0, pages };
   }
   if (opts.dryRun) {
+    const renames2 = await unportableChanges(dir);
+    if (renames2.some((p) => p.kind === "twin")) {
+      return { teamId, clonePath: dir, action: "needs-rename", ahead: 0, behind: 0, renames: renames2 };
+    }
     await refreshRemote(dir, origin);
     const remoteRef = `origin/${await currentBranch(dir)}`;
     const { ahead: a, behind: b } = await aheadBehind(dir, "HEAD", remoteRef);
@@ -16223,9 +16919,14 @@ async function push(deps, teamId, opts = {}) {
       pages: pending,
       deletions: wouldDelete.length ? wouldDelete : void 0,
       unparseable: previewTree.unparseable.length ? previewTree.unparseable : void 0,
+      ...renames2.length ? { renames: renames2 } : {},
       incoming: b > 0 ? toPageChanges(await diffNameStatus(dir, base, remoteRef)) : [],
       ...catalogRefresh2 ? { catalogRefresh: catalogRefresh2 } : {}
     };
+  }
+  const renames = await unportableChanges(dir);
+  if (renames.length > 0) {
+    return { teamId, clonePath: dir, action: "needs-rename", ahead: 0, behind: 0, renames };
   }
   const tree = await readWorkingTree(dir);
   if (tree.unparseable.length > 0 && !opts.allowUnparseable) {
@@ -16263,13 +16964,17 @@ async function push(deps, teamId, opts = {}) {
         incoming
       };
     }
-    draftBranch = await snapshotToDraft(dir, binding);
-    const myChanges = await diffNameStatus(dir, base, draftBranch, { noRenames: true });
+    const myChanges = await diffNameStatus(dir, base, "HEAD", { noRenames: true });
     const myEdits = myChanges.filter((n) => !n.status.startsWith("D")).map((n) => n.path);
     const myDeletions = myChanges.filter((n) => n.status.startsWith("D")).map((n) => n.path);
+    const replayRenames = await replayNameProblems(dir, remote, myEdits, myDeletions);
+    if (replayRenames.length > 0) {
+      return { teamId, clonePath: dir, action: "needs-rename", ahead, behind, renames: replayRenames };
+    }
+    draftBranch = await snapshotToDraft(dir, binding);
     await resetHardTo(dir, remote);
-    await runGitOverPaths(dir, ["checkout", draftBranch], myEdits);
-    await runGitOverPaths(dir, ["rm", "-f", "--ignore-unmatch"], myDeletions);
+    await runGitOverPaths(dir, ["--literal-pathspecs", "rm", "-f", "--ignore-unmatch"], myDeletions);
+    await runGitOverPaths(dir, ["--literal-pathspecs", "checkout", draftBranch], myEdits);
     await injectTooling(deps, teamId, dir);
     unparseable = await rebuildIndex(dir);
     await commitAllIfAny(dir, binding, `curate: ${opts.message?.trim() || "wiki"} (published over hosted changes)`);
@@ -16315,7 +17020,7 @@ async function exportWiki(deps, teamId, opts = {}) {
   const binding = await bindingFor(deps, teamId);
   const dir = await resolveClonePath(teamId, deps.configHome, deps.dataHome);
   await requireClone(deps, teamId, dir);
-  const out = opts.out ?? (0, import_node_path7.join)(deps.dataHome, `${teamId}-wiki.tar`);
+  const out = opts.out ?? (0, import_node_path8.join)(deps.dataHome, `${teamId}-wiki.tar`);
   await archiveHead(dir, out);
   return { path: out };
 }
@@ -16381,7 +17086,8 @@ async function lint(deps, teamId) {
   const binding = await bindingFor(deps, teamId);
   const dir = await resolveClonePath(teamId, deps.configHome, deps.dataHome);
   await requireClone(deps, teamId, dir);
-  return { ...await localLint(dir), clonePath: dir };
+  const treePaths = (await runGit(dir, ["ls-files", "-z"])).split("\0").filter(Boolean);
+  return { ...await localLint(dir, /* @__PURE__ */ new Date(), treePaths), clonePath: dir };
 }
 async function coverage(deps, teamId) {
   const binding = await bindingFor(deps, teamId);
@@ -16405,7 +17111,7 @@ async function normalizeRetiredKeys(deps, teamId, opts = {}) {
   })).filter(isWikiPagePath);
   for (const relPath of pageFiles) {
     try {
-      files.push({ relPath, content: await (0, import_promises6.readFile)((0, import_node_path7.join)(dir, relPath), "utf8") });
+      files.push({ relPath, content: await (0, import_promises6.readFile)((0, import_node_path8.join)(dir, relPath), "utf8") });
     } catch (e) {
       unreadable.push({ relPath, reason: e instanceof Error ? e.message : "could not be read" });
     }
@@ -16430,16 +17136,16 @@ async function normalizeRetiredKeys(deps, teamId, opts = {}) {
   if (!opts.apply)
     return { ...plan, action: "preview" };
   for (const r of sweep.rewrites)
-    await (0, import_promises6.writeFile)((0, import_node_path7.join)(dir, r.relPath), r.content, "utf8");
+    await withFsRetry(() => (0, import_promises6.writeFile)((0, import_node_path8.join)(dir, r.relPath), r.content, "utf8"));
   await rebuildIndex(dir);
   return { ...plan, action: "applied" };
 }
 function agentAuthor(binding) {
   return { name: binding.userId, email: `${binding.userId}@users.commonground.local` };
 }
-async function pathExists2(path) {
+async function pathExists2(path2) {
   try {
-    await (0, import_promises6.access)(path);
+    await (0, import_promises6.access)(path2);
     return true;
   } catch {
     return false;
@@ -16454,7 +17160,7 @@ function parseInitArgs(rest) {
   let team;
   let refresh = false;
   let reclone = false;
-  let path;
+  let path2;
   let also;
   let drop;
   for (let i = 0; i < rest.length; i++) {
@@ -16470,7 +17176,7 @@ function parseInitArgs(rest) {
       const val = arg === "--path" ? rest[++i] : arg.slice(7);
       if (!val)
         throw new AgentError(USAGE_INIT);
-      path = val;
+      path2 = val;
     } else if (arg === "--also" || arg.startsWith("--also=")) {
       const val = arg === "--also" ? rest[++i] : arg.slice(7);
       if (!val || val.startsWith("-"))
@@ -16489,7 +17195,7 @@ function parseInitArgs(rest) {
       team = arg;
     }
   }
-  if (path && !also && !refresh && mode !== "local") {
+  if (path2 && !also && !refresh && mode !== "local") {
     throw new AgentError("--path sets where your wiki FOLDER goes, which only local-clone mode has \u2014 add --mode local, or drop --path");
   }
   if ([also, drop, refresh ? "refresh" : void 0].filter(Boolean).length > 1) {
@@ -16508,7 +17214,7 @@ ${USAGE_INIT}`);
     throw new AgentError(`--reclone repairs a wiki folder this machine has recorded but does not have, so it only makes sense beside --refresh.
 ${USAGE_INIT}`);
   }
-  return { mode, modeGiven, team, refresh, reclone, path, also, drop };
+  return { mode, modeGiven, team, refresh, reclone, path: path2, also, drop };
 }
 function modeRequired() {
   return new AgentError("this project is not pointed at a wiki yet, so say which way it should read one: --mode local keeps the wiki as markdown files in a folder on this machine (needs git), --mode mcp reads it live through the hosted connector.");
@@ -16516,11 +17222,11 @@ function modeRequired() {
 
 // ../../apps/sync-agent/dist/version.js
 var import_node_fs3 = require("node:fs");
-var import_node_path8 = require("node:path");
+var import_node_path9 = require("node:path");
 var import_node_url = require("node:url");
 function packageVersion() {
   try {
-    const pkg = (0, import_node_path8.join)((0, import_node_path8.dirname)((0, import_node_url.fileURLToPath)(__commongroundImportMetaUrl)), "..", "package.json");
+    const pkg = (0, import_node_path9.join)((0, import_node_path9.dirname)((0, import_node_url.fileURLToPath)(__commongroundImportMetaUrl)), "..", "package.json");
     const parsed = JSON.parse((0, import_node_fs3.readFileSync)(pkg, "utf8"));
     return typeof parsed.version === "string" && parsed.version.trim() ? parsed.version.trim() : null;
   } catch {
@@ -16528,7 +17234,7 @@ function packageVersion() {
   }
 }
 function cliVersion() {
-  const embedded = true ? "0.17.0".trim() : "";
+  const embedded = true ? "0.18.0".trim() : "";
   if (embedded)
     return embedded;
   const dev = packageVersion();
@@ -16539,9 +17245,91 @@ function versionLine() {
 `;
 }
 
+// ../../apps/sync-agent/dist/open-url.js
+var import_node_child_process3 = require("node:child_process");
+function openersFor(os, url) {
+  switch (os) {
+    case "macos":
+      return [{ cmd: "open", args: [url], decide: "exit" }];
+    case "windows":
+      return [{ cmd: "start", args: [url], decide: "spawn", shell: true }];
+    case "wsl":
+      return [
+        { cmd: "wslview", args: [url], decide: "exit" },
+        { cmd: "explorer.exe", args: [url], decide: "spawn" },
+        { cmd: "xdg-open", args: [url], decide: "exit" }
+      ];
+    default:
+      return [{ cmd: "xdg-open", args: [url], decide: "exit" }];
+  }
+}
+async function openUrl(url, io = {}) {
+  const env = io.env ?? process.env;
+  if (env.COMMONGROUND_NO_BROWSER)
+    return "suppressed";
+  let safe;
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:")
+      return "failed";
+    safe = parsed.toString();
+  } catch {
+    return "failed";
+  }
+  const spawn = io.spawn ?? import_node_child_process3.spawn;
+  const waitMs = io.waitMs ?? 1500;
+  for (const opener of openersFor(io.os ?? hostOs(), safe)) {
+    if (await tryOpener(spawn, opener, waitMs))
+      return "opened";
+  }
+  return "failed";
+}
+function tryOpener(spawn, opener, waitMs) {
+  return new Promise((settle) => {
+    let done = false;
+    let timer;
+    const finish = (opened) => {
+      if (done)
+        return;
+      done = true;
+      if (timer)
+        clearTimeout(timer);
+      settle(opened);
+    };
+    let child;
+    try {
+      child = spawn(opener.cmd, opener.args, {
+        stdio: "ignore",
+        detached: true,
+        ...opener.shell ? { shell: true } : {}
+      });
+    } catch {
+      finish(false);
+      return;
+    }
+    child.on("error", () => finish(false));
+    if (opener.decide === "spawn") {
+      child.once("spawn", () => finish(true));
+    } else {
+      child.once("exit", (code) => finish(code === 0));
+      child.once("spawn", () => {
+        timer = setTimeout(() => finish(true), waitMs);
+      });
+    }
+    child.unref();
+  });
+}
+function copyLinkLine(url) {
+  return byAudience(`  Your browser did not open by itself. Copy this link into your browser:
+  ${url}
+`, `  The browser did not open on this machine. Give them this link to open themselves:
+  ${url}
+`);
+}
+
 // ../../apps/sync-agent/dist/team-resolve.js
 var import_node_fs4 = require("node:fs");
-var import_node_path9 = require("node:path");
+var import_node_path10 = require("node:path");
 var FULL_WIKI_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 async function resolveWiki(deps, arg, projectDir = process.cwd()) {
   if (arg)
@@ -16642,18 +17430,18 @@ function describeWikiChoice(choice, label, alsoLabels = []) {
 `);
 }
 function canon(p) {
-  const abs = (0, import_node_path9.resolve)(p);
+  const abs = (0, import_node_path10.resolve)(p);
   try {
     return import_node_fs4.realpathSync.native(abs);
   } catch {
-    const parent = (0, import_node_path9.dirname)(abs);
-    return parent === abs ? abs : (0, import_node_path9.join)(canon(parent), (0, import_node_path9.basename)(abs));
+    const parent = (0, import_node_path10.dirname)(abs);
+    return parent === abs ? abs : (0, import_node_path10.join)(canon(parent), (0, import_node_path10.basename)(abs));
   }
 }
 function within(child, root) {
   const c = canon(child);
   const r = canon(root);
-  return c === r || c.startsWith(r.endsWith(import_node_path9.sep) ? r : r + import_node_path9.sep);
+  return c === r || c.startsWith(r.endsWith(import_node_path10.sep) ? r : r + import_node_path10.sep);
 }
 async function isCloneDir(deps, teamId, dir) {
   try {
@@ -16721,6 +17509,17 @@ function formatReceipt(pages) {
 function pageCount(n) {
   return `${n} page${n === 1 ? "" : "s"}`;
 }
+function canPublish(role) {
+  return role === void 0 || can(role, "wiki:edit");
+}
+function keptForSuggestion() {
+  return byAudience(
+    "Your role cannot publish, so this work stays safe on this machine only; to share it, file it as a suggestion for a curator to fold in.",
+    // Conditional (SER-327): a local-mode session may have no connector, and so no suggest_change,
+    // at all. An offer of a tool that is not there is the one thing worse than no offer.
+    "A member cannot publish, so this work stays safe on this machine only; to share it, offer to file it as a suggestion for a curator if this session has suggest_change; otherwise the work stays here until a curator takes it."
+  );
+}
 function deleteWarning(deletions, v) {
   if (!deletions?.length)
     return "";
@@ -16731,6 +17530,25 @@ function deleteWarning(deletions, v) {
 function unparseableLines(pages, indent) {
   return pages.map((p) => `${indent}${p.relPath}: ${p.reason}
 `).join("");
+}
+function renameLines(renames, indent) {
+  return renames.map((p) => `${indent}${p.path}: ${p.reason}
+`).join("");
+}
+function needsRenameBody(renames, folder) {
+  const twins = renames.filter((p) => p.kind === "twin");
+  const names = renames.filter((p) => p.kind !== "twin");
+  const them = names.length === 1 ? "it" : "them";
+  if (twins.length === 0) {
+    return `${names.length} file name(s) in ${folder} would break the wiki on another machine, so nothing was published.
+` + renameLines(names, "  ") + byAudience(`  Rename ${them} in the wiki folder, then run "commonground push" again.
+`, `  Offer to rename ${them} in the wiki folder, then publish again.
+`);
+  }
+  return `nothing was published from ${folder}.
+` + twins.map((p) => `  ${p.reason}
+`).join("") + (names.length ? `  Also, ${names.length} new file name(s) here would break the wiki on another machine, so ${names.length === 1 ? "it needs" : "they need"} a new name before the next publish:
+` + renameLines(names, "    ") : "");
 }
 function placeholderNote(unparseable) {
   if (!unparseable?.length)
@@ -16752,15 +17570,17 @@ function formatPush(r, v, who) {
       const catalog = r.catalogRefresh ? `  The wiki catalog (index.md) is out of date with this clone's pages \u2014 publishing
   refreshes it. (It is machine-owned; a plugin update can correct its format.)
 ` : "";
+      const names = r.renames?.length ? `  \u26A0 ${r.renames.length} file name(s) that some machines cannot hold, so publishing stops until they are renamed:
+` + renameLines(r.renames, "    ") : "";
       if (!pages.length)
         return r.catalogRefresh ? `${label}: no page changes in ${r.clonePath}, but the catalog needs a refresh.
-${catalog}${broken}  Nothing published yet \u2014 ${ask("push")} to publish the corrected catalog.
+${catalog}${names}${broken}  Nothing published yet \u2014 ${ask("push")} to publish the corrected catalog.
 ` : `${label}: nothing to publish in ${r.clonePath}.
-${broken}`;
+${names}${broken}`;
       const conflict = r.behind ? `  Heads up: ${v.wiki} moved (${r.behind} change(s)): ${formatReceipt(r.incoming ?? []) || "(none)"}
 ` : "";
       return `${label}: would publish ${pageCount(pages.length)} from ${r.clonePath}: ${formatReceipt(pages)}
-` + catalog + conflict + broken + deleteWarning(r.deletions, v) + `  Nothing published yet \u2014 ${ask("push")} to confirm.
+` + catalog + conflict + names + broken + deleteWarning(r.deletions, v) + `  Nothing published yet \u2014 ${ask("push")} to confirm.
 `;
     }
     case "needs-delete-confirm":
@@ -16780,6 +17600,8 @@ ${broken}`;
 `, `    (offer to publish as-is; it needs their explicit go-ahead)
 `);
     }
+    case "needs-rename":
+      return `${label}: ${needsRenameBody(r.renames ?? [], r.clonePath)}`;
     case "read-only": {
       const pages = r.pages ?? [];
       return `${label}: your role is read-only \u2014 publishing is admins/curators only.
@@ -16975,6 +17797,11 @@ function formatSyncState(s, mode = null, profile = {}) {
 `;
     }
     case "ahead":
+      if (!canPublish(s.role)) {
+        return s.ahead > 0 ? `${who}: ${s.ahead} local commit(s)${s.dirty ? ", plus work in your wiki folder," : ""} the team cannot see yet. ${keptForSuggestion()}
+` : `${who}: work in your wiki folder the team cannot see yet. ${keptForSuggestion()}
+`;
+      }
       return s.ahead > 0 ? `${who}: ${s.ahead} local commit(s)${s.dirty ? ", plus work in your wiki folder," : ""} to publish \u2014 ${ask("push")}.
 ` : `${who}: work in your wiki folder to publish \u2014 ${ask("push")}.
 `;
@@ -17013,9 +17840,9 @@ Usage:
                                clones it), --drop <wiki> stops reading one; a bare "init <wiki>"
                                replaces the whole set with that wiki
   commonground relocate <folder> [wiki]
-                               move your wiki folder somewhere else \u2014 moves the files, remembers
-                               the new location, and updates THIS project's ./CLAUDE.md. Other
-                               projects need "commonground init --refresh"
+                               move your wiki folder somewhere else: moves the files and remembers
+                               the new location. Every project connected to the wiki follows by
+                               itself, because no CLAUDE.md names the folder
   commonground pull [wiki]     get the published wiki's latest into your local copy (everyone).
                                Never overwrites local work: it stops and reports instead. Add
                                --take-remote to adopt the published version anyway (your work is
@@ -17092,29 +17919,14 @@ async function buildDeps() {
     dataHome
   };
 }
-function openBrowser(url) {
-  if (process.env.COMMONGROUND_NO_BROWSER)
-    return;
-  let safe;
-  try {
-    const parsed = new URL(url);
-    if (parsed.protocol !== "http:" && parsed.protocol !== "https:")
-      return;
-    safe = parsed.toString();
-  } catch {
-    return;
-  }
-  const cmd = process.platform === "darwin" ? "open" : process.platform === "win32" ? "start" : "xdg-open";
-  try {
-    const child = (0, import_node_child_process3.spawn)(cmd, [safe], {
-      stdio: "ignore",
-      detached: true,
-      shell: process.platform === "win32"
-    });
-    child.on("error", () => {
-    });
-    child.unref();
-  } catch {
+async function promptAndOpen(p) {
+  process.stdout.write(`
+Authorize this device in your browser:
+  ${p.verificationUriComplete}
+  (confirm the code ${p.userCode} if asked)
+`);
+  if (await openUrl(p.verificationUriComplete) === "failed") {
+    process.stdout.write(copyLinkLine(p.verificationUriComplete));
   }
 }
 async function deviceLogin() {
@@ -17123,15 +17935,11 @@ async function deviceLogin() {
     configHome: agentConfigHome(),
     dataHome: agentDataHome(),
     sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
-    onPrompt: (p) => {
+    onPrompt: async (p) => {
+      await promptAndOpen(p);
       process.stdout.write(`
-Authorize this device in your browser:
-  ${p.verificationUriComplete}
-  (confirm the code ${p.userCode} if asked)
-
 Waiting for approval\u2026
 `);
-      openBrowser(p.verificationUriComplete);
     }
   });
 }
@@ -17141,15 +17949,10 @@ function deviceLoginDeps(quiet = false) {
     configHome: agentConfigHome(),
     dataHome: agentDataHome(),
     sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
-    onPrompt: (p) => {
+    onPrompt: async (p) => {
       if (quiet)
         return;
-      process.stdout.write(`
-Authorize this device in your browser:
-  ${p.verificationUriComplete}
-  (confirm the code ${p.userCode} if asked)
-`);
-      openBrowser(p.verificationUriComplete);
+      await promptAndOpen(p);
     }
   };
 }
@@ -17235,7 +18038,7 @@ function formatInit(r, labels = /* @__PURE__ */ new Map()) {
 ` + formatAlso(r) + formatDropped(r, labels) + formatWikiEnv(r) + COMMITTED_DISCLOSURE;
   if (r.cloned)
     return head + `Cloned your wiki to ${r.clonePath}.
-`;
+` + formatEarlierAttempt(r.earlierAttempt);
   return head + `Your wiki folder was already at ${r.clonePath} \u2014 left exactly as it was.
 ` + formatInitStanding(r.standing);
 }
@@ -17246,13 +18049,20 @@ function formatAlso(r) {
     if (r.mode === "local") {
       if (w.cloned)
         return `  Also reads ${w.teamId} \u2014 cloned to ${w.clonePath}.
-`;
+` + formatEarlierAttempt(w.earlierAttempt, "  ");
       return `  Also reads ${w.teamId} \u2014 its folder was already at ${w.clonePath}, left exactly as it was.
 ` + formatInitStanding(w.standing).replace(/^/gm, "  ").replace(/\n {2}$/, "\n");
     }
     return `  Also reads ${w.teamId}` + (w.voiceFail ? ` \u2014 its charter could not be read, so its section is in the generic voice` : "") + ".\n";
   });
   return lines.join("");
+}
+function formatEarlierAttempt(e, indent = "") {
+  if (!e)
+    return "";
+  return e.cleared ? `${indent}Cleared the unfinished wiki folder an earlier attempt left at ${e.path}.
+` : `${indent}An earlier attempt left an unfinished wiki folder at ${e.path} and it could not be cleared. Nothing in it is needed any more, so it can be deleted.
+`;
 }
 function formatDropped(r, labels = /* @__PURE__ */ new Map()) {
   if (r.dropped.length === 0)
@@ -17279,8 +18089,10 @@ function formatInitStanding(s) {
     case "ahead":
       return (s.ahead > 0 ? `  Your folder is ${s.ahead} commit(s) ahead of the hosted wiki${dirty} \u2014 unpublished work.
 ` : `  Your folder holds ${unpublishedPhrase(s)} the hosted wiki has never seen \u2014 unpublished work.
-`) + `  ${byAudience(`Publish it with "commonground push" when you're ready \u2014 this init did not.`, `Offer /commonground:push when they're ready \u2014 this init did not publish.`)}
-`;
+`) + // A member cannot publish (SER-327): telling them to is advice the next command refuses.
+      (canPublish(s.role) ? `  ${byAudience(`Publish it with "commonground push" when you're ready \u2014 this init did not.`, `Offer /commonground:push when they're ready \u2014 this init did not publish.`)}
+` : `  ${keptForSuggestion()}
+`);
     case "diverged":
       return `  You and the hosted wiki have both moved: ${s.ahead} local commit(s) ahead, ${s.behind} behind${dirty}.${incoming}
   Nothing was reconciled. ${byAudience('"commonground status"', "/commonground:status")} shows the options.
@@ -17297,7 +18109,7 @@ function importCaveats(r) {
   const lossy = r.lossy ?? [];
   const dropped = new Set(lossy.flatMap((f) => f.loss.dropped));
   const replaced = new Set(lossy.flatMap((f) => f.loss.replaced.map((s) => s.split(":")[0])));
-  return (notImported ? `  Not imported (the wiki owns these):
+  return (notImported ? `  Not imported:
 ${notImported}` : "") + (lossy.length ? `  Frontmatter changed on ${pageCount(lossy.length)}` + (dropped.size ? ` \u2014 dropped: ${[...dropped].join(", ")}` : "") + (replaced.size ? `; replaced off-schema: ${[...replaced].join(", ")}` : "") + ` (per-file detail above).
 ` : "");
 }
@@ -17353,6 +18165,8 @@ function formatSync(r, v, label = r.teamId) {
     commonground push --allow-deletes
 `, `  Show the preview (push --dry-run), then ${ask("push-allow-deletes")}.
 `);
+    case "needs-rename":
+      return `${label}: ${needsRenameBody(r.renames ?? [], r.clonePath)}`;
   }
 }
 function teamArg(rest) {
@@ -17362,15 +18176,18 @@ async function voiceFor(deps, teamId) {
   const profile = await readTeamProfile(teamId, deps.configHome).catch(() => ({}));
   return wikiVoiceFor({ audience: profile.audience, shape: profile.shape });
 }
-function formatPull(r, v, label = r.teamId) {
+function formatPull(r, v, label = r.teamId, role) {
   switch (r.action) {
     case "cloned":
       return `Wiki cloned at ${r.clonePath}.
 `;
     case "up-to-date": {
       const pending = unpublishedPhrase(r);
-      return r.ahead > 0 || r.dirty ? `${label}: nothing new to bring in \u2014 you have ${pending || "unpublished changes"} (${byAudience('"commonground push"', "to publish: /commonground:push")}).
-` : `${label}: already up to date.
+      if (!(r.ahead > 0 || r.dirty))
+        return `${label}: already up to date.
+`;
+      return canPublish(role) ? `${label}: nothing new to bring in \u2014 you have ${pending || "unpublished changes"} (${byAudience('"commonground push"', "to publish: /commonground:push")}).
+` : `${label}: nothing new to bring in. You have ${pending || "unpublished changes"}. ${keptForSuggestion()}
 `;
     }
     case "fast-forwarded": {
@@ -17383,11 +18200,17 @@ function formatPull(r, v, label = r.teamId) {
       const atRisk = r.ahead > 0 ? `${r.ahead} unpublished commit(s)${r.dirty ? `, plus ${unpublishedPhrase(r)}` : ""}` : unpublishedPhrase(r) || "unpublished work in your wiki folder";
       return `${label}: ${r.behind} incoming change(s), but you have local work that would be overwritten (${atRisk}). Nothing was changed.
   Incoming: ${formatReceipt(r.pages ?? []) || "(none)"}
-` + byAudience(`  Publish yours first: commonground push
+` + (canPublish(role) ? byAudience(`  Publish yours first: commonground push
   Or take the published version (your work is saved first): commonground pull --take-remote
 `, `  Publish the user's local work first: ${ask("push")}.
   Or ${ask("pull-take-remote")}.
-`);
+`) : (
+        // A member has one way through here, and publishing is not it (SER-327).
+        `  ${keptForSuggestion()}
+` + byAudience(`  To bring the published version in anyway (your work is saved first): commonground pull --take-remote
+`, `  To bring the published version in anyway, ${ask("pull-take-remote")}.
+`)
+      ));
     }
     case "took-remote":
       return `${label}: adopted the published version` + (r.draftBranch ? ` \u2014 your local work is saved on ${r.draftBranch}.
@@ -17488,6 +18311,9 @@ ${structure}`;
     const rest = f.pageIds.length - MAX_PRINTED_IDS;
     const fix = f.suggestedAction.trim() ? `      \u2192 ${f.suggestedAction.trim()}
 ` : "";
+    if (f.pageIds.length === 0)
+      return `    ${f.detail}
+${fix}`;
     return `    ${shown}${rest > 0 ? `, +${rest} more` : ""} \u2014 ${f.detail}
 ${fix}`;
   }).join("")).join("");
@@ -17569,14 +18395,21 @@ async function clearStaleCredential() {
       throw new AgentError(`couldn't remove ${legacy} (${e.message}) \u2014 fix the permissions on that folder, or remove the file yourself`);
     }
   }
-  await (0, import_promises7.rmdir)((0, import_node_path10.dirname)(legacy)).catch(() => void 0);
+  await (0, import_promises7.rmdir)((0, import_node_path11.dirname)(legacy)).catch(() => void 0);
   process.stdout.write(`Removed ${legacy}.
 ` + ((0, import_node_fs5.existsSync)(storePath()) ? `  Your sign-in is unaffected \u2014 CommonGround reads it from ${storePath()}.
 ` : `  It held no sign-in, so nothing changed about how this machine is signed in.
 `));
 }
+async function machineProbe() {
+  return { git: await gitProbe(), host: hostProbe() };
+}
 async function main(argv) {
   const [cmd, ...rest] = argv;
+  if (cmd !== void 0 && rest.some((a) => a === "--help" || a === "-h")) {
+    process.stdout.write(USAGE);
+    return;
+  }
   switch (cmd) {
     case void 0:
     case "help":
@@ -17672,7 +18505,7 @@ ${formatWikiList(hits, active, boundId, alsoIds)}Say which one \u2014 the full n
       return;
     }
     case "init": {
-      const { mode, modeGiven, team, refresh, reclone, path, also, drop } = parseInitArgs(rest);
+      const { mode, modeGiven, team, refresh, reclone, path: path2, also, drop } = parseInitArgs(rest);
       const deps = await buildDeps();
       const projectDir = process.cwd();
       if (also || drop) {
@@ -17682,7 +18515,7 @@ ${formatWikiList(hits, active, boundId, alsoIds)}Say which one \u2014 the full n
         }
         const primary = detected.teamId;
         const current = detected.alsoTeamIds;
-        if (path !== void 0 && detected.mode !== "local") {
+        if (path2 !== void 0 && detected.mode !== "local") {
           throw new AgentError("--path says where a wiki FOLDER goes, and this project reads its wikis through the hosted connector, so there is no folder to place. Drop --path.");
         }
         if (also) {
@@ -17695,7 +18528,7 @@ ${formatWikiList(hits, active, boundId, alsoIds)}Say which one \u2014 the full n
             teamId: primary,
             also: [...current, id2],
             projectDir,
-            ...path === void 0 ? {} : { clonePaths: { [id2]: path } },
+            ...path2 === void 0 ? {} : { clonePaths: { [id2]: path2 } },
             onClone: announceClone
           });
           process.stdout.write(formatInit(result3, await wikiLabels(deps, result3.dropped)));
@@ -17750,7 +18583,7 @@ ${formatWikiList(hits, active, boundId, alsoIds)}Say which one \u2014 the full n
           throw modeRequired();
         }
       }
-      if (path !== void 0 && effectiveMode !== "local") {
+      if (path2 !== void 0 && effectiveMode !== "local") {
         throw new AgentError("--path says where a wiki FOLDER goes, and this project reads its wikis through the hosted connector, so there is no folder to place. Drop --path.");
       }
       const result = await initProject(deps, {
@@ -17759,7 +18592,7 @@ ${formatWikiList(hits, active, boundId, alsoIds)}Say which one \u2014 the full n
         teamId: await resolveTeamId(deps, effectiveTeam),
         also: alsoIds,
         projectDir,
-        ...path === void 0 ? {} : { path },
+        ...path2 === void 0 ? {} : { path: path2 },
         onClone: announceClone
       });
       process.stdout.write(formatInit(result, await wikiLabels(deps, result.dropped)));
@@ -17813,7 +18646,9 @@ ${formatWikiList(hits, active, boundId, alsoIds)}Say which one \u2014 the full n
       const takeRemote = rest.includes("--take-remote");
       const teamId = await resolveTeamId(deps, teamArg(rest));
       const result = await pull(deps, teamId, { takeRemote, onClone: announceClone });
-      process.stdout.write(await cloneMismatchNote(deps, teamId, "pull") + formatPull(result, await voiceFor(deps, teamId), await labelFor(deps, teamId)));
+      const holdsWork = result.ahead > 0 || result.dirty;
+      const role = holdsWork ? await crossWikiBinding(deps.backend, teamId, deps.configHome, deps.dataHome).then((b) => b.role, () => void 0) : void 0;
+      process.stdout.write(await cloneMismatchNote(deps, teamId, "pull") + formatPull(result, await voiceFor(deps, teamId), await labelFor(deps, teamId), role));
       return;
     }
     case "push": {
@@ -17852,18 +18687,14 @@ ${formatWikiList(hits, active, boundId, alsoIds)}Say which one \u2014 the full n
       } catch (e) {
         if (!wantsJson)
           throw e;
-        process.stdout.write(`${JSON.stringify({
-          mode,
-          probe: { git: await gitProbe() },
-          cliVersion: cliVersion(),
-          unresolved: e instanceof Error ? e.message : String(e)
-        }, null, 2)}
+        const unresolved = e instanceof GitError ? await explainGitFailure(e) : e instanceof Error ? e.message : String(e);
+        process.stdout.write(`${JSON.stringify({ mode, probe: await machineProbe(), cliVersion: cliVersion(), unresolved }, null, 2)}
 `);
         return;
       }
       const alsoLabels = await Promise.all((project?.alsoTeamIds ?? []).map(async (id) => wikiLabel({ teamId: id, ...await readTeamProfile(id, deps.configHome) })));
       if (wantsJson) {
-        process.stdout.write(`${JSON.stringify({ ...result, mode, probe: { git: await gitProbe() }, cliVersion: cliVersion() }, null, 2)}
+        process.stdout.write(`${JSON.stringify({ ...result, mode, probe: await machineProbe(), cliVersion: cliVersion() }, null, 2)}
 `);
         return;
       }
@@ -17912,8 +18743,8 @@ ${formatWikiList(hits, active, boundId, alsoIds)}Say which one \u2014 the full n
     }
     case "export": {
       const deps = await buildDeps();
-      const { path } = await exportWiki(deps, await resolveTeamId(deps, rest[0]));
-      process.stdout.write(`Exported wiki (HEAD) \u2192 ${path}
+      const { path: path2 } = await exportWiki(deps, await resolveTeamId(deps, rest[0]));
+      process.stdout.write(`Exported wiki (HEAD) \u2192 ${path2}
 `);
       return;
     }
@@ -17923,7 +18754,8 @@ ${formatWikiList(hits, active, boundId, alsoIds)}Say which one \u2014 the full n
         throw new AgentError("usage: commonground import <dir> [wiki]");
       const deps = await buildDeps();
       const teamId = await resolveTeamId(deps, rest[1]);
-      const result = await importWiki(deps, { sourceDir: (0, import_node_path10.resolve)(folder), teamId, onClone: announceClone });
+      const sourceDir = normalizeUserPath(folder, hostPathContext(), { relative: "resolve" });
+      const result = await importWiki(deps, { sourceDir, teamId, onClone: announceClone });
       process.stdout.write(formatImport(result, await voiceFor(deps, teamId)));
       return;
     }

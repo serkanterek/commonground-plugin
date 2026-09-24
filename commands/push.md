@@ -7,6 +7,10 @@ Publish this project's local CommonGround clone to the published wiki. This is *
 step in local-clone mode: everything before it — ingest, edits, lint fixes, seeding — happened only
 in the user's own copy.
 
+**Running the CLI.** Every `commonground …` line in this file runs as
+`node "${CLAUDE_PLUGIN_ROOT}/bin/commonground" …`. That form works from both the Bash and the
+PowerShell tool; the bare word works only in Bash.
+
 ## 0. Establish the FRAME before you say anything
 
 Who this wiki is for changes what publishing *means*, and getting it wrong is the single most jarring
@@ -57,6 +61,11 @@ pages that *would* be published (including brand-new pages that were never stage
   afterwards asks the user the same question twice and answers it differently. The preview reports
   these even when there is nothing to publish, and `push` still refuses then — so relay them rather
   than stopping at "nothing to publish".
+- **Any file name the preview says some machines cannot hold**: the same reasoning. `push`
+  refuses the whole change set over it, so settle the rename first (§3c), then ask to publish. If
+  the preview says instead that two names `differ only in letter case, and this machine can hold
+  only one of them, so nothing can be published from here`, there is no rename to settle and no
+  publish to ask about: relay it and go to §3c.
 - **"no page changes in <folder>, but the catalog needs a refresh"** — a plugin update corrected the catalog
   format, and `index.md` is machine-owned, so this is the one publish with no page content in it.
   Relay it as maintenance ("your wiki's catalog gets a correction — no page changes"), and let the
@@ -93,10 +102,12 @@ authorized *that* publish, not this one. Never infer a standing go-ahead from "t
 earlier", from "publishing is how this task finishes", or from the wiki being personal rather than
 shared. Every publish goes through the dialog, every time.
 
-**Never route around this step.** Running the bundled `bin/commonground push` binary directly, or any
-other path that reaches the same write unprompted, is the one thing that recreates the bug this
-section exists to prevent — it is how the guard was defeated on 2026-08-04 (SER-217). That includes
-chaining the preview and the publish into a single shell command to make it look read-only. **The
+**Never route around this step.** Publish only in the form the top of this file defines; the guard
+asks about it from the Bash tool and the PowerShell tool alike. Reaching the same write any other way
+to dodge the dialog is the one thing that recreates the bug this section exists to prevent: another
+spelling of the bundled `bin/commonground push` path, a copy or a link of the binary, a variable or a
+script that holds the command, or the preview and the publish chained into a single shell command to
+make it look read-only. That is how the guard was defeated on 2026-08-04 (SER-217). **The
 guard is never to be worked around**: do not edit, disable or bypass the hook, and do not look for a
 command shape that slips past it. If it fires, the answer is to let the dialog reach the user and
 take whatever they say. You will not see their answer, so a publish that simply succeeds means they
@@ -110,8 +121,8 @@ sentence saying what changed and why, which becomes the commit message and is th
 your reasoning that outlives the session. If `$ARGUMENTS` carries the user's own line about what
 changed, that IS the message (don't ask again); if it names a wiki, pass that wiki to the verb. Never restate what the diff shows ("updated pages"). It
 publishes and reports the receipt (the pages published) — unless it comes back
-**needs-delete-confirm** (§3) or **needs-unparseable-fix** (§3b), in which case nothing was
-published and that section takes over. If this publishes a change someone asked
+**needs-delete-confirm** (§3), **needs-unparseable-fix** (§3b) or **needs-rename** (§3c), in which
+case nothing was published and that section takes over. If this publishes a change someone asked
 for, close their request with `resolve_suggestion` (`applied`) and pass the `commitId` push reports
 — that's the commit their suggestion produced.
 
@@ -190,6 +201,13 @@ way, at that point **nothing was published**. Make the removal impossible to mis
   only meant to publish the other changes, the fix is to restore the deleted file(s) in the clone and
   push again — don't talk them into it either way.
 
+**A renamed page is a rename in the preview and a removal to `push`.** Renaming a file (say, to fix
+a name lint flagged) shows in the §1 preview as a rename (`~ <new name>`) with no removal line, and
+`push` then asks about the old name as a removal (needs-delete-confirm). Nothing is lost there, so
+skip the "loses access" line: when the preview shows a rename, ask the removal question off it all
+the same, say it is the same page under a new name, and ask for the yes on the removal in those
+words.
+
 Only on that explicit yes, run `commonground push --allow-deletes --message "…"` (add `--mine` too if
 you're in the conflict case below). The guard's dialog then names the removal too, because the flag
 is on the command line — that is the confirmation of the publish itself, and it is not a sign your
@@ -214,6 +232,35 @@ That's what makes this worth stopping for, and it's what to explain — not the 
   run `commonground push --allow-unparseable` and tell them plainly what lands: the page is
   published *and* listed in the catalog as an `(unparseable)` placeholder, flagged for attention.
   Visible, not readable. "Published and flagged" is not the same promise as "published".
+
+## 3c. If a file name cannot travel (the portability guardrail)
+
+If `push` comes back **needs-rename** (the §1 preview lists the same files), **nothing was published
+and nothing was lost**: every file is still in the clone. The people who use this wiki clone it on
+Windows, Macs and Linux alike, and a NEW file is named in a way one of those machines cannot hold:
+a character Windows refuses (`: * ? " < > |`), a name ending in a dot or a space, a Windows device
+name (`con`, `nul`, `com1`), a path too long for Windows, or a name that differs from a page or folder
+already in the wiki only in capitals (a Mac or Windows keeps those as ONE file, so one page would
+silently replace the other). Relay each file with the reason the CLI gave, offer to rename it in the
+clone and fix any link to it, then push again. Rename only the files the CLI names, never a page that
+is already published, and never reach for a way to publish the name as it is.
+
+**`needs-rename` can also name a pair ALREADY in the wiki, and that one is not fixable from this
+machine.** Its line reads: `"<a>" and "<b>" differ only in letter case, and this machine can hold
+only one of them, so nothing can be published from here. A curator on a Linux machine, or
+CommonGround support, can rename one; after that, pull and publish again.` (For two names that
+differ only in how their accents are encoded, it says that instead of letter case.) This Mac or
+Windows disk holds the two pages as one file, so any publish from here could put one page's text
+over the other or drop one from the catalog. While the wiki holds such a pair, `push` publishes
+nothing from this folder, whatever else changed, and `import` refuses the same way. Relay the line
+as written. Don't offer a rename: on this disk no rename separates the two. Don't retry, and don't
+reach for `--mine`, `--allow-deletes` or `import`: each is refused the same way. Say that every
+change the user made is still in the folder, and that once a curator on a Linux machine, or
+CommonGround support, has renamed one, `/commonground:pull` and then a publish carry it out. If
+that pull comes back **Blocked** because other pages here were edited too, publishing first is not
+the way through while this clone still holds the pair: offer taking the published version
+(`pull --take-remote`, which saves their work to a `draft/…` branch first), then bringing their
+edits back from that draft and publishing.
 
 ## 4. If the published wiki moved (the conflict case)
 

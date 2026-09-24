@@ -45,7 +45,13 @@ function versionChange(marker, current, sessionId) {
  */
 const SWAP_NOTICE_OPENING = 'The CommonGround plugin changed under this session';
 
-/** The Claude-facing swap notice: what happened, what it is NOT, and the three ways back. */
+/**
+ * The Claude-facing swap notice: what happened, what it is NOT, and the three ways back.
+ *
+ * The pull is spelled `node "<cli>" pull [team]` when this build's binary is known (SER-327): the
+ * bare path it used to print ran only where the Bash tool runs it, broke on a space in the path,
+ * and cannot run from PowerShell at all.
+ */
 function versionNotice(previous, current, cli) {
   return (
     `${SWAP_NOTICE_OPENING} (${previous} → ${current}). Claude Code ` +
@@ -53,7 +59,7 @@ function versionNotice(previous, current, cli) {
     'been torn down mid-session. If a CommonGround tool is missing or a call fails, say so plainly ' +
     '— it is a CONNECTION problem, not a permissions one — and offer the fixes: run `/mcp` to ' +
     "reconnect, restart the session, or (only with the user's OK, since it writes files) " +
-    `\`${cli || 'commonground'} pull [team]\`, which authenticates as the signed-in device rather ` +
+    `\`${lib.cliCommand(cli, 'pull [team]')}\`, which authenticates as the signed-in device rather ` +
     'than through the connector and leaves a readable copy of the wiki on disk.'
   );
 }

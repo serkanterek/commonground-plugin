@@ -12,10 +12,24 @@ storage, retrieval and auth; it never runs an LLM on your behalf.
 - **A CommonGround account with at least one wiki** — create both at
   **[app.commongroundapp.io](https://app.commongroundapp.io)**. The plugin is the client; it needs an
   account to talk to, and the sign-in screen has nothing to approve until a wiki exists.
+- **Node 20 or newer, on your PATH.** The plugin's hooks, the connector's wiki header and the
+  command-line helper all run on it. Claude Code installed with its native installer does not need
+  Node itself, so it may not be there. Check with `node --version`.
 - **git**, for local-clone mode (the recommended one). 2.31 or newer signs in over the fast path; an
   older git still works, by a different route. No git on this machine means MCP mode, and
   `/commonground:point` offers to walk you through installing it.
-- **Node**, which you already have if Claude Code runs here.
+- **On Windows: Git for Windows** for a local wiki folder, with
+  `winget install --id Git.Git -e --source winget` or the installer from git-scm.com. It brings git,
+  and the Bash tool Claude Code uses beside PowerShell; CommonGround's commands run from either.
+  Restart Claude Code after installing anything, since a running session keeps the PATH it started
+  with.
+- **In WSL: install git and Node inside WSL** (`sudo apt install git`), never on the Windows side. The
+  wiki folder then lives in Linux (`~/CommonGround/<wiki>`), and Windows apps such as Obsidian reach
+  it at `\\wsl.localhost\<distro>\home\<you>\CommonGround\<wiki>`. Signing in may ask you to copy a
+  link into your Windows browser.
+- **Keep the wiki folder out of OneDrive and Dropbox.** A sync client rewriting files inside a git
+  folder can corrupt it and keeps files open. On Windows, Documents and Desktop are often inside
+  OneDrive, so the default `~/CommonGround/` is the safe place.
 
 ## Install
 
@@ -156,15 +170,19 @@ signs you out.
 
 ## The bundled CLI
 
-The plugin ships a bundled `commonground` CLI on the Bash tool's PATH — no separate install. The
-slash commands drive it for you: by default you never need to type a command, and Claude phrases
-every next step as something you can ask it for.
+The plugin ships a bundled `commonground` CLI, with no separate install. The slash commands drive it
+for you: by default you never need to type a command, and Claude phrases every next step as
+something you can ask it for. Claude runs it as `node "<plugin folder>/bin/commonground" …`, which
+works from both the Bash and the PowerShell tool. Claude Code also puts the plugin's `bin/` on the
+Bash tool's PATH, and on that tool's alone, so the bare `commonground` works there and nowhere else.
 
 **Prefer the terminal?** You can also run the CLI directly (`commonground status`,
 `commonground lint`, `commonground coverage`, `commonground pull`, `commonground push`;
-`commonground help` lists everything). And if you'd rather Claude named the command lines too,
-set `COMMONGROUND_AUDIENCE=terminal` in your own `~/.claude/settings.json` under `env` — the
-CLI's next-step hints and Claude's phrasing both follow it. With it unset, a Claude session
+`commonground help` lists everything). Outside Claude Code's Bash tool, spell it
+`node ~/.claude/plugins/cache/commonground-plugins/commonground/<version>/bin/commonground`, or alias
+that. And if you'd rather Claude named the command lines too, set `COMMONGROUND_AUDIENCE=terminal`
+in your own `~/.claude/settings.json` under `env` — the CLI's next-step hints and Claude's phrasing
+both follow it. With it unset, a Claude session
 defaults to chat-first.
 
 ## Troubleshooting
@@ -193,10 +211,12 @@ bound to, whether this machine can reach it, and what the fix actually is.
 
 **The wiki folder could not be fetched** (local mode: `/commonground:point`, `/commonground:pull`).
 The message says which of these it is. *Your sign-in is no longer accepted:* it was revoked or has
-expired, so sign in again and retry. *Git could not present your sign-in:* your git is very old
-(CommonGround signs in to git by itself and needs nothing stored; updating git fixes it).
-*Git is not installed:* a local wiki folder needs it. *A folder that is not a wiki is in the way:*
-the message names it, and nothing in it was touched; move it, or choose another place. Two things
+expired, so sign in again and retry. *Git could not present your sign-in:* CommonGround signs in to
+git by itself and needs nothing stored, so the message names the cause it can prove and quotes git's
+own last line. On a git older than 2.31 the sign-in goes by a second route, and when that fails too,
+updating git is one fix worth trying, not a proven cause; on a newer git, something on this machine
+(usually a credential helper or a proxy) is answering instead. *Git is not installed:* a local wiki
+folder needs it. *A folder that is not a wiki is in the way:* the message names it, and nothing in it was touched; move it, or choose another place. Two things
 are never the fix: copying your sign-in into a file, a keychain or a git setting, and retrying in
 a loop. A retry itself is always safe, though. If an earlier attempt left an unfinished folder
 behind, the next one clears it, says so, and fetches again; it never removes a folder with your

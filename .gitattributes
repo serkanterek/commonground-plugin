@@ -1,0 +1,9 @@
+# Ships as the ROOT .gitattributes of the public plugin repo (scripts/publish-stage.ts lists it in
+# SHIP and REQUIRED), because the marketplace install is a git clone of that repo (SER-327).
+#
+# bin/commonground is an extensionless `#!/usr/bin/env node` script with no NUL bytes, so git
+# treats it as text. Git for Windows defaults to core.autocrlf=true, and a checkout under it would
+# end the shebang in `node\r`, which the Bash tool then cannot run by its bare name. `-text` turns
+# line-ending conversion off for this one file in both directions, so it lands byte for byte on
+# every machine. (`node "<path>"` runs a CRLF copy fine; the shebang is the only casualty.)
+bin/commonground -text

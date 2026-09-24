@@ -12,8 +12,9 @@
  *   • initialized + wiki POPULATED → inject the short "state of the wiki" awareness summary.
  *   • initialized in LOCAL-CLONE mode + the clone out of step with the hosted wiki → append a
  *     DIRECTIONAL nudge: "/commonground:pull" when the team has moved on, "/commonground:push" when
- *     this clone has unpublished work. Gated on THIS project's router mode being local (SER-168), so
- *     an MCP project never nudges even when a clone happens to exist for the team.
+ *     this clone has unpublished work (for a member, who cannot publish, "file it as a suggestion"
+ *     instead, SER-327). Gated on THIS project's router mode being local (SER-168), so an MCP
+ *     project never nudges even when a clone happens to exist for the team.
  *   • either initialized case also refreshes the team keyword cache the UserPromptSubmit hook reads.
  *   • initialized but NO single resolvable binding (not signed in on this machine, or >1 team) →
  *     keep the neutral "consult the wiki" pointer (a local clone / MCP connector may still serve it
@@ -126,6 +127,29 @@ function localCloneDir(mode, teamId) {
 function canSeed(role) {
   return role === 'admin' || role === 'curator';
 }
+
+/**
+ * A role we KNOW cannot publish (no `wiki:edit`), so the unpublished-work prose must not send it to
+ * `/commonground:push` (SER-327). For a member that verb commits nothing to the wiki and reports
+ * read-only, which reads like the work was rejected; what they actually have is work that is safe
+ * on this machine and a curator who can take it in as a suggestion.
+ *
+ * An UNKNOWN role keeps the publisher's wording rather than guessing: the CLI gates the publish
+ * itself and has the member sentence for that case.
+ */
+function cannotPublish(role) {
+  return typeof role === 'string' && role !== '' && !canSeed(role);
+}
+
+/**
+ * The member's route for held work, said the same way wherever the SessionStart context says it
+ * (SER-327). Only a session holding the connector's `suggest_change` can file a suggestion, and a
+ * local project often has none (push.md §2b: never offer a tool that isn't here). This context
+ * loads before any command file that could qualify it, so the condition travels with the offer.
+ */
+const SUGGESTION_OFFER =
+  'offer to file it as a suggestion for a curator if this session has suggest_change; otherwise ' +
+  'the work stays here until a curator takes it.';
 
 /**
  * Tell the user a newer plugin has shipped — the ONLY channel that exists for it (SER-225).
@@ -650,7 +674,18 @@ function stepProse(step, state) {
     case 'charter-wiki':
       return 'This wiki has no charter yet — suggest /commonground:seed, which starts by chartering it (who it is for, what it holds, when to consult it).';
     case 'await-seed':
-      return "This wiki is empty and the user has read-only access, so there is nothing to consult yet. An admin or curator needs to run /commonground:seed.";
+      // The resolver sends a member here for two different reasons (rule 9): a wiki with no pages,
+      // and a wiki with no charter. Only the first is empty. The second has pages to consult, and
+      // "nothing to consult yet" hid them from a member who can read every one (SER-327).
+      if (publishedPageCount(state) === 0) {
+        return "This wiki is empty and the user has read-only access, so there is nothing to consult yet. An admin or curator needs to run /commonground:seed.";
+      }
+      // A charter PAGE that does not take effect sends a member here too: the member's side of
+      // repair-charter (rule 7). "No charter yet" was false about a page sitting in the folder
+      // Claude had just been told to read (SER-327).
+      return active.charter && active.charter.pageExists === true
+        ? "This wiki's charter page is not in effect yet. Consult the wiki for anything it covers; an admin or curator can repair the charter with /commonground:seed."
+        : 'This wiki has no charter yet. Consult it for anything it covers; writing the charter is for an admin or curator, with /commonground:seed.';
     case 'seed-first-pages':
       return "This wiki is chartered but empty (0 pages) — there is nothing to consult yet. Suggest /commonground:seed to put the first pages in.";
     case 'fill-delegated-scope':
@@ -677,34 +712,118 @@ function stepProse(step, state) {
   }
 }
 
+/** The published wiki's page count from the state DTO, or null when the server did not say. */
+function publishedPageCount(state) {
+  const wiki = state && state.active && state.active.wiki;
+  return wiki && typeof wiki.pageCount === 'number' ? wiki.pageCount : null;
+}
+
+/** The resolver steps that can mean "the published wiki has nothing in it". */
+const EMPTY_WIKI_STEPS = new Set(['await-seed', 'seed-first-pages', 'charter-wiki']);
+
+/**
+ * Is the PUBLISHED wiki empty, by the server's own count (SER-327)?
+ *
+ * The step alone does not say so. `charter-wiki` fires for any wiki without a charter and
+ * `await-seed` for a member of one, pages or not, so with published pages the consult pointer is
+ * true and must stay. And an UNKNOWN count is not zero: the DTO leaves `pageCount` out only when its
+ * read failed, and "a missing signal produces a harmless wrong state, never a false claim"
+ * (`apps/api/src/onboarding/state.ts`). Calling a wiki of three pages "still empty" is a false one.
+ */
+function publishedWikiEmpty(state) {
+  const step = (state && state.next) || {};
+  return EMPTY_WIKI_STEPS.has(step.id) && publishedPageCount(state) === 0;
+}
+
+/**
+ * What the wiki FOLDER holds that the published wiki does not, as `{ pages, charter }`, or null
+ * (SER-325, SER-327). No server-side resolver can see it: the DTO describes the PUBLISHED wiki, so a
+ * local project seeded and never pushed was told its wiki was empty and to start seeding, with the
+ * pages sitting on its own disk.
+ *
+ * UNPUBLISHED, from git, never from a walk of the folder: after a push every page is still on disk,
+ * and a walk was enough to tell the next session its pages were unpublished. Two sources, because
+ * held work takes two shapes. `work` is what `git status` shows; `committed` is what local commits
+ * past the hosted history carry, which a push that committed and then failed to publish leaves
+ * behind with a clean status.
+ *
+ * Both are read for what is still ON DISK (`holds`): a deleted page is a change to publish, not
+ * something the folder holds. `pages` leaves the charter out, so a charter-only change is not
+ * "pages". `charter` is news only when the server says the published wiki has NO charter page: a
+ * charter `pull` put here, or an edit to a published one, is not a missing charter, and a charter
+ * read that failed claims nothing.
+ */
+function heldWork(clone, active) {
+  const parts = [clone && clone.work, clone && clone.committed].filter(Boolean).map((w) => w.holds);
+  const pages = parts.some((w) => w.pages - (w.charter ? 1 : 0) > 0);
+  const charter =
+    parts.some((w) => w.charter) && Boolean(active.charter && active.charter.pageExists === false);
+  return pages || charter ? { pages, charter } : null;
+}
+
+/**
+ * Does this emit need to know what the wiki folder holds (SER-327)? For an empty published wiki, to
+ * tell it from an unseeded one. And on the chartering step whatever the page count, when the server
+ * says there is no charter page: a charter this folder holds and nobody published is the difference
+ * between "charter it" and "publish it", and a wiki with pages was told to charter itself again.
+ */
+function readsHeldWork(state) {
+  const step = (state && state.next) || {};
+  const charter = state && state.active && state.active.charter;
+  return (
+    publishedWikiEmpty(state) ||
+    (step.id === 'charter-wiki' && Boolean(charter && charter.pageExists === false))
+  );
+}
+
 /**
  * The full injected context for a resolver-driven session. The base pointer always leads: even when
  * there is a next step, the primary job of this hook is to make Claude consult the wiki.
  *
- * An EMPTY wiki is the one case where the pointer would be a lie — there is nothing to consult — so
- * those steps replace it rather than follow it.
+ * An EMPTY wiki is the one case where the pointer would be a lie (there is nothing to consult), so
+ * those steps replace it rather than follow it, unless the local folder holds unpublished work.
+ *
+ * `clone` is `{ dir, work, committed }` for a local project: the folder, and (only when
+ * {@link readsHeldWork} says the prose needs them) its uncommitted and committed-but-unpublished
+ * changes.
+ *
+ * `role` defaults to the DTO's; the caller passes the one its sync nudge uses, so one emit never
+ * tells a member two different things about the same work.
  */
-function resolvedContext(state, mode, clone) {
+function resolvedContext(state, mode, clone, role) {
   const step = (state && state.next) || { id: 'steady' };
+  const active = (state && state.active) || {};
   // The shared budget has decided we have said this enough. Drop the STEP, keep the facts: going
   // silent means we stop volunteering an action, not that we stop telling Claude what the wiki is.
   const silent = state && state.loudness === 'silent';
   const dir = mode === 'local' && clone && clone.dir ? clone.dir : null;
-  // What the FOLDER holds, which no server-side resolver can see (SER-325). The DTO describes the
-  // PUBLISHED wiki, so a local project that has been seeded but never pushed was being told its
-  // wiki was empty and that it should start seeding — with the pages sitting right there on disk.
-  const held = Boolean(dir && clone && (clone.pages > 0 || clone.charter));
-  const empty = step.id === 'await-seed' || step.id === 'seed-first-pages' || step.id === 'charter-wiki';
+  const empty = publishedWikiEmpty(state);
+  const held = dir && readsHeldWork(state) ? heldWork(clone, active) : null;
+  const who = role === undefined ? active.role : role;
   let prose = silent ? '' : stepProse(step, state);
-  if (empty && held) {
-    const what = [
-      clone.pages > 0 ? `${clone.pages} page(s)` : '',
-      clone.charter ? 'a charter' : '',
-    ].filter(Boolean).join(' and ');
+  if (held && empty) {
+    // NO COUNT HERE (SER-327). The sync nudge in the same emit carries the one number, the one
+    // `commonground status` prints and `unpublished-drift.test.ts` holds it to.
+    const what = [held.pages ? 'pages' : '', held.charter ? 'a charter' : ''].filter(Boolean).join(' and ');
+    const offer = cannotPublish(who)
+      ? `when the user wants that work shared, ${SUGGESTION_OFFER} This user's role cannot publish, ` +
+        'so it is safe on this machine only.'
+      : `offer /commonground:push when the user wants the team to have ${held.pages ? 'them' : 'it'}.`;
     prose =
       `The published wiki is still empty, but the wiki folder at ${dir} already holds ${what} that ` +
       'nobody has published yet. Read those files rather than treating this wiki as unseeded' +
-      (silent ? '.' : ', and offer /commonground:push when the user wants the team to have them.');
+      (silent ? '.' : `, and ${offer}`);
+  } else if (held && held.charter && !silent) {
+    // A wiki WITH pages and no published charter, whose folder holds one (SER-327): what an
+    // interrupted or failed-to-publish seed leaves on an older wiki. "Charter it" was the wrong
+    // verb; the charter is written, and publishing it is what is left.
+    const offer = cannotPublish(who)
+      ? `This user's role cannot publish, so it is safe on this machine only. When they want it ` +
+        `shared, ${SUGGESTION_OFFER}`
+      : 'Offer /commonground:push when the user wants the team to have it.';
+    prose =
+      `This wiki has no published charter, but the wiki folder at ${dir} already holds one that ` +
+      `nobody has published yet, so do not suggest chartering it again. ${offer}`;
   }
   const facts = empty && !held ? '' : awarenessContext(awarenessFromState(state), voiceOf(state), dir);
   return [facts, prose, connectorHealthClause(mode)].filter(Boolean).join(' ');
@@ -747,13 +866,16 @@ function awarenessFromState(state) {
 /**
  * Refresh each also-wiki's keyword cache and, in local mode, its pull/push standing (SER-278).
  *
- * Bounded: at most four reads, 1500 ms each, fail-open per wiki — a wiki that cannot be reached says
- * nothing here rather than taking the session's start down with it. Returns the nudge sentence(s)
- * for clones that are out of step, '' otherwise. The keyword cache is the point: the prompt hook
- * matches every wiki the project reads, and a cache nobody writes is a wiki that never triggers.
+ * Bounded: at most four reads, 1500 ms each, fail-open per wiki. A wiki that cannot be reached says
+ * nothing here rather than taking the session's start down with it. Returns `{ text, push }`: the
+ * nudge sentence(s) for clones that are out of step ('' otherwise), and whether any of them is a
+ * push reminder, so the emit can name the reminders' off switch once (SER-327). The keyword cache
+ * is the point: the prompt hook matches every wiki the project reads, and a cache nobody writes is
+ * a wiki that never triggers.
  */
 async function alsoWikiNudges(alsoIds, binding, localMode, now) {
   const lines = [];
+  let push = false;
   for (const teamId of (alsoIds || []).slice(0, 4)) {
     const st = await lib.fetchJson(
       '/wiki/state?surface=code&projectInitialized=true',
@@ -767,10 +889,68 @@ async function alsoWikiNudges(alsoIds, binding, localMode, now) {
       lib.writeKeywordsCache(teamId, wiki.keywords, now);
     }
     if (!localMode) continue;
-    const line = syncNudge(teamId, wiki.lastCommitOid, teamId);
-    if (line) lines.push(line);
+    const folder = folderReading(teamId, wiki.lastCommitOid);
+    // This user's role on THAT wiki, which the one sign-in does not carry (SER-327).
+    const line = syncNudge(teamId, wiki.lastCommitOid, teamId, st.active.role, folder);
+    if (!line) continue;
+    lines.push(line);
+    push = push || isPushNudge(folder);
   }
-  return lines.join(' ');
+  return { text: lines.join(' '), push };
+}
+
+/**
+ * ONE READING OF ONE WIKI FOLDER for this session start (SER-327).
+ *
+ * The sync nudge and the empty-wiki prose ask the same folder the same questions: its HEAD, whether
+ * the hosted tip is in it, and what `git status` holds. Each used to ask for itself, so every local
+ * session start ran `git status` twice, the second time for prose that renders only for an empty
+ * wiki. Here each answer is read on first use and kept: a question nobody asks costs nothing, and a
+ * question two parts ask costs one git call. Made fresh per session start, never shared across
+ * them, so it cannot go stale.
+ *
+ * DIRECTION IS ANCESTRY, not presence (SER-327). One `git merge-base` with the hosted tip answers
+ * both halves: it IS the tip when this folder's history contains it, and it is HEAD when the folder
+ * is only behind. When the tip is not here at all (never fetched), or the server did not say what it
+ * is, the folder's own commits are the ones past the hosted history it last fetched
+ * ({@link lib.UPSTREAM}), so a clone both ahead and behind still has its committed pages seen.
+ */
+function folderReading(teamId, hostedHead) {
+  const memo = new Map();
+  const once = (key, read) => {
+    if (!memo.has(key)) memo.set(key, read());
+    return memo.get(key);
+  };
+  const head = () => once('head', () => lib.localCloneHead(teamId));
+  const diverged = () => Boolean(hostedHead && head() && hostedHead !== head());
+  const hostedFork = () => once('hostedFork', () => lib.cloneMergeBase(teamId, hostedHead));
+  const holdsHosted = () => String(hostedFork()).toLowerCase() === String(hostedHead).toLowerCase();
+  // Where this folder's own history leaves the hosted one, or null when it has nothing past it.
+  const fork = () =>
+    once('fork', () => {
+      const base = hostedFork() || lib.cloneMergeBase(teamId, lib.UPSTREAM);
+      return base && base !== head() ? base : null;
+    });
+  // An UNKNOWN hosted tip (the server's wiki read failed) cannot say the two sides differ, but the
+  // clone's own commits past the history it last fetched are still this folder's own: without that,
+  // a charter committed here was never looked for and the session was told to charter the wiki again.
+  const ahead = () => (hostedHead ? diverged() : Boolean(head())) && fork() !== null;
+  return {
+    head,
+    /** The team has a commit this folder's history does not contain: the pull half. */
+    behind: () => diverged() && !holdsHosted(),
+    /** This folder has commits the team has not seen: held work, whatever `git status` says. */
+    ahead,
+    usable: () => once('usable', () => lib.cloneLooksUsable(teamId)),
+    work: () => once('work', () => lib.cloneWorkingTreeWork(teamId)),
+    /** What those commits put in the folder, or null when there are none (or git cannot say). */
+    committed: () => once('committed', () => (ahead() ? lib.cloneCommittedWork(teamId, fork()) : null)),
+  };
+}
+
+/** Was the nudge {@link syncNudge} just rendered from this reading the PUSH half (not the pull)? */
+function isPushNudge(folder) {
+  return Boolean(folder && folder.head()) && !folder.behind();
 }
 
 /**
@@ -785,30 +965,64 @@ async function alsoWikiNudges(alsoIds, binding, localMode, now) {
  *
  * `also` names the wiki when this is not the project's primary, so the nudge carries the argument
  * the command actually needs. Fail-open throughout: anything unknown is silence, never a claim.
+ *
+ * `role` is this user's role on THAT wiki (SER-327): a member is not sent to `/commonground:push`,
+ * which cannot publish for them, but told the work is safe here and a curator can take it in as a
+ * suggestion. The push half's off switch is NOT here: the emit names it once, however many wikis
+ * have work ({@link pushNudgeOffSwitch}). `folder` is the session's {@link folderReading} of that
+ * wiki, so the emit's other readers of the same folder do not ask git again.
  */
-function syncNudge(teamId, hostedHead, also) {
-  const localHead = lib.localCloneHead(teamId);
-  if (!localHead) return '';
+function syncNudge(teamId, hostedHead, also, role, folder) {
+  const reading = folder || folderReading(teamId, hostedHead);
+  if (!reading.head()) return '';
   const who = also
     ? `Wiki ${teamId} (which this project also reads)`
     : "This project's CommonGround wiki";
   const arg = also ? ` ${teamId}` : '';
-  const diverged = Boolean(hostedHead && hostedHead !== localHead);
-  if (diverged && !lib.cloneHasCommit(teamId, hostedHead)) {
+  if (reading.behind()) {
     return `${who} has moved on since its wiki folder last updated. Suggest running /commonground:pull${arg}.`;
   }
   // The push half, and only this half, honours the opt-out: someone who said stop reminding me
   // about publishing did not ask to stop hearing that the team moved on.
   if (!lib.pushNudgeEnabled()) return '';
-  const work = lib.cloneWorkingTreeWork(teamId);
+  // A folder whose checkout never finished has nothing to publish, only deletions git invented
+  // (SER-327); `cloneMissingNotice` speaks for it, and offering a push here is offering to delete
+  // the wiki for everyone.
+  if (!reading.usable()) return '';
+  const work = reading.work();
   const unsaved = work && work.files > 0 ? work : null;
-  if (!diverged && !unsaved) return '';
-  const what = unsaved
-    ? unsaved.pages > 0
-      ? `${unsaved.pages} page(s) in its wiki folder that nobody has published yet`
-      : `${unsaved.files} change(s) in its wiki folder that nobody has published yet`
-    : 'changes that have not been published yet';
-  return `${who} has ${what}. Suggest running /commonground:push${arg} when the user is ready.`;
+  if (!reading.ahead() && !unsaved) return '';
+  const what = unsaved ? unsavedWhat(unsaved) : 'changes that have not been published yet';
+  const next = cannotPublish(role)
+    ? "This user's role cannot publish, so that work is safe on this machine only. When they want " +
+      `it shared, ${SUGGESTION_OFFER}`
+    : `Suggest running /commonground:push${arg} when the user is ready.`;
+  return `${who} has ${what}. ${next}`;
+}
+
+/**
+ * The unpublished work in words, with `commonground status`'s number (SER-327). The charter is one
+ * of those pages to the CLI, and it is named as the charter rather than left to read as a page
+ * beside it: an emit that says "a charter" in one sentence and "1 page(s)" in the next reads as two
+ * things. On its own it gets no count at all, and among others the count stays the CLI's.
+ */
+function unsavedWhat(unsaved) {
+  const tail = 'in its wiki folder that nobody has published yet';
+  if (unsaved.pages === 0) return `${unsaved.files} change(s) ${tail}`;
+  if (!unsaved.charter) return `${unsaved.pages} page(s) ${tail}`;
+  if (unsaved.pages === 1) return `charter changes ${tail}`;
+  return `${unsaved.pages} page(s) ${tail}, the charter among them`;
+}
+
+/**
+ * The publish reminders' off switch, said ONCE per emit (SER-327). The reminder recurs, and the only
+ * other places that name the switch (push.md, status.md) load only when those commands run, so the
+ * emit carries it. It used to ride on every wiki's reminder, which in a project reading five wikis
+ * was the same sentence, with the full install path in it, five times a session.
+ */
+function pushNudgeOffSwitch() {
+  const off = lib.cliCommand(lib.cliPath(), 'prefs set push-nudge off');
+  return `If the user asks to stop these reminders, run \`${off}\` (the same with \`on\` brings them back).`;
 }
 
 /**
@@ -853,6 +1067,25 @@ function degradedReason(read) {
     `CommonGround answered with an error (HTTP ${status}) this session, so the figures above are ` +
     'unavailable. Run /commonground:status before diagnosing anything else.'
   );
+}
+
+/**
+ * The degraded emit's "the folder still works" line, or '' (SER-327).
+ *
+ * Only for a failure that leaves the folder's verbs working. A 401 is a sign-in the server would not
+ * take and a 403 is a membership that is gone: pull and push fail for both, and saying they "still
+ * work offline-first" contradicted {@link degradedReason}'s own sentence in the same emit. A folder
+ * whose checkout never finished is not a working copy either, and `cloneMissingNotice` speaks for it.
+ * A member is not handed `/commonground:push`, which cannot publish for them.
+ */
+function offlineFirstLine(mode, binding, read) {
+  if (mode !== 'local') return '';
+  const status = (read && read.status) || 0;
+  if (status === 401 || status === 403) return '';
+  if (!lib.localCloneHead(binding.teamId) || !lib.cloneLooksUsable(binding.teamId)) return '';
+  return cannotPublish(binding.role)
+    ? 'This project has a local wiki folder; reading it and /commonground:pull still work offline-first.'
+    : 'This project has a local wiki folder; /commonground:pull and /commonground:push still work offline-first.';
 }
 
 async function main() {
@@ -1007,17 +1240,29 @@ async function main() {
     // The sync nudge stays LOCAL knowledge: it compares this folder's HEAD and its uncommitted
     // work to the hosted tip, none of which a server-side resolver can see.
     const hostedHead0 = state.active && state.active.wiki && state.active.wiki.lastCommitOid;
-    const nudge = localMode0 ? syncNudge(binding.teamId, hostedHead0, null) : '';
-    // What the wiki FOLDER holds, for the empty-wiki prose below: the DTO describes the published
-    // wiki, and a local project can have been seeded without a single page reaching it.
-    const clone = localMode0
-      ? { dir: lib.clonePath(binding.teamId), ...(lib.cloneContents(binding.teamId) || { pages: 0, charter: false }) }
+    // ONE role for everything this emit says about the folder's work (SER-327): the live DTO's, or
+    // the one recorded at sign-in when an older server sends none.
+    const role = (state.active && state.active.role) || binding.role;
+    // One reading of the folder for everything this emit says about it (SER-327): the nudge and the
+    // empty-wiki prose used to ask git the same questions separately.
+    const folder = localMode0 ? folderReading(binding.teamId, hostedHead0) : null;
+    const nudge = folder ? syncNudge(binding.teamId, hostedHead0, null, role, folder) : '';
+    // What the wiki FOLDER holds, for the empty-wiki and charter prose below: the DTO describes the
+    // published wiki, and a local project can have been seeded without a single page reaching it.
+    // Read only when that prose renders ({@link readsHeldWork}).
+    const clone = folder
+      ? {
+          dir: lib.clonePath(binding.teamId),
+          ...(readsHeldWork(state) ? { work: folder.work(), committed: folder.committed() } : {}),
+        }
       : null;
     // The also-wikis (SER-278): one more read each — the same token, the wiki SELECTED by header
     // (one sign-in reaches every wiki, SER-241) — to refresh that wiki's keyword cache and, in local
     // mode, to compare its clone with the hosted tip. NOT ambient: their `next` step is never
     // rendered here (one nudge per session is the budget), so their nudge budget is not spent.
-    const alsoNudges = await alsoWikiNudges(alsoIds, binding, localMode0, now);
+    const also = await alsoWikiNudges(alsoIds, binding, localMode0, now);
+    // The publish reminders' off switch, once, however many wikis have work (SER-327).
+    const offSwitch = (isPushNudge(nudge ? folder : null) || also.push) ? pushNudgeOffSwitch() : '';
 
     // AT MOST ONE VERBATIM BLOCK PER EMIT (SER-325). Two blocks in one turn means Claude opens the
     // session with two announcements before it answers anything, and the second is the one people
@@ -1026,7 +1271,7 @@ async function main() {
     // release as SAID on the path that actually emits it, so it speaks next session instead.
     const welcome = delegatedWelcome(state);
     emit(
-      resolvedContext(state, projectMode, clone),
+      resolvedContext(state, projectMode, clone, role),
       modeRule(projectMode, binding.teamId, voiceOf(state), alsoIds),
       cloneMissingNotice(projectMode, [binding.teamId, ...alsoIds]),
       bindingRepair,
@@ -1034,7 +1279,8 @@ async function main() {
       planGateNotice(state, projectMode),
       billingNotice(state, projectMode),
       nudge,
-      alsoNudges,
+      also.text,
+      offSwitch,
       welcome,
       updateNotice(state, { hold: Boolean(welcome) }),
     );
@@ -1052,7 +1298,6 @@ async function main() {
   // Nor would a second fetch help: what actually fails here is the network, the API, or the token,
   // and those take every endpoint with them. So say plainly that the wiki could not be reached —
   // a session that looks unconfigured when it is merely offline is the failure worth avoiding.
-  const localHead = projectMode === 'local' ? lib.localCloneHead(binding.teamId) : null;
   emit(
     // Offline is the case local mode was built for: the folder is right there and readable, so
     // this emit names it rather than the connector's tools (SER-325).
@@ -1061,7 +1306,7 @@ async function main() {
     cloneMissingNotice(projectMode, [binding.teamId, ...alsoIds]),
     bindingRepair,
     foreignClone,
-    localHead ? 'This project has a local wiki folder; /commonground:pull and /commonground:push still work offline-first.' : '',
+    offlineFirstLine(projectMode, binding, read),
     connectorHealthClause(projectMode),
   );
 }
@@ -1082,12 +1327,17 @@ module.exports = {
   modeRule,
   connectorHealthClause,
   degradedReason,
+  offlineFirstLine,
   syncNudge,
+  folderReading,
+  pushNudgeOffSwitch,
   cloneMissingNotice,
   alsoWikiNudges,
   canSeed,
+  cannotPublish,
   stepProse,
   resolvedContext,
+  publishedWikiEmpty,
   awarenessFromState,
   delegatedWelcome,
   updateNotice,

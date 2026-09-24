@@ -1,5 +1,5 @@
 {
-  "description": "CommonGround plugin hooks (SER-141/143). SessionStart: first-boot detection (nudge to /commonground:point when signed in but the project is not pointed at a wiki) and, on an initialized project, a wiki-awareness summary plus a refresh of the team keyword cache. Scoped to \"startup\" (SER-182): SessionStart also fires on resume/clear/compact, and re-injecting the same orientation block at every compaction is how ambient guidance turns into noise — fixing it at the trigger beats de-duplicating downstream. UserPromptSubmit: the deterministic Code auto-trigger — when a prompt mentions a cached team keyword, nudge Claude to consult the wiki first. PreToolUse (SER-217): the publish guard — no CommonGround write lands without explicit consent, DENY in local-clone mode (where the MCP write tools are the wrong path per SER-184) and ASK in MCP mode (where the write IS the publish and is live the instant it lands). Matched broadly on \"mcp__\" with the precision in code, because a narrow regex matcher cannot be verified without actually publishing something. The first two hooks are fail-open; the guard is fail-SAFE on its verdict (uncertainty resolves to ask, never to allow) and fail-open only on a crash, so a hook hiccup never wedges a session.",
+  "description": "CommonGround plugin hooks (SER-141/143). SessionStart: first-boot detection (nudge to /commonground:point when signed in but the project is not pointed at a wiki) and, on an initialized project, a wiki-awareness summary plus a refresh of the team keyword cache. Scoped to \"startup\" (SER-182): SessionStart also fires on resume/clear/compact, and re-injecting the same orientation block at every compaction is how ambient guidance turns into noise — fixing it at the trigger beats de-duplicating downstream. UserPromptSubmit: the deterministic Code auto-trigger — when a prompt mentions a cached team keyword, nudge Claude to consult the wiki first. PreToolUse (SER-217): the publish guard — no CommonGround write lands without explicit consent, DENY in local-clone mode (where the MCP write tools are the wrong path per SER-184) and ASK in MCP mode (where the write IS the publish and is live the instant it lands). Registered for every shell tool that can run the CLI, as one exact-name list \"Bash|PowerShell|Monitor\" (SER-327: a publish typed into PowerShell or Monitor was never seen), and for every MCP tool as the regex \"mcp__.*\", with the precision in code, because a narrow regex matcher cannot be verified without actually publishing something: the guard judges a tool as CommonGround's only when its whole server name is one of CommonGround's own (the plugin's plugin_commonground_ server, or a name that is commonground once _ and - are left out, bare or after claude_ai_), so common-grounds-crm or uncommon-ground is another product and is left alone. It asks before a gated write on a server named only by an id (never a deny, and its reads are not judged), and leaves every other server's tools alone whatever they are called. The wrong-wiki deny and the ask about a wiki this session was never told speak only for the plugin's own server, the one COMMONGROUND_WIKI describes. The MCP matcher must stay a regex: Claude Code compares a matcher made only of letters, digits, _ and | as EXACT tool names, so the bare \"mcp__\" this shipped with matched no tool at all. The first two hooks are fail-open; the guard is fail-SAFE on its verdict (uncertainty resolves to ask, never to allow) and fail-open only on a crash, so a hook hiccup never wedges a session.",
   "hooks": {
     "SessionStart": [
       {
@@ -24,7 +24,7 @@
     ],
     "PreToolUse": [
       {
-        "matcher": "Bash",
+        "matcher": "Bash|PowerShell|Monitor",
         "hooks": [
           {
             "type": "command",
@@ -33,7 +33,7 @@
         ]
       },
       {
-        "matcher": "mcp__",
+        "matcher": "mcp__.*",
         "hooks": [
           {
             "type": "command",

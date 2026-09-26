@@ -1489,14 +1489,16 @@ function describeChanges(changes) {
 
 /**
  * Every member of a case-twin group the INDEX holds, on a clone whose filesystem folds case, or an
- * empty set (SER-327). Mirrors the CLI's rule in `unpublishedWork` (transport.ts): `caseTwins` over
- * `git ls-files` when `core.ignorecase` is true, grouped by `pathFoldKey` (NFC, then lower case),
- * both from `@commonground/shared`, which this dependency-free file cannot import.
+ * empty set (SER-327): `caseTwins` over `git ls-files` when the clone folds case
+ * ({@link cloneFoldsCase}), grouped by `pathFoldKey` (NFC, then lower case), both from
+ * `@commonground/shared`, which this dependency-free file cannot import.
  *
  * Such a clone holds ONE file for the whole group, so git reads the others as edited the moment it
  * is checked out. That phantom is not work anyone can publish from here: push refuses the folder,
  * and a nudge that counted it asked the user to publish, every session, a page they never touched.
- * `unpublished-drift.test.ts` runs both sides on the same twin clone.
+ * Only the COMMITTED reading ({@link cloneCommittedWork}) still leaves every member out; the working
+ * tree's, which mirrors the CLI's count, leaves out the proven phantom alone
+ * ({@link withoutFoldedPhantoms}, SER-331).
  */
 function foldedTwinMembers(dir) {
   const groups = new Map();
@@ -1509,11 +1511,23 @@ function foldedTwinMembers(dir) {
   const members = new Set();
   for (const group of groups.values()) if (group.size > 1) group.forEach((p) => members.add(p));
   if (members.size === 0) return members;
+  return cloneFoldsCase(dir) ? members : new Set();
+}
+
+/**
+ * Does this clone's disk fold case? Mirrors `foldsCase` in the agent's `transport.ts` (SER-331
+ * review): yes when git recorded so (`core.ignorecase`), and yes when the disk says so now, asked of
+ * the clone's own `.git` as `.GIT`, which finds it only where the disk folds. A clone made on a
+ * case-sensitive disk and copied onto a folding one carries no flag while its twin pair became one
+ * file on the way. Never "no" on the disk alone, and no git call for the disk's answer.
+ */
+function cloneFoldsCase(dir) {
   try {
-    return gitRead(dir, ['config', '--bool', 'core.ignorecase']).trim() === 'true' ? members : new Set();
+    if (gitRead(dir, ['config', '--bool', 'core.ignorecase']).trim() === 'true') return true;
   } catch {
-    return new Set(); // unset: git's own default, a filesystem that keeps case apart
+    // unset: git found the disk it made the clone on case-sensitive
   }
+  return fs.existsSync(path.join(dir, '.GIT'));
 }
 
 /**
@@ -1524,6 +1538,63 @@ function withoutFoldedTwins(dir, changes) {
   if (!changes.some((c) => c.tracked)) return changes;
   const members = foldedTwinMembers(dir);
   return members.size === 0 ? changes : changes.filter((c) => !members.has(c.path));
+}
+
+/**
+ * `changes` without the PHANTOMS among them (SER-331): mirrors `foldedTwinPhantoms` in the agent's
+ * `transport.ts`, which `unpublished-drift.test.ts` holds this to. On a clone that folds case
+ * ({@link cloneFoldsCase}), a member of a tracked twin group that git reads ` M` is left out only
+ * when its file hashes to the index blob of ANOTHER member of its group, which is what the checkout
+ * leaves in the group's one file. Anything else is real work: an edit to that file, its deletion,
+ * and a spelling that is a file of its own because the clone sits on a disk that keeps case apart
+ * (moved there, or copied). Leaving out every member, as {@link withoutFoldedTwins} still does for
+ * committed work, hid such an edit from the push nudge while `pull` could write over it.
+ *
+ * Only a ` M` can be a phantom, so a folder with none (the usual shape) costs no git call here. A
+ * file git cannot hash is not proven a phantom and stays counted, like the CLI's. Each file is hashed
+ * as git would store it and as its raw bytes (`--no-filters`), either one matching, like the CLI's: a
+ * member stored with CRLF is checked out byte for byte under `text=auto`, and only its raw bytes
+ * match its blob.
+ */
+function withoutFoldedPhantoms(dir, changes) {
+  const edited = changes.filter((c) => c.xy === ' M').map((c) => c.path);
+  if (edited.length === 0) return changes;
+  if (!cloneFoldsCase(dir)) return changes;
+  const blobs = new Map();
+  const groups = new Map();
+  for (const record of gitRead(dir, ['ls-files', '-s', '-z'], 1500).split('\0')) {
+    // `<mode> <oid> <stage>\t<path>`, the path raw: split at the first tab, never on spaces.
+    const tab = record.indexOf('\t');
+    if (tab === -1) continue;
+    const [, oid, stage] = record.slice(0, tab).split(' ');
+    if (stage !== '0' || !oid) continue;
+    const p = record.slice(tab + 1);
+    blobs.set(p, oid);
+    const key = p.normalize('NFC').toLowerCase(); // `pathFoldKey`, as foldedTwinMembers keys it
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(p);
+  }
+  const groupOf = (p) => {
+    const group = groups.get(p.normalize('NFC').toLowerCase());
+    return group && group.length > 1 && group.includes(p) ? group : null;
+  };
+  const members = edited.filter((p) => groupOf(p));
+  if (members.length === 0) return changes;
+  let readings;
+  try {
+    readings = [[], ['--no-filters']].map((raw) =>
+      gitRead(dir, ['hash-object', ...raw, '--', ...members], 1500).split('\n').filter(Boolean),
+    );
+  } catch {
+    return changes;
+  }
+  if (readings.some((hashes) => hashes.length !== members.length)) return changes;
+  const phantoms = new Set(
+    members.filter((p, i) =>
+      groupOf(p).some((other) => other !== p && readings.some((hashes) => blobs.get(other) === hashes[i])),
+    ),
+  );
+  return phantoms.size === 0 ? changes : changes.filter((c) => !phantoms.has(c.path));
 }
 
 /**
@@ -1566,9 +1637,9 @@ function cloneWorkingTreeWork(teamId) {
       // Either column can hold the rename: an intent-to-add file (`git add -N`) that git pairs with
       // a deleted one reads ` R`, and its source read as a second page.
       if (/[RC]/.test(xy)) i += 1;
-      changes.push({ path: field.slice(3), tracked: xy !== '??', gone: xy.includes('D') });
+      changes.push({ path: field.slice(3), xy, tracked: xy !== '??', gone: xy.includes('D') });
     }
-    return describeChanges(withoutFoldedTwins(dir, changes));
+    return describeChanges(withoutFoldedPhantoms(dir, changes));
   } catch {
     return null;
   }

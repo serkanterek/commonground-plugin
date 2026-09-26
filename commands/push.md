@@ -74,6 +74,16 @@ pages that *would* be published (including brand-new pages that were never stage
   wiki's folder than the one the user is standing in (the pointer, or a name they typed, sent it
   elsewhere). Relay both halves verbatim and confirm which wiki they mean before anything else; the
   line names the command that addresses the one they are standing in. Never pick for them.
+- **A `Heads up: <wiki> moved` line** — the published wiki changed since this clone last pulled,
+  so this publish would stop (§4). Offer `/commonground:pull` first, then preview again: a pull
+  brings the change in around their work and stops only over what is in the change's way, while a
+  publish made now commits their work and then stops, and the pull after it can no longer bring the
+  change in on its own. **Unless a pull has just stopped and its receipt offered publishing
+  first** (a stop over a file git ignores, or on a clone holding a twin pair, never does): a second
+  pull stops the same way, so publishing is the way through. Carry on to §2; when the publish comes
+  back blocked, §4 takes over. After a stop over a file git ignores, the way through is moving or
+  renaming that file first (`/commonground:pull`, **Blocked by a file git ignores**): offer that,
+  then the pull. Never offer the pull alone, and never offer publishing first.
 - **Nothing to publish, nothing broken** — say so and stop. The line names the folder it read
   (`nothing to publish in <folder>`); relay that folder — it answers "where did you look?" before
   the user has to ask.
@@ -238,12 +248,33 @@ That's what makes this worth stopping for, and it's what to explain — not the 
 If `push` comes back **needs-rename** (the §1 preview lists the same files), **nothing was published
 and nothing was lost**: every file is still in the clone. The people who use this wiki clone it on
 Windows, Macs and Linux alike, and a NEW file is named in a way one of those machines cannot hold:
-a character Windows refuses (`: * ? " < > |`), a name ending in a dot or a space, a Windows device
-name (`con`, `nul`, `com1`), a path too long for Windows, or a name that differs from a page or folder
+a character Windows refuses (`: * ? " < > | \`), a name ending in a dot or a space, a Windows device
+name (`con`, `nul`, `com1`), a name that reads as git's own `.git` folder (`.GIT`, `git~1`), a path
+too long for Windows, or a name that differs from a page or folder
 already in the wiki only in capitals (a Mac or Windows keeps those as ONE file, so one page would
 silently replace the other). Relay each file with the reason the CLI gave, offer to rename it in the
 clone and fix any link to it, then push again. Rename only the files the CLI names, never a page that
 is already published, and never reach for a way to publish the name as it is.
+
+**The server refuses the same names itself.** A `push` (or `import`) that fails with a message
+starting `CommonGround did not publish this push` was refused by the server, and the CLI relays the
+server's words as written and ends them with `Your commit is safe in the wiki folder.` Read the line
+after the first before you answer:
+
+- **A list of file names** (`It adds a file name that some machines cannot hold:`, or `It adds <n>
+  file names …`) was refused by the server's own copy of this check, after the upload. The server
+  shows each name JSON-quoted: a backslash in it appears doubled, a quote as `\"`, an invisible
+  character as `\uXXXX` and a byte that is not text as `\xNN` (`"notes/back\\slash.md"` is the file
+  `notes/back\slash.md`), and a very long path is cut to its start and end around `…`. Treat it
+  exactly as `needs-rename`: relay the list, offer to rename those files in the clone (the file on
+  disk, not the quoted text) and fix any link to them, then push again. It is not a connection or
+  sign-in failure (§2b′), so never retry it unchanged, and don't say nothing was changed: the work is
+  committed in the folder.
+- **`Publishing is paused on the server right now, so nothing was published. Try again shortly.`**
+  means the server could not run that check, so nothing was sent and no name is wrong (`The server
+  could not check the names of the files in it …` is the same answer, given after the upload). It is
+  not a rename and not a sign-in problem. Relay it, say the work is committed in the folder, and
+  offer to publish again in a little while; don't rename anything and don't offer to sign in again.
 
 **`needs-rename` can also name a pair ALREADY in the wiki, and that one is not fixable from this
 machine.** Its line reads: `"<a>" and "<b>" differ only in letter case, and this machine can hold
@@ -256,11 +287,15 @@ nothing from this folder, whatever else changed, and `import` refuses the same w
 as written. Don't offer a rename: on this disk no rename separates the two. Don't retry, and don't
 reach for `--mine`, `--allow-deletes` or `import`: each is refused the same way. Say that every
 change the user made is still in the folder, and that once a curator on a Linux machine, or
-CommonGround support, has renamed one, `/commonground:pull` and then a publish carry it out. If
-that pull comes back **Blocked** because other pages here were edited too, publishing first is not
-the way through while this clone still holds the pair: offer taking the published version
-(`pull --take-remote`, which saves their work to a `draft/…` branch first), then bringing their
-edits back from that draft and publishing.
+CommonGround support, has renamed one, `/commonground:pull` and then a publish carry it out. Edits
+to other pages do not stop that pull: a pull brings the repair in around them, and they publish
+after it. If that pull comes back **Blocked** because a page edited here is one the incoming change
+also changes, or says it cannot bring the change in as an update or would write over a file here,
+publishing first is not the way through while this clone still holds the pair: offer taking the
+published version (`pull --take-remote`, which saves their work to a `draft/…` branch first), then
+bringing their edits back from that draft and publishing. When it names a file this machine's git
+ignores in the way instead, offer what `/commonground:pull` offers there: moving that file and
+pulling again, or taking the published version.
 
 ## 4. If the published wiki moved (the conflict case)
 

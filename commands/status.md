@@ -32,10 +32,18 @@ relay that rather than inferring one:
   reports unpublished work, lead with the count it gives** (`N pages in your wiki folder are not
   published yet`, or files when none of them are pages). That line counts pages the user has WRITTEN,
   committed or not, so it is the honest answer to "did my work go out?" — never soften it into "up to
-  date", and offer `/commonground:push`. For a member (no publishing role) the CLI says instead that
-  the work is safe on this machine and can go to a curator as a suggestion; relay that, offering
+  date", and offer `/commonground:push`. **When the same output says the folder is behind**
+  (`<n> commit(s) behind`), offer `/commonground:pull` first and the publish after it: a pull brings
+  the change in around their work, and a publish made while behind stops and leaves a harder choice.
+  For a member (no publishing role) the CLI says
+  instead that the work is safe on this machine and can go to a curator as a suggestion; relay that, offering
   `suggest_change` only when this session has it (otherwise the routes in `/commonground:push` §2b),
-  and don't offer a publish they cannot make. **If they ask to stop being reminded about unpublished
+  and don't offer a publish they cannot make. **Whether or not it counts any work, when the output
+  says a pull stops here** (`A pull stops here and changes nothing`), relay that line as written:
+  it names the pages the incoming change also changes, or the files this machine's git ignores that
+  sit where it goes, or says the change is one this machine cannot bring in as an update. Then
+  offer the ways through that the lines under it list, as `/commonground:pull` does, and never a
+  pull on its own, which would stop the same way. **If they ask to stop being reminded about unpublished
   pages, that is a setting, not an apology:** run `commonground prefs set push-nudge off`, which
   turns off the start-of-session reminder (`commonground prefs set push-nudge on` brings it back).
   It silences the reminder, never the work: this command still reports the count when asked. If they'd rather the
@@ -214,7 +222,7 @@ relay it, don't re-derive it), and `get_coverage` for the section counts. Then d
 marking only what you actually know:
 
 ```
-[x] Plugin               commonground 0.18.0
+[x] Plugin               commonground 0.19.0
 [x] Signed in            sam@acme.com
 [x] Team                 Platform · admin
 [x] Claude connected     Code, last used today

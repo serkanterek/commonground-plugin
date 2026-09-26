@@ -12688,7 +12688,12 @@ function catalogCategoryBuckets(entries, compare) {
 }
 
 // ../shared/dist/wiki/portable.js
-var FORBIDDEN_CHAR = /[<>:"|?*\u0000-\u001f]/;
+var FORBIDDEN_CHAR = /[<>:"|?*\\\u0000-\u001f]/;
+var HFS_IGNORABLE = /[\u200c-\u200f\u202a-\u202e\u206a-\u206f\ufeff]/g;
+var INVISIBLE = /[\u0080-\u009f\u200b-\u200f\u202a-\u202e\u2060-\u206f\ufeff]/g;
+function visible(s) {
+  return s.replace(INVISIBLE, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`);
+}
 var DEVICE_NAME = /^(con|prn|aux|nul|com[1-9¹²³]|lpt[1-9¹²³]|conin\$|conout\$)$/i;
 var MAX_PORTABLE_PATH = 180;
 function portablePathProblem(relPath) {
@@ -12707,7 +12712,10 @@ function portablePathProblem(relPath) {
       return "a file or folder name cannot end with a dot or a space on Windows";
     const base = part.split(".")[0].replace(/ +$/, "");
     if (DEVICE_NAME.test(base))
-      return `"${base}" is a name Windows keeps for a device`;
+      return `"${visible(base)}" is a name Windows keeps for a device`;
+    const bare = part.replace(HFS_IGNORABLE, "").toLowerCase();
+    if (bare === ".git" || bare === "git~1")
+      return `"${visible(part)}" reads as git's own ".git" folder on Windows or macOS`;
   }
   return null;
 }
@@ -12730,6 +12738,49 @@ function twinDifference(spellings) {
   if (new Set(spellings.map((s) => s.normalize("NFC"))).size <= 1)
     return "accents";
   return "both";
+}
+function foldIndex(existing) {
+  const exact = /* @__PURE__ */ new Set();
+  const byKey = /* @__PURE__ */ new Map();
+  const prefixes = (path2) => {
+    const parts = path2.split("/");
+    return parts.map((_, i) => parts.slice(0, i + 1).join("/"));
+  };
+  const add = (path2) => {
+    for (const prefix of prefixes(path2)) {
+      exact.add(prefix);
+      if (!byKey.has(pathFoldKey(prefix)))
+        byKey.set(pathFoldKey(prefix), prefix);
+    }
+  };
+  for (const path2 of existing)
+    add(path2);
+  const clash = (path2) => {
+    for (const prefix of prefixes(path2)) {
+      if (exact.has(prefix))
+        continue;
+      const hit = byKey.get(pathFoldKey(prefix));
+      if (hit !== void 0)
+        return hit;
+    }
+    return null;
+  };
+  return { clash, add };
+}
+function newPathProblems(kept, added) {
+  const names = foldIndex(kept);
+  const problems = [];
+  for (const path2 of [...added].sort((a, b) => a < b ? -1 : a > b ? 1 : 0)) {
+    const problem = portablePathProblem(path2);
+    const twin = problem ? null : names.clash(path2);
+    if (problem)
+      problems.push({ path: path2, kind: "name", problem });
+    else if (twin)
+      problems.push({ path: path2, kind: "twin", twin });
+    else
+      names.add(path2);
+  }
+  return problems;
 }
 
 // ../shared/dist/seeding/question-sets.js
@@ -12862,6 +12913,43 @@ var HEADER = [
   "> `generate` script so the interview never drifts from the app."
 ].join("\n");
 
+// ../../apps/sync-agent/dist/fs-retry.js
+var TRANSIENT_WIN32 = /* @__PURE__ */ new Set(["EBUSY", "EPERM", "EACCES", "ENOTEMPTY"]);
+var TRANSIENT_POSIX = /* @__PURE__ */ new Set(["EBUSY"]);
+function isTransientFsError(e, platform = process.platform) {
+  const code = e?.code;
+  return typeof code === "string" && (platform === "win32" ? TRANSIENT_WIN32 : TRANSIENT_POSIX).has(code);
+}
+async function withFsRetry(op, opts = {}) {
+  const platform = opts.platform ?? process.platform;
+  const attempts = Math.max(1, opts.attempts ?? 5);
+  const baseMs = opts.baseMs ?? 100;
+  const sleep = opts.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms)));
+  for (let i = 1; ; i++) {
+    try {
+      return await op();
+    } catch (e) {
+      if (i >= attempts || !isTransientFsError(e, platform))
+        throw e;
+      await sleep(baseMs * 2 ** (i - 1));
+    }
+  }
+}
+
+// ../../apps/sync-agent/dist/router-block.js
+var ROUTER_START = "<!-- commonground:router-rule:start -->";
+var ROUTER_END = "<!-- commonground:router-rule:end -->";
+var BLOCK_RE = /<!-- commonground:router-rule:start -->[\s\S]*?<!-- commonground:router-rule:end -->/g;
+var BRIEF_START = "<!-- commonground:retrieval-brief:start -->";
+var BRIEF_END = "<!-- commonground:retrieval-brief:end -->";
+var BRIEF_BLOCK_RE = /<!-- commonground:retrieval-brief:start -->[\s\S]*?<!-- commonground:retrieval-brief:end -->/g;
+function withoutRouterBlocks(claudeMd) {
+  return claudeMd.replace(BLOCK_RE, "").replace(BRIEF_BLOCK_RE, "").split("\n").filter((line) => {
+    const t = line.trim();
+    return t !== ROUTER_START && t !== ROUTER_END && t !== BRIEF_START && t !== BRIEF_END;
+  }).join("\n").trimEnd();
+}
+
 // ../../apps/sync-agent/dist/transport.js
 var execFileAsync = (0, import_node_util.promisify)(import_node_child_process.execFile);
 var GitError = class extends Error {
@@ -12876,11 +12964,12 @@ var GitError = class extends Error {
     this.name = "GitError";
   }
 };
+var GIT_IN_ENGLISH = { LC_ALL: "C", LANGUAGE: void 0 };
 async function runGit(cwd, args, env, config = []) {
   try {
     const { stdout } = await execFileAsync("git", ["-c", "core.quotePath=false", ...config, ...args], {
       cwd,
-      env: env ? { ...process.env, ...env } : process.env,
+      env: { ...process.env, ...env, ...GIT_IN_ENGLISH },
       maxBuffer: 64 * 1024 * 1024
     });
     return stdout;
@@ -13006,7 +13095,7 @@ function couldNotWrite(line, os) {
     return head + "The path is longer than Windows allows by default. " + byAudience('Turn on long paths for git (git config --global core.longpaths true), or put the wiki folder somewhere with a shorter path ("commonground init --mode local --path <folder>"), then try again.', "Offer to turn on long paths for git (git config --global core.longpaths true), or to put the wiki folder somewhere with a shorter path (/commonground:point in local mode, naming a folder), then try again.");
   }
   if (/^error: invalid path/i.test(line)) {
-    return head + (os === "windows" ? 'A page name Windows cannot hold is the usual cause (Windows refuses : * ? " < > |, names like con or nul, and names ending in a dot or a space). ' : "git refuses to write that name on this machine. ") + renameIt;
+    return head + (os === "windows" ? `A page name Windows cannot hold is the usual cause (Windows refuses : * ? " < > | \\, names like con or nul, names that read as git's own .git folder such as .GIT or git~1, and names ending in a dot or a space). ` : "git refuses to write that name on this machine. ") + renameIt;
   }
   return head + byAudience("Check that the disk has room and the wiki folder is writable and not held open by another program, then try again.", "Suggest they check that the disk has room and the wiki folder is writable and not held open by another program, then try again.");
 }
@@ -13074,10 +13163,9 @@ async function isWorkingTreeClean(dir) {
   const out = await runGit(dir, ["status", "--porcelain", "-z", "--untracked-files=no"]);
   if (out.length === 0)
     return true;
-  const twins = await foldedTwinPaths(dir);
-  if (twins.size === 0)
-    return false;
-  return parseStatusZ(out).every((e) => twins.has(e.path));
+  const entries = parseStatusZ(out);
+  const phantoms = await foldedTwinPhantoms(dir, entries);
+  return entries.every((e) => phantoms.has(e.path));
 }
 function parseStatusZ(out) {
   const fields = out.split("\0");
@@ -13092,18 +13180,110 @@ function parseStatusZ(out) {
   }
   return entries;
 }
+function parseNameStatusZ(out) {
+  const fields = out.split("\0");
+  const rows = [];
+  for (let i = 0; i < fields.length; i++) {
+    const status2 = fields[i];
+    if (status2 === "")
+      continue;
+    const paths = /^[RC]/.test(status2) ? 2 : 1;
+    const path2 = fields[i + paths];
+    i += paths;
+    if (path2 !== void 0)
+      rows.push({ status: status2, path: path2 });
+  }
+  return rows;
+}
 async function foldsCase(dir) {
   try {
-    return (await runGit(dir, ["config", "--bool", "core.ignorecase"])).trim() === "true";
+    if ((await runGit(dir, ["config", "--bool", "core.ignorecase"])).trim() === "true")
+      return true;
   } catch {
-    return false;
+  }
+  return diskFoldsCase(dir);
+}
+async function diskFoldsCase(dir) {
+  return (0, import_promises2.lstat)((0, import_node_path3.join)(dir, ".GIT")).then(() => true, () => false);
+}
+async function recordDiskCaseFolding(dir) {
+  const folds = await diskFoldsCase(dir);
+  await runGit(dir, ["config", "core.ignorecase", String(folds)]);
+  return folds;
+}
+async function spellingsBeforeMove(dir) {
+  if (!await foldsCase(dir))
+    return null;
+  const groups = caseTwins((await runGit(dir, ["ls-files", "-z"])).split("\0").filter(Boolean));
+  const entries = groups.length === 0 ? [] : parseStatusZ(await runGit(dir, ["status", "--porcelain", "-z", "--untracked-files=no"]));
+  return {
+    members: groups.flat(),
+    phantoms: await foldedTwinPhantoms(dir, entries),
+    missing: new Set((await runGit(dir, ["ls-files", "--deleted", "-z"])).split("\0").filter(Boolean))
+  };
+}
+async function restoreSpellingsAfterMove(dir, before) {
+  const arrived = (await runGit(dir, ["ls-files", "--deleted", "-z"])).split("\0").filter((p) => p !== "" && !before.missing.has(p));
+  const members = new Set(before.members);
+  const restore = new Set(before.phantoms);
+  const copies = /* @__PURE__ */ new Set();
+  if (arrived.length > 0) {
+    const blobs = await indexBlobs(dir);
+    const byKey = /* @__PURE__ */ new Map();
+    for (const path2 of (await runGit(dir, ["ls-files", "--others", "-z"])).split("\0").filter(Boolean)) {
+      byKey.set(pathFoldKey(path2), [...byKey.get(pathFoldKey(path2)) ?? [], path2]);
+    }
+    for (const path2 of arrived) {
+      const found = byKey.get(pathFoldKey(path2)) ?? [];
+      const raw = found.length === 1 ? await hashFiles(dir, found, true).catch(() => []) : [];
+      if (raw[0] !== void 0 && raw[0] === blobs.get(path2)) {
+        copies.add(found[0]);
+        restore.add(path2);
+      } else if (members.has(path2)) {
+        restore.add(path2);
+      }
+    }
+  }
+  await runGitOverPaths(dir, ["--literal-pathspecs", "checkout"], [...restore]);
+  for (const copy of copies) {
+    await (0, import_promises2.rm)((0, import_node_path3.join)(dir, copy), { force: true });
+    for (const folder of parentFolders(copy).reverse()) {
+      if (!await (0, import_promises2.rmdir)((0, import_node_path3.join)(dir, folder)).then(() => true, () => false))
+        break;
+    }
   }
 }
-async function foldedTwinPaths(dir) {
-  if (!await foldsCase(dir))
+async function foldedTwinPhantoms(dir, entries) {
+  const changed = entries.filter((e) => e.xy === " M").map((e) => e.path);
+  if (changed.length === 0 || !await foldsCase(dir))
     return /* @__PURE__ */ new Set();
-  const tracked = (await runGit(dir, ["ls-files", "-z"])).split("\0").filter(Boolean);
-  return new Set(caseTwins(tracked).flat());
+  return phantomsAmong(dir, changed, await indexBlobs(dir));
+}
+async function phantomsAmong(dir, changed, blobs) {
+  const groupOf = /* @__PURE__ */ new Map();
+  for (const group of caseTwins(blobs.keys()))
+    for (const p of group)
+      groupOf.set(p, group);
+  const members = changed.filter((p) => groupOf.has(p));
+  if (members.length === 0)
+    return /* @__PURE__ */ new Set();
+  let readings;
+  try {
+    readings = [await hashFiles(dir, members), await hashFiles(dir, members, true)];
+  } catch {
+    return /* @__PURE__ */ new Set();
+  }
+  return new Set(members.filter((p, i) => groupOf.get(p).some((other) => other !== p && readings.some((hashes) => blobs.get(other) === hashes[i]))));
+}
+async function hashFiles(dir, paths, raw = false) {
+  const hashes = [];
+  for (let i = 0; i < paths.length; i += 100) {
+    const out = await runGit(dir, ["hash-object", ...raw ? ["--no-filters"] : [], "--", ...paths.slice(i, i + 100)]);
+    hashes.push(...out.split("\n").filter(Boolean));
+  }
+  if (hashes.length !== paths.length)
+    throw new Error("hash-object answered for fewer files than it was given");
+  return hashes;
 }
 async function stageEverything(dir, env) {
   await runGit(dir, ["add", "-A"], env, ["-c", "core.safecrlf=false"]);
@@ -13121,10 +13301,10 @@ function isFolderNoiseName(name) {
 function isFolderNoise(path2) {
   return isFolderNoiseName(path2.slice(path2.lastIndexOf("/") + 1));
 }
-async function unpublishedWork(dir) {
-  const out = await runGit(dir, ["status", "--porcelain", "-z", "--untracked-files=all"]);
-  const twins = out ? await foldedTwinPaths(dir) : /* @__PURE__ */ new Set();
-  const paths = parseStatusZ(out).map((e) => e.path).filter((p) => !isFolderNoise(p) && !twins.has(p));
+async function unpublishedWork(dir, leaving) {
+  const entries = parseStatusZ(await runGit(dir, ["status", "--porcelain", "-z", "--untracked-files=all"]));
+  const phantoms = await foldedTwinPhantoms(dir, entries);
+  const paths = entries.map((e) => e.path).filter((p) => !isFolderNoise(p) && !phantoms.has(p) && !leaving?.has(p));
   const pages = paths.filter((p) => p.toLowerCase().endsWith(".md") && p !== WIKI_LAYOUT.indexFile && !p.startsWith(`${WIKI_LAYOUT.sourcesDir}/`));
   return { pages: pages.length, files: paths.length };
 }
@@ -13133,22 +13313,186 @@ async function aheadBehind(dir, local, remote) {
   const [ahead, behind] = out.split(/\s+/).map((n) => Number.parseInt(n, 10));
   return { ahead: ahead || 0, behind: behind || 0 };
 }
-async function fastForward(dir, ref) {
-  await settleFoldedTwins(dir, ref);
-  await keepingFoldedFiles(dir, () => runGit(dir, ["merge", "--ff-only", ref]));
+async function fastForward(dir, ref, plan) {
+  const read = plan ?? await planFastForward(dir, ref);
+  await settleFoldedTwins(dir, read);
+  const through = read.clashes.length === 0 && read.stuckTwins.length === 0;
+  const gitDir = (await runGit(dir, ["rev-parse", "--absolute-git-dir"])).trim();
+  await sweepAside(gitDir);
+  await keepingFoldedFiles(dir, async () => {
+    const aside = setAside(gitDir);
+    try {
+      await aside.take(dir, through ? read.clearFirst : []);
+      await runGit(dir, ["merge", "--ff-only", "--no-overwrite-ignore", ref]);
+    } catch (e) {
+      await aside.putBack();
+      throw e;
+    }
+    await aside.drop();
+  });
 }
-async function settleFoldedTwins(dir, ref) {
-  const twins = await foldedTwinPaths(dir);
-  if (twins.size === 0)
+var ASIDE_PREFIX = "commonground-aside-";
+var ASIDE_NAME = new RegExp(`^${ASIDE_PREFIX}(\\d+)-\\d+$`);
+function setAside(gitDir) {
+  const holder = (0, import_node_path3.join)(gitDir, `${ASIDE_PREFIX}${process.pid}-${Date.now()}`);
+  const moved = [];
+  const removeHolder = () => (0, import_promises2.rm)(holder, { recursive: true, force: true, maxRetries: 3 }).catch(() => void 0);
+  return {
+    take: async (dir, paths) => {
+      if (paths.length === 0)
+        return;
+      await (0, import_promises2.mkdir)(holder, { recursive: true });
+      for (const [i, path2] of paths.entries()) {
+        const home = (0, import_node_path3.join)(dir, path2);
+        const held = (0, import_node_path3.join)(holder, String(i));
+        try {
+          await withFsRetry(() => (0, import_promises2.rename)(home, held));
+          moved.push({ home, held });
+        } catch (e) {
+          if (e.code !== "EXDEV")
+            continue;
+          await (0, import_promises2.rm)(home, { recursive: true, force: true, maxRetries: 3 }).catch(() => void 0);
+        }
+      }
+    },
+    putBack: async () => {
+      let all = true;
+      for (const { home, held } of moved) {
+        const back = await (0, import_promises2.mkdir)((0, import_node_path3.dirname)(home), { recursive: true }).then(() => withFsRetry(() => (0, import_promises2.rename)(held, home))).then(() => true, () => false);
+        all &&= back;
+      }
+      if (all)
+        await removeHolder();
+    },
+    drop: removeHolder
+  };
+}
+async function sweepAside(gitDir) {
+  const names = await (0, import_promises2.readdir)(gitDir).catch(() => []);
+  for (const name of names) {
+    const pid = ASIDE_NAME.exec(name)?.[1];
+    if (pid === void 0 || runningElsewhere(Number(pid)))
+      continue;
+    await (0, import_promises2.rm)((0, import_node_path3.join)(gitDir, name), { recursive: true, force: true, maxRetries: 3 }).catch(() => void 0);
+  }
+}
+function runningElsewhere(pid) {
+  if (pid === process.pid)
+    return false;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (e) {
+    return e.code === "EPERM";
+  }
+}
+var UNMERGED = /* @__PURE__ */ new Set(["DD", "AU", "UD", "UA", "DU", "AA", "UU"]);
+var INJECTED_TOOLING = ["CLAUDE.md", `${WIKI_LAYOUT.configDir}/maintainer-skill`];
+function isInjectedTooling(path2) {
+  return INJECTED_TOOLING.some((t) => path2 === t || path2.startsWith(`${t}/`));
+}
+async function isOursToClear(dir, path2) {
+  if (isFolderNoise(path2))
+    return true;
+  if (!isInjectedTooling(path2))
+    return false;
+  if (path2 !== "CLAUDE.md")
+    return true;
+  const text = await (0, import_promises2.readFile)((0, import_node_path3.join)(dir, path2), "utf8").catch(() => null);
+  return text !== null && withoutRouterBlocks(text).trim() === "";
+}
+async function incomingWay(dir, ref) {
+  const touched = (await runGit(dir, ["diff", "--name-only", "--no-renames", "-z", "HEAD", ref])).split("\0").filter(Boolean);
+  const listing = parseStatusZ(await runGit(dir, ["status", "--porcelain", "-z", "--untracked-files=all", "--ignored"]));
+  const folds = await foldsCase(dir);
+  const key = folds ? pathFoldKey : (p) => p;
+  const touchedKeys = new Set(touched.map(key));
+  return { touched, listing, folds, key, touchedKeys, overlaps: overlapWith(touchedKeys) };
+}
+async function ignoredInWay(dir, way) {
+  const clear = [];
+  const kept = [];
+  for (const e of way.listing) {
+    if (e.xy !== "!!")
+      continue;
+    const path2 = e.path.replace(/\/$/, "");
+    if (!way.overlaps(way.key(path2)))
+      continue;
+    if (await isOursToClear(dir, path2))
+      clear.push(path2);
+    else
+      kept.push(path2);
+  }
+  return { clear, kept };
+}
+async function ignoredInTheWay(dir, ref) {
+  const way = await incomingWay(dir, ref);
+  const key = way.folds ? way.key : (p) => p.normalize("NFC");
+  const touchedKeys = new Set(way.touched.map(key));
+  return (await ignoredInWay(dir, { ...way, key, touchedKeys, overlaps: overlapWith(touchedKeys) })).kept;
+}
+async function planFastForward(dir, ref) {
+  const way = await incomingWay(dir, ref);
+  const { touched, listing, folds, key, touchedKeys, overlaps } = way;
+  const entries = listing.filter((e) => e.xy !== "!!" && !isFolderNoise(e.path));
+  const blobs = folds ? await indexBlobs(dir) : /* @__PURE__ */ new Map();
+  const groups = caseTwins(blobs.keys());
+  const phantoms = folds ? await phantomsAmong(dir, entries.filter((e) => e.xy === " M").map((e) => e.path), blobs) : /* @__PURE__ */ new Set();
+  const clashes = /* @__PURE__ */ new Set();
+  let changed = false;
+  for (const e of entries) {
+    if (phantoms.has(e.path))
+      continue;
+    changed = true;
+    const paths = e.orig === void 0 ? [e.path] : [e.path, e.orig];
+    if (UNMERGED.has(e.xy) || paths.some((p) => overlaps(key(p))))
+      clashes.add(e.path);
+  }
+  const { clear: clearFirst, kept: ignored } = await ignoredInWay(dir, way);
+  for (const path2 of ignored)
+    clashes.add(path2);
+  if (ignored.length > 0)
+    changed = true;
+  const touchedSet = new Set(touched);
+  const stuckTwins = [];
+  const settle = [];
+  for (const group of groups) {
+    if (!touchedKeys.has(key(group[0])))
+      continue;
+    const spelled = group.filter((p) => touchedSet.has(p));
+    if (new Set(spelled.map((p) => blobs.get(p))).size > 1)
+      stuckTwins.push(spelled);
+    else
+      settle.push(...spelled.filter((p) => phantoms.has(p)));
+  }
+  return { clashes: [...clashes], ignored, stuckTwins, settle, changed, clearFirst };
+}
+function overlapWith(touched) {
+  const folders = new Set([...touched].flatMap(parentFolders));
+  return (k) => touched.has(k) || folders.has(k) || parentFolders(k).some((f) => touched.has(f));
+}
+function parentFolders(path2) {
+  const out = [];
+  for (let i = path2.indexOf("/"); i !== -1; i = path2.indexOf("/", i + 1))
+    out.push(path2.slice(0, i));
+  return out;
+}
+async function indexBlobs(dir) {
+  const blobs = /* @__PURE__ */ new Map();
+  for (const record of (await runGit(dir, ["ls-files", "-s", "-z"])).split("\0")) {
+    const tab = record.indexOf("	");
+    if (tab === -1)
+      continue;
+    const [, oid, stage] = record.slice(0, tab).split(" ");
+    if (stage === "0" && oid)
+      blobs.set(record.slice(tab + 1), oid);
+  }
+  return blobs;
+}
+async function settleFoldedTwins(dir, plan) {
+  if (plan.clashes.length > 0 || plan.stuckTwins.length > 0)
     return;
-  const changed = parseStatusZ(await runGit(dir, ["status", "--porcelain", "-z", "--untracked-files=all"]));
-  if (changed.some((e) => e.xy !== "??" && !twins.has(e.path) && !isFolderNoise(e.path)))
-    return;
-  const dirty = new Set(changed.map((e) => e.path));
-  const phantom = new Set(changed.filter((e) => e.xy === " M").map((e) => e.path));
-  const touched = new Set((await runGit(dir, ["diff", "--name-only", "--no-renames", "-z", "HEAD", ref])).split("\0").filter(Boolean));
-  const restore = caseTwins(twins).filter((group) => group.some((p) => !dirty.has(p))).flatMap((group) => group.filter((p) => phantom.has(p) && touched.has(p)));
-  await runGitOverPaths(dir, ["--literal-pathspecs", "checkout"], restore);
+  await runGitOverPaths(dir, ["--literal-pathspecs", "checkout"], plan.settle);
 }
 async function keepingFoldedFiles(dir, move) {
   if (!await foldsCase(dir)) {
@@ -13165,21 +13509,15 @@ async function headOid(dir) {
   return (await runGit(dir, ["rev-parse", "HEAD"])).trim();
 }
 async function diffNameStatus(dir, a, b, opts = {}) {
-  const args = ["diff", "--name-status"];
+  const args = ["diff", "--name-status", "-z"];
   if (opts.noRenames)
     args.push("--no-renames");
-  const out = (await runGit(dir, [...args, a, b])).trim();
-  if (!out)
-    return [];
-  return out.split("\n").map((line) => {
-    const cols = line.split("	");
-    return { status: cols[0] ?? "", path: cols[cols.length - 1] ?? "" };
-  });
+  return parseNameStatusZ(await runGit(dir, [...args, a, b]));
 }
 async function mergeBase(dir, a, b) {
   return (await runGit(dir, ["merge-base", a, b])).trim();
 }
-async function snapshotWorkingTree(dir, message, author) {
+async function snapshotWorkingTree(dir, message, author, keep = []) {
   const gitDir = (await runGit(dir, ["rev-parse", "--absolute-git-dir"])).trim();
   const tmpIndex = (0, import_node_path3.join)(gitDir, `commonground-snapshot-${process.pid}-${Date.now()}.index`);
   const env = {
@@ -13193,6 +13531,17 @@ async function snapshotWorkingTree(dir, message, author) {
   try {
     await runGit(dir, ["read-tree", "HEAD"], env);
     await stageEverything(dir, env);
+    const present2 = [];
+    for (const path2 of new Set(keep)) {
+      if (await (0, import_promises2.lstat)((0, import_node_path3.join)(dir, path2)).then(() => true, () => false))
+        present2.push(path2);
+    }
+    for (let i = 0; i < present2.length; i += 100) {
+      await runGit(dir, ["--literal-pathspecs", "add", "-f", "--", ...present2.slice(i, i + 100)], env, [
+        "-c",
+        "core.safecrlf=false"
+      ]);
+    }
     const tree = (await runGit(dir, ["write-tree"], env)).trim();
     return (await runGit(dir, ["commit-tree", tree, "-p", "HEAD", "-m", message], env)).trim();
   } finally {
@@ -15087,29 +15436,6 @@ function categoryCohesion(input) {
   };
 }
 
-// ../../apps/sync-agent/dist/fs-retry.js
-var TRANSIENT_WIN32 = /* @__PURE__ */ new Set(["EBUSY", "EPERM", "EACCES", "ENOTEMPTY"]);
-var TRANSIENT_POSIX = /* @__PURE__ */ new Set(["EBUSY"]);
-function isTransientFsError(e, platform = process.platform) {
-  const code = e?.code;
-  return typeof code === "string" && (platform === "win32" ? TRANSIENT_WIN32 : TRANSIENT_POSIX).has(code);
-}
-async function withFsRetry(op, opts = {}) {
-  const platform = opts.platform ?? process.platform;
-  const attempts = Math.max(1, opts.attempts ?? 5);
-  const baseMs = opts.baseMs ?? 100;
-  const sleep = opts.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms)));
-  for (let i = 1; ; i++) {
-    try {
-      return await op();
-    } catch (e) {
-      if (i >= attempts || !isTransientFsError(e, platform))
-        throw e;
-      await sleep(baseMs * 2 ** (i - 1));
-    }
-  }
-}
-
 // ../../apps/sync-agent/dist/health.js
 var import_promises3 = require("node:fs/promises");
 var import_node_path5 = require("node:path");
@@ -15132,6 +15458,9 @@ function isRawSourcePath(relPath) {
 }
 function isWikiPagePath(relPath) {
   return !isReservedPath(relPath) && !isRawSourcePath(relPath);
+}
+function isPageFile(relPath) {
+  return relPath.endsWith(".md") && isWikiPagePath(relPath);
 }
 
 // ../../apps/sync-agent/dist/health.js
@@ -15157,9 +15486,6 @@ async function walk(root, keep) {
   }
   await descend(root, "");
   return out;
-}
-function isPageFile(rel) {
-  return rel.endsWith(".md") && isWikiPagePath(rel);
 }
 async function readWorkingTree(dir) {
   const pages = [];
@@ -15257,8 +15583,6 @@ async function resolveMaintainerSkillPayload() {
   const files = Array.isArray(pkg.files) ? pkg.files.filter((f) => typeof f === "string") : [];
   return { dir: (0, import_node_path6.dirname)(pkgPath), files };
 }
-var ROUTER_START = "<!-- commonground:router-rule:start -->";
-var ROUTER_END = "<!-- commonground:router-rule:end -->";
 var MODE_MARKER_RE = /<!-- commonground:mode:(mcp|local) -->/;
 function modeMarker(mode) {
   return `
@@ -15409,10 +15733,6 @@ async function charterVoiceFromWiki(wikiDir) {
     sections: charter.sections.map((s) => s.label)
   };
 }
-var BLOCK_RE = /<!-- commonground:router-rule:start -->[\s\S]*?<!-- commonground:router-rule:end -->/g;
-var BRIEF_START = "<!-- commonground:retrieval-brief:start -->";
-var BRIEF_END = "<!-- commonground:retrieval-brief:end -->";
-var BRIEF_BLOCK_RE = /<!-- commonground:retrieval-brief:start -->[\s\S]*?<!-- commonground:retrieval-brief:end -->/g;
 var EXCLUDED = [
   "/CLAUDE.md",
   `/${WIKI_LAYOUT.configDir}/maintainer-skill/`,
@@ -15425,12 +15745,6 @@ var EXCLUDED = [
   "[Dd][Ee][Ss][Kk][Tt][Oo][Pp].[Ii][Nn][Ii]"
 ];
 var ATTRIBUTES = ["*.md text=auto eol=lf", `/${WIKI_LAYOUT.sourcesDir}/** !text !eol`];
-function withoutRouterBlocks(claudeMd) {
-  return claudeMd.replace(BLOCK_RE, "").replace(BRIEF_BLOCK_RE, "").split("\n").filter((line) => {
-    const t = line.trim();
-    return t !== ROUTER_START && t !== ROUTER_END && t !== BRIEF_START && t !== BRIEF_END;
-  }).join("\n").trimEnd();
-}
 var BOM = "\uFEFF";
 function eolOf(text) {
   const crlf = text.match(/\r\n/g)?.length ?? 0;
@@ -16107,13 +16421,20 @@ async function relocateClone(deps, opts) {
     throw new AgentError(`your wiki is already at ${from}, so there is nothing to move.`);
   }
   const to = await validateClonePath(target, deps.configHome, deps.dataHome);
+  const spellings = await spellingsBeforeMove(from).catch(() => null);
   await setClonePath(teamId, to, deps.configHome);
   const undo = async () => {
     await setClonePath(teamId, from, deps.configHome).catch(() => void 0);
   };
+  const matchDisk = async () => {
+    const folds = await recordDiskCaseFolding(to).catch(() => null);
+    if (folds === false && spellings)
+      await restoreSpellingsAfterMove(to, spellings).catch(() => void 0);
+  };
   try {
     await (0, import_promises6.mkdir)((0, import_node_path8.dirname)(to), { recursive: true });
     await withFsRetry(() => (0, import_promises6.rename)(from, to));
+    await matchDisk();
   } catch (e) {
     if (e.code !== "EXDEV") {
       await undo();
@@ -16126,6 +16447,7 @@ async function relocateClone(deps, opts) {
       await undo();
       throw new AgentError(explainMoveFailure(copyError, from, to) + (partialLeft ? ` A partial copy is left at ${to}; delete it before trying again.` : ""));
     }
+    await matchDisk();
     try {
       await (0, import_promises6.rm)(from, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
     } catch (removeError) {
@@ -16239,19 +16561,12 @@ async function overlaySource(sourceDir, dir, guardedHomes) {
     return !guardedHomes.some((home) => isInsidePath(home, src)) && !inGuardedHome(src);
   };
   const refused = /* @__PURE__ */ new Map();
-  const names = foldIndex((await runGit(dir, ["ls-files", "-z"])).split("\0").filter(Boolean));
-  const candidates = (await walkFiles(sourceDir, () => true)).filter((rel) => admissible((0, import_node_path8.join)(sourceDir, rel), () => false)).sort();
-  for (const rel of candidates) {
-    const problem = portablePathProblem(rel);
-    const twin = problem ? null : names.clash(rel);
-    if (problem) {
-      refused.set(rel, `${problem}, so it was not copied; rename it in the source folder and import again`);
-    } else if (twin) {
-      refused.set(rel, `it and "${twin}", already in the wiki, differ only in ${twinHow([twin, sameDepth(rel, twin)])}; a Mac or Windows disk holds only one of the two, so it was not copied`);
-    } else {
-      names.add(rel);
-    }
+  const tracked = (await runGit(dir, ["ls-files", "-z"])).split("\0").filter(Boolean);
+  const candidates = (await walkFiles(sourceDir, () => true)).filter((rel) => admissible((0, import_node_path8.join)(sourceDir, rel), () => false));
+  for (const p of newPathProblems(tracked, candidates)) {
+    refused.set(p.path, p.kind === "name" ? `${p.problem}, so it was not copied; rename it in the source folder and import again` : `it and "${p.twin}", already in the wiki, differ only in ${twinHow([p.twin, sameDepth(p.path, p.twin)])}; a Mac or Windows disk holds only one of the two, so it was not copied`);
   }
+  const names = foldIndex([...tracked, ...candidates.filter((rel) => !refused.has(rel))]);
   const allowed = (src, alsoReject) => {
     if (!admissible(src, alsoReject))
       return false;
@@ -16296,34 +16611,6 @@ async function overlaySource(sourceDir, dir, guardedHomes) {
     }));
   }
   return { notImported, refused: new Set(refused.keys()) };
-}
-function foldIndex(existing) {
-  const exact = /* @__PURE__ */ new Set();
-  const byKey = /* @__PURE__ */ new Map();
-  const prefixes = (path2) => {
-    const parts = path2.split("/");
-    return parts.map((_, i) => parts.slice(0, i + 1).join("/"));
-  };
-  const add = (path2) => {
-    for (const prefix of prefixes(path2)) {
-      exact.add(prefix);
-      if (!byKey.has(pathFoldKey(prefix)))
-        byKey.set(pathFoldKey(prefix), prefix);
-    }
-  };
-  for (const path2 of existing)
-    add(path2);
-  const clash = (path2) => {
-    for (const prefix of prefixes(path2)) {
-      if (exact.has(prefix))
-        continue;
-      const hit = byKey.get(pathFoldKey(prefix));
-      if (hit !== void 0)
-        return hit;
-    }
-    return null;
-  };
-  return { clash, add };
 }
 async function differs(a, b) {
   try {
@@ -16621,11 +16908,44 @@ async function pushRefusalReason(origin) {
     return null;
   }
 }
+var RECEIVE_REFUSAL = "CommonGround did not publish this push";
+var RELAYED_COMMIT_SAFE = "Your commit is safe in the wiki folder.";
+var RELAY_CAP = 3e3;
+var CSI = /(?:\u001b|\^\[)\[[0-?]*[ -/]*[@-~]/g;
+function relayedRefusal(stderr) {
+  const lines = stderr.split(/\r\n|\r|\n/).map((line) => line.replace(CSI, ""));
+  const remote = (line) => line.startsWith("remote:") ? line.slice("remote:".length).replace(/^ /, "").trimEnd() : null;
+  const start = lines.findIndex((line) => remote(line)?.trimStart().startsWith(RECEIVE_REFUSAL));
+  if (start < 0)
+    return null;
+  const said = [];
+  let length = 0;
+  for (const line of lines.slice(start)) {
+    const text = remote(line);
+    if (text === null)
+      break;
+    if (!text.trim())
+      continue;
+    if (said.length > 0 && length + text.length > RELAY_CAP) {
+      said.push("(The rest of the server's message was cut here.)");
+      break;
+    }
+    said.push(text);
+    length += text.length + 1;
+  }
+  return said.join("\n");
+}
 async function publishBranch(dir, branch, origin) {
   try {
     await pushBranch(dir, branch, origin);
   } catch (e) {
-    if (!(e instanceof GitError) || !refusedWithHttp403(e.stderr))
+    if (!(e instanceof GitError))
+      throw e;
+    const relayed = relayedRefusal(e.stderr);
+    if (relayed)
+      throw new AgentError(`${relayed}
+${RELAYED_COMMIT_SAFE}`);
+    if (!refusedWithHttp403(e.stderr))
       throw e;
     const reason = await pushRefusalReason(origin);
     if (!reason)
@@ -16649,12 +16969,18 @@ async function sync(deps, teamId, opts = {}) {
   }
   if (behind > 0) {
     const incoming = toPageChanges(await diffNameStatus(dir, "HEAD", remote));
+    const plan = await planFastForward(dir, remote);
+    if (plan.clashes.length > 0 || plan.stuckTwins.length > 0) {
+      return { teamId, clonePath: dir, action: "diverged", ahead, behind };
+    }
     try {
-      await fastForward(dir, remote);
+      await fastForward(dir, remote, plan);
     } catch (e) {
-      if (e instanceof GitError && /would be overwritten by/i.test(e.stderr)) {
+      if (e instanceof GitError && FF_REFUSED.test(e.stderr)) {
+        await injectTooling(deps, teamId, dir);
         return { teamId, clonePath: dir, action: "diverged", ahead, behind };
       }
+      await injectTooling(deps, teamId, dir).catch(() => void 0);
       throw e;
     }
     await injectTooling(deps, teamId, dir);
@@ -16663,9 +16989,9 @@ async function sync(deps, teamId, opts = {}) {
   await injectTooling(deps, teamId, dir);
   if (ahead > 0) {
     if (can(binding.role, "wiki:edit")) {
-      const twins = await trackedTwins(dir);
-      if (twins.length > 0) {
-        return { teamId, clonePath: dir, action: "needs-rename", ahead, behind, renames: twins };
+      const renames = await committedNameProblems(dir, remote);
+      if (renames.length > 0) {
+        return { teamId, clonePath: dir, action: "needs-rename", ahead, behind, renames };
       }
       const pushed = toPageChanges(await diffNameStatus(dir, remote, "HEAD"));
       const deletions = toPageChanges(await diffNameStatus(dir, remote, "HEAD", { noRenames: true })).filter((p) => p.kind === "deleted");
@@ -16713,11 +17039,11 @@ async function commitAllIfAny(dir, binding, message) {
   noteLocalCommit();
   return true;
 }
-async function snapshotToDraft(dir, binding, label) {
+async function snapshotToDraft(dir, binding, label, keep = []) {
   const l = label ?? (/* @__PURE__ */ new Date()).toISOString().replace(/[:.]/g, "-");
   const branch = `draft/${l}`;
   await refreshCloneTooling(dir);
-  const snapshot = await snapshotWorkingTree(dir, `commonground draft ${l}`, agentAuthor(binding));
+  const snapshot = await snapshotWorkingTree(dir, `commonground draft ${l}`, agentAuthor(binding), keep);
   await createBranch(dir, branch, snapshot);
   return branch;
 }
@@ -16738,6 +17064,53 @@ async function refreshTeamProfile(deps, teamId, token) {
   } catch {
   }
 }
+var FF_REFUSED = /would be overwritten by|would lose untracked files|would be removed by/i;
+function refusedPaths(stderr) {
+  const paths = [];
+  let listing = false;
+  for (const line of stderr.split("\n")) {
+    if (FF_REFUSED.test(line))
+      listing = true;
+    else if (listing && line.startsWith("	"))
+      paths.push(line.slice(1));
+    else
+      listing = false;
+  }
+  return paths;
+}
+async function pullStop(dir, remote, plan, refused = false) {
+  const stop = {};
+  if (plan?.clashes.length) {
+    stop.clashes = [...plan.clashes].sort();
+    if (plan.ignored.length)
+      stop.ignored = [...plan.ignored].sort();
+    const others = await unpublishedWork(dir, new Set(plan.clashes));
+    if (others.files > 0)
+      stop.others = others;
+  }
+  if (plan?.stuckTwins.length)
+    stop.stuckTwins = plan.stuckTwins;
+  if (plan && !plan.changed && !refused)
+    stop.nothingAtStake = true;
+  const { standing, ending } = await twinsAcross(dir, remote);
+  if (standing.length)
+    stop.twins = standing;
+  if (ending.length)
+    stop.twinsEnding = ending;
+  return stop;
+}
+async function twinsAcross(dir, remote) {
+  const held = await trackedTwinGroups(dir);
+  if (held.length === 0)
+    return { standing: [], ending: [] };
+  const incoming = (await runGit(dir, ["ls-tree", "-r", "--name-only", "-z", remote])).split("\0").filter(Boolean);
+  const kept = new Set(incoming);
+  const stays = new Set(caseTwins(incoming).map((g) => pathFoldKey(g[0])));
+  return {
+    standing: held.filter((g) => stays.has(pathFoldKey(g[0]))).map(twinProblem),
+    ending: held.filter((g) => !stays.has(pathFoldKey(g[0]))).map((g) => g.filter((p) => !kept.has(p)))
+  };
+}
 async function pull(deps, teamId, opts = {}) {
   const binding = await bindingFor(deps, teamId);
   const origin = await deps.backend.remoteAccess(teamId);
@@ -16752,22 +17125,25 @@ async function pull(deps, teamId, opts = {}) {
   const { ahead, behind } = await aheadBehind(dir, "HEAD", remote);
   const unpublished = await unpublishedWork(dir);
   const dirty = unpublished.files > 0;
-  const blocksMerge = !await isWorkingTreeClean(dir);
   if (behind === 0) {
     await injectTooling(deps, teamId, dir);
     return { teamId, clonePath: dir, action: "up-to-date", ahead, behind, dirty, unpublished };
   }
   const incoming = toPageChanges(await diffNameStatus(dir, await mergeBase(dir, "HEAD", remote), remote));
-  if (ahead === 0 && !blocksMerge) {
-    let merged = true;
+  const plan = ahead === 0 ? await planFastForward(dir, remote) : null;
+  let refused = null;
+  if (plan && plan.clashes.length === 0 && plan.stuckTwins.length === 0) {
     try {
-      await fastForward(dir, remote);
+      await fastForward(dir, remote, plan);
     } catch (e) {
-      if (!(e instanceof GitError) || !/would be overwritten by/i.test(e.stderr))
+      if (!(e instanceof GitError) || !FF_REFUSED.test(e.stderr)) {
+        await injectTooling(deps, teamId, dir).catch(() => void 0);
         throw e;
-      merged = false;
+      }
+      refused = refusedPaths(e.stderr);
+      await injectTooling(deps, teamId, dir);
     }
-    if (merged) {
+    if (refused === null) {
       await injectTooling(deps, teamId, dir);
       return {
         teamId,
@@ -16775,8 +17151,8 @@ async function pull(deps, teamId, opts = {}) {
         action: "fast-forwarded",
         ahead: 0,
         behind,
-        // The ff moved HEAD; it did not touch the untracked pages sitting beside it. They are still
-        // unpublished, and the receipt is the one place the user would hear so.
+        // The ff moved HEAD; it did not touch the local work beside what came in. That work is still
+        // unpublished, and the receipt says so (SER-331: it used to say only what arrived).
         dirty,
         unpublished,
         pages: incoming
@@ -16784,9 +17160,23 @@ async function pull(deps, teamId, opts = {}) {
     }
   }
   if (!opts.takeRemote) {
-    return { teamId, clonePath: dir, action: "blocked", ahead, behind, dirty, unpublished, pages: incoming };
+    return {
+      teamId,
+      clonePath: dir,
+      action: "blocked",
+      ahead,
+      behind,
+      dirty,
+      unpublished,
+      pages: incoming,
+      ...await pullStop(dir, remote, plan, refused !== null)
+    };
   }
-  const { draftBranch } = await resolveDivergence(deps, teamId, "take-remote");
+  const nothingAtStake = plan !== null && !plan.changed && refused === null;
+  const { draftBranch } = await resolveDivergence(deps, teamId, "take-remote", {
+    noDraft: nothingAtStake,
+    keep: refused ?? []
+  });
   return {
     teamId,
     clonePath: dir,
@@ -16795,7 +17185,7 @@ async function pull(deps, teamId, opts = {}) {
     behind,
     dirty,
     pages: incoming,
-    draftBranch
+    ...draftBranch ? { draftBranch } : { nothingAtStake: true }
   };
 }
 function twinHow(spellings) {
@@ -16819,34 +17209,49 @@ function twinProblem(group) {
   };
 }
 async function trackedTwins(dir) {
+  return (await trackedTwinGroups(dir)).map(twinProblem);
+}
+async function trackedTwinGroups(dir) {
   if (!await foldsCase(dir))
     return [];
-  return caseTwins((await runGit(dir, ["ls-files", "-z"])).split("\0").filter(Boolean)).map(twinProblem);
+  return caseTwins((await runGit(dir, ["ls-files", "-z"])).split("\0").filter(Boolean));
 }
 async function unportableChanges(dir) {
   const entries = await statusEntries(dir);
   const tracked = (await runGit(dir, ["ls-files", "-z"])).split("\0").filter(Boolean);
-  const fresh = entries.filter((e) => e.xy === "??" || "ARC".includes(e.xy[0]) && e.xy[1] !== "D").map((e) => e.path).filter((p) => !isFolderNoiseName((0, import_node_path8.basename)(p)));
   const leaving = new Set(entries.filter((e) => e.xy.includes("D")).map((e) => e.path));
+  const uncommitted = entries.filter((e) => e.xy === "??" || "ARC".includes(e.xy[0]) && e.xy[1] !== "D").map((e) => e.path).filter((p) => !isFolderNoiseName((0, import_node_path8.basename)(p)));
+  const inIndex = new Set(tracked);
+  const committed = (await addedAhead(dir)).filter((p) => inIndex.has(p) && !leaving.has(p));
+  const fresh = [.../* @__PURE__ */ new Set([...uncommitted, ...committed])];
   const freshSet = new Set(fresh);
   const staying = tracked.filter((p) => !leaving.has(p) && !freshSet.has(p));
-  const problems = [];
-  const names = foldIndex(staying);
-  for (const path2 of [...fresh].sort()) {
-    const problem = portablePathProblem(path2);
-    const twin = problem ? null : names.clash(path2);
-    if (problem)
-      problems.push({ kind: "name", path: path2, reason: problem });
-    else if (twin)
-      problems.push(caseClash(path2, twin));
-    else
-      names.add(path2);
-  }
+  const problems = newPathProblems(staying, fresh).map(nameProblem);
   if (await foldsCase(dir)) {
     for (const group of caseTwins(tracked.filter((p) => !freshSet.has(p))))
       problems.push(twinProblem(group));
   }
   return problems;
+}
+async function addedAhead(dir, remote) {
+  let base;
+  try {
+    base = await mergeBase(dir, "HEAD", remote ?? `origin/${await currentBranch(dir)}`);
+  } catch {
+    return [];
+  }
+  return (await diffNameStatus(dir, base, "HEAD", { noRenames: true })).filter((n) => n.status === "A").map((n) => n.path);
+}
+async function committedNameProblems(dir, remote) {
+  const added = new Set(await addedAhead(dir, remote));
+  const kept = (await runGit(dir, ["ls-tree", "-r", "-z", "--name-only", "HEAD"])).split("\0").filter((p) => p && !added.has(p));
+  const problems = newPathProblems(kept, added).map(nameProblem);
+  if (await foldsCase(dir))
+    problems.push(...caseTwins(kept).map(twinProblem));
+  return problems;
+}
+function nameProblem(p) {
+  return p.kind === "name" ? { kind: "name", path: p.path, reason: p.problem } : caseClash(p.path, p.twin);
 }
 function sameDepth(path2, prefix) {
   return path2.split("/").slice(0, prefix.split("/").length).join("/");
@@ -16861,22 +17266,61 @@ function caseClash(path2, twin) {
 async function replayNameProblems(dir, remote, myEdits, myDeletions) {
   const hosted = (await runGit(dir, ["ls-tree", "-r", "-z", "--name-only", remote])).split("\0").filter(Boolean);
   const gone = new Set(myDeletions);
-  const names = foldIndex(hosted.filter((p) => !gone.has(p)));
-  const problems = [];
-  for (const path2 of [...myEdits].sort()) {
-    const twin = names.clash(path2);
-    if (twin)
-      problems.push(caseClash(path2, twin));
-    else
-      names.add(path2);
-  }
+  const held = new Set(hosted);
+  const problems = newPathProblems(hosted.filter((p) => !gone.has(p)), myEdits.filter((p) => !held.has(p))).map(nameProblem);
   if (await foldsCase(dir))
     problems.push(...caseTwins(hosted).map(twinProblem));
   return problems;
 }
 async function stageAll(dir) {
   await refreshCloneTooling(dir);
+  await dropPageBoms(dir);
   await stageEverything(dir);
+}
+var MARKED_PAGE_START = Buffer.from([239, 187, 191, 45, 45, 45]);
+async function dropPageBoms(dir) {
+  for (const e of await statusEntries(dir)) {
+    if (e.xy.includes("D") || !isPageFile(e.path))
+      continue;
+    const file = (0, import_node_path8.join)(dir, e.path);
+    try {
+      if (!(await (0, import_promises6.lstat)(file)).isFile())
+        continue;
+      await withFsRetry(() => stripPageBom(file, e.path));
+    } catch (err) {
+      if (err instanceof AgentError)
+        throw err;
+    }
+  }
+}
+async function stripPageBom(file, page) {
+  const fh = await (0, import_promises6.open)(file, "r+");
+  let damaged = false;
+  try {
+    const head = Buffer.alloc(MARKED_PAGE_START.length);
+    const { bytesRead } = await fh.read(head, 0, head.length, 0);
+    if (bytesRead < head.length || !head.equals(MARKED_PAGE_START))
+      return;
+    const bytes = await fh.readFile();
+    const kept = bytes.length - 3;
+    try {
+      const { bytesWritten } = await fh.write(bytes, 3, kept, 0);
+      if (bytesWritten !== kept)
+        throw new Error(`wrote ${bytesWritten} of ${kept} bytes`);
+      await fh.truncate(kept);
+    } catch (e) {
+      const restored = await fh.write(bytes, 0, bytes.length, 0).then(({ bytesWritten }) => bytesWritten === bytes.length, () => false);
+      if (restored)
+        throw e;
+      damaged = true;
+      throw new AgentError(`could not finish taking the byte-order mark off ${JSON.stringify(page)} before publishing, and could not put the page back as it was, so its text may be damaged (a full disk can do this). Nothing was published. Check that page, make room on the disk if it is full, then publish again.`);
+    }
+  } finally {
+    await fh.close().catch((e) => {
+      if (!damaged)
+        throw e;
+    });
+  }
 }
 async function push(deps, teamId, opts = {}) {
   const binding = await bindingFor(deps, teamId);
@@ -16971,7 +17415,7 @@ async function push(deps, teamId, opts = {}) {
     if (replayRenames.length > 0) {
       return { teamId, clonePath: dir, action: "needs-rename", ahead, behind, renames: replayRenames };
     }
-    draftBranch = await snapshotToDraft(dir, binding);
+    draftBranch = await snapshotToDraft(dir, binding, void 0, await ignoredInTheWay(dir, remote));
     await resetHardTo(dir, remote);
     await runGitOverPaths(dir, ["--literal-pathspecs", "rm", "-f", "--ignore-unmatch"], myDeletions);
     await runGitOverPaths(dir, ["--literal-pathspecs", "checkout", draftBranch], myEdits);
@@ -17048,8 +17492,10 @@ async function status(deps, teamId) {
   const { ahead, behind } = await aheadBehind(dir, "HEAD", remote);
   const unpublished = await unpublishedWork(dir);
   const dirty = unpublished.files > 0;
-  const hasLocal = ahead > 0 || dirty;
-  const state = behind > 0 && hasLocal ? "diverged" : behind > 0 ? "behind" : hasLocal ? "ahead" : "up-to-date";
+  const plan = behind > 0 && ahead === 0 ? await planFastForward(dir, remote) : null;
+  const stops = plan !== null && (plan.clashes.length > 0 || plan.stuckTwins.length > 0);
+  const diverged = behind > 0 && (ahead > 0 || stops);
+  const state = diverged ? "diverged" : behind > 0 ? "behind" : ahead > 0 || dirty ? "ahead" : "up-to-date";
   const changedPages = behind > 0 ? toPageChanges(await diffNameStatus(dir, "HEAD", remote)) : [];
   const changedFiles = changedPages.map((p) => p.path);
   return {
@@ -17063,6 +17509,7 @@ async function status(deps, teamId) {
     unpublished,
     changedFiles,
     changedPages,
+    ...stops ? await pullStop(dir, remote, plan) : {},
     ...legacyCredential
   };
 }
@@ -17073,14 +17520,16 @@ async function resolveDivergence(deps, teamId, choice, opts = {}) {
   if (choice === "keep-local") {
     return { teamId, choice };
   }
-  const draftBranch = await snapshotToDraft(dir, binding, opts.label);
   if (choice === "save-as-draft") {
-    return { teamId, choice, draftBranch };
+    return { teamId, choice, draftBranch: await snapshotToDraft(dir, binding, opts.label) };
   }
   await refreshRemote(dir, await deps.backend.remoteAccess(teamId));
-  await resetHardTo(dir, `origin/${await currentBranch(dir)}`);
+  const remote = `origin/${await currentBranch(dir)}`;
+  const keep = [.../* @__PURE__ */ new Set([...opts.keep ?? [], ...await ignoredInTheWay(dir, remote)])];
+  const draftBranch = opts.noDraft && keep.length === 0 ? void 0 : await snapshotToDraft(dir, binding, opts.label, keep);
+  await resetHardTo(dir, remote);
   await injectTooling(deps, teamId, dir);
-  return { teamId, choice, draftBranch };
+  return { teamId, choice, ...draftBranch ? { draftBranch } : {} };
 }
 async function lint(deps, teamId) {
   const binding = await bindingFor(deps, teamId);
@@ -17234,7 +17683,7 @@ function packageVersion() {
   }
 }
 function cliVersion() {
-  const embedded = true ? "0.18.0".trim() : "";
+  const embedded = true ? "0.19.0".trim() : "";
   if (embedded)
     return embedded;
   const dev = packageVersion();
@@ -17497,6 +17946,10 @@ async function cloneMismatchNote(deps, resolvedTeamId, verb, cwd = process.cwd()
 }
 
 // ../../apps/sync-agent/dist/format.js
+var UNSAFE = /[\u0000-\u001f\u007f-\u009f\u061c\u200b-\u200f\u2028-\u202e\u2060-\u2064\u2066-\u206f\ufeff]/g;
+function inert(text) {
+  return text.replace(UNSAFE, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`);
+}
 var PAGE_SYMBOL = {
   added: "+",
   modified: "~",
@@ -17504,7 +17957,10 @@ var PAGE_SYMBOL = {
   renamed: "~"
 };
 function formatReceipt(pages) {
-  return pages.map((p) => `${PAGE_SYMBOL[p.kind]} ${p.page}`).join(" \xB7 ");
+  return pages.map((p) => `${PAGE_SYMBOL[p.kind]} ${inert(p.page)}`).join(" \xB7 ");
+}
+function pageNames(pages) {
+  return pages.map((p) => inert(p.page)).join(", ");
 }
 function pageCount(n) {
   return `${n} page${n === 1 ? "" : "s"}`;
@@ -17523,16 +17979,16 @@ function keptForSuggestion() {
 function deleteWarning(deletions, v) {
   if (!deletions?.length)
     return "";
-  return `  \u26A0 REMOVES ${pageCount(deletions.length)} from ${v.wiki}: ${deletions.map((p) => p.page).join(", ")}
+  return `  \u26A0 REMOVES ${pageCount(deletions.length)} from ${v.wiki}: ${pageNames(deletions)}
     ${capitalize(v.removalImpact)}. Past versions stay in history, but the page goes away.
 `;
 }
 function unparseableLines(pages, indent) {
-  return pages.map((p) => `${indent}${p.relPath}: ${p.reason}
+  return pages.map((p) => `${indent}${inert(p.relPath)}: ${inert(p.reason)}
 `).join("");
 }
 function renameLines(renames, indent) {
-  return renames.map((p) => `${indent}${p.path}: ${p.reason}
+  return renames.map((p) => `${indent}${inert(p.path)}: ${inert(p.reason)}
 `).join("");
 }
 function needsRenameBody(renames, folder) {
@@ -17546,7 +18002,7 @@ function needsRenameBody(renames, folder) {
 `);
   }
   return `nothing was published from ${folder}.
-` + twins.map((p) => `  ${p.reason}
+` + twins.map((p) => `  ${inert(p.reason)}
 `).join("") + (names.length ? `  Also, ${names.length} new file name(s) here would break the wiki on another machine, so ${names.length === 1 ? "it needs" : "they need"} a new name before the next publish:
 ` + renameLines(names, "    ") : "");
 }
@@ -17621,7 +18077,7 @@ ${names}${broken}`;
   (A plugin update corrected the catalog format; index.md now matches this clone's pages.)
 ` + placeholderNote(r.unparseable);
       }
-      const removed = r.deletions?.length ? `  Removed from ${v.wiki}: ${r.deletions.map((p) => p.page).join(", ")}
+      const removed = r.deletions?.length ? `  Removed from ${v.wiki}: ${pageNames(r.deletions)}
 ` : "";
       return pages.length ? `Published ${pageCount(pages.length)} from ${r.clonePath} to ${label}: ${formatReceipt(pages)}
 ${removed}${placeholderNote(r.unparseable)}` : `Published ${r.ahead} change(s) from ${r.clonePath} to ${label}.
@@ -17638,11 +18094,151 @@ ${removed}${placeholderNote(r.unparseable)}`;
     case "published-mine": {
       const pages = r.pages ?? [];
       return `Published your version to ${label}${pages.length ? `: ${formatReceipt(pages)}` : ""}
-` + (r.deletions?.length ? `  Removed from ${v.wiki}: ${r.deletions.map((p) => p.page).join(", ")}
+` + (r.deletions?.length ? `  Removed from ${v.wiki}: ${pageNames(r.deletions)}
 ` : "") + placeholderNote(r.unparseable) + (r.draftBranch ? `  Your pre-merge state is saved on ${r.draftBranch}.
 ` : "");
     }
   }
+}
+function formatPull(r, v, label = r.teamId, role) {
+  switch (r.action) {
+    case "cloned":
+      return `Wiki cloned at ${r.clonePath}.
+`;
+    case "up-to-date": {
+      const pending = unpublishedPhrase(r);
+      if (!(r.ahead > 0 || r.dirty))
+        return `${label}: already up to date.
+`;
+      return canPublish(role) ? `${label}: nothing new to bring in \u2014 you have ${pending || "unpublished changes"} (${byAudience('"commonground push"', "to publish: /commonground:push")}).
+` : `${label}: nothing new to bring in. You have ${pending || "unpublished changes"}. ${keptForSuggestion()}
+`;
+    }
+    case "fast-forwarded": {
+      const pages = r.pages ?? [];
+      return (pages.length ? `Updated ${label} \u2014 pulled ${pageCount(pages.length)}: ${formatReceipt(pages)}
+` : `Updated ${label} (+${r.behind} from ${v.wiki}).
+`) + stillUnpublished(r, role);
+    }
+    case "blocked":
+      return pullBlocked(r, label, role);
+    case "took-remote":
+      if (r.nothingAtStake) {
+        return `${label}: adopted the published version. Nothing of yours was in the folder, so there was nothing to save first.
+`;
+      }
+      return `${label}: adopted the published version` + (r.draftBranch ? ` \u2014 your local work is saved on ${r.draftBranch}.
+` : ".\n");
+  }
+}
+function stillUnpublished(r, role) {
+  if (!r.dirty)
+    return "";
+  const pending = unpublishedPhrase(r);
+  return canPublish(role) ? `  You still have ${pending}, not published yet (${byAudience('"commonground push"', "to publish: /commonground:push")}).
+` : `  You still have ${pending}. ${keptForSuggestion()}
+`;
+}
+function stuckPairLine(spellings) {
+  const quoted = spellings.map((p) => `"${inert(p)}"`);
+  const names = quoted.length === 2 ? `both ${quoted[0]} and ${quoted[1]}` : `${quoted.slice(0, -1).join(", ")} and ${quoted[quoted.length - 1]}`;
+  return `  The change updates ${names}, which differ only in ${twinHow(spellings)}, and this machine can hold only one of them.
+`;
+}
+function renameByCurator(role) {
+  return canPublish(role) ? "  A curator on a Linux machine, or CommonGround support, can rename one; until then nothing can be published from here.\n" : "  A curator on a Linux machine, or CommonGround support, can rename one.\n";
+}
+function pairEndingLine(leaving) {
+  const quoted = leaving.map((p) => `"${inert(p)}"`);
+  const names = quoted.length === 1 ? quoted[0] : `${quoted.slice(0, -1).join(", ")} and ${quoted[quoted.length - 1]}`;
+  return `  The incoming change renames or removes ${names}, which ends the pair: once it is in, this folder can publish again.
+`;
+}
+function clashNames(paths) {
+  const shown = paths.slice(0, 5).map((p) => inert(p.endsWith(".md") ? p.slice(0, -3) : p));
+  if (paths.length > 5)
+    return `${shown.join(", ")} and ${paths.length - 5} more`;
+  return shown.length === 1 ? shown[0] : `${shown.slice(0, -1).join(", ")} and ${shown[shown.length - 1]}`;
+}
+function stopHead(r, label, stopped) {
+  if (r.ahead > 0) {
+    return `${label}: ${r.behind} incoming change(s), but you have ${r.ahead} unpublished commit(s)${r.dirty ? `, plus ${unpublishedPhrase(r)}` : ""}, and a pull cannot bring the change in around them. ${stopped}.
+`;
+  }
+  if (r.clashes?.length) {
+    return `${label}: ${r.behind} incoming change(s), and they change ${clashNames(r.clashes)}, which you changed here too. ${stopped}.
+`;
+  }
+  if (r.stuckTwins?.length) {
+    return `${label}: ${r.behind} incoming change(s) this machine cannot bring in as an update. ${stopped}, and none of your work is in its way.
+`;
+  }
+  return `${label}: ${r.behind} incoming change(s), but they would write over a file here (you have ${unpublishedPhrase(r) || "unpublished work in your wiki folder"}). ${stopped}.
+`;
+}
+function besideTheStop(r) {
+  if (r.ahead > 0)
+    return "";
+  if (r.clashes?.length) {
+    const u = r.others;
+    if (!u)
+      return "";
+    const more = u.pages > 0 ? `${u.pages} more page${u.pages === 1 ? "" : "s"} in your wiki folder` : `${u.files} more file${u.files === 1 ? "" : "s"} in your wiki folder`;
+    return `  You also have ${more}, not published yet, which the incoming change does not touch.
+`;
+  }
+  if (r.stuckTwins?.length && r.dirty) {
+    return `  You have ${unpublishedPhrase(r)}, not published yet. Waiting leaves it where it is; taking the published version saves it to a draft first.
+`;
+  }
+  return "";
+}
+function ignoredStop(r, label, stopped, incoming) {
+  const one = r.clashes.length === 1;
+  const head = one ? `${label}: ${r.behind} incoming change(s), and a file this machine's git ignores sits where one of them goes: ${clashNames(r.clashes)}. ${stopped}.
+` : `${label}: ${r.behind} incoming change(s), and files this machine's git ignores sit where they go: ${clashNames(r.clashes)}. ${stopped}.
+`;
+  const it = one ? "it" : "them";
+  return head + incoming + besideTheStop(r) + byAudience(`  Move or rename ${it}, then pull again: commonground pull
+  Or take the published version (${one ? "it is" : "they are"} saved to a draft first): commonground pull --take-remote
+`, `  Suggest they move or rename ${it}, then ${ask("pull")}.
+  Or ${ask("pull-take-remote")}.
+`);
+}
+function pullBlocked(r, label, role, from = "pull") {
+  const incoming = `  Incoming: ${formatReceipt(r.pages ?? []) || "(none)"}
+`;
+  const stuck = (r.stuckTwins ?? []).map(stuckPairLine).join("");
+  const curator = r.stuckTwins?.length ? renameByCurator(role) : "";
+  const stopped = from === "pull" ? "Nothing was changed" : "A pull stops here and changes nothing";
+  if (r.nothingAtStake) {
+    return `${label}: ${r.behind} incoming change(s) this machine cannot bring in as an update. ${stopped}, and nothing of yours is at stake.
+` + incoming + stuck + byAudience(`  To bring it in, take the published version: commonground pull --take-remote
+`, `  To bring it in, offer to take the published version; nothing of the user's needs saving first.
+`) + curator;
+  }
+  if (r.ahead === 0 && !r.stuckTwins?.length && r.clashes?.length && r.ignored?.length === r.clashes.length) {
+    return ignoredStop(r, label, stopped, incoming);
+  }
+  const head = stopHead(r, label, stopped) + incoming + stuck + besideTheStop(r);
+  if (!canPublish(role)) {
+    return head + curator + `  ${keptForSuggestion()}
+` + byAudience(`  To bring the published version in anyway (your work is saved first): commonground pull --take-remote
+`, `  To bring the published version in anyway, ${ask("pull-take-remote")}.
+`);
+  }
+  const ending = (r.twinsEnding ?? []).map(pairEndingLine).join("");
+  if (r.twins?.length || ending) {
+    return head + (curator || (r.twins ?? []).map((t) => `  ${inert(t.reason)}
+`).join("")) + ending + byAudience(`  Take the published version instead (your work is saved first): commonground pull --take-remote
+`, `  ${capitalize(ask("pull-take-remote"))}.
+`);
+  }
+  return head + byAudience(`  Publish yours first: commonground push
+  Or take the published version (your work is saved first): commonground pull --take-remote
+`, `  Publish the user's local work first: ${ask("push")}.
+  Or ${ask("pull-take-remote")}.
+`);
 }
 function formatWikiList(listings, activeId, boundId, alsoIds = []) {
   return listings.map((l) => {
@@ -17793,7 +18389,8 @@ function formatSyncState(s, mode = null, profile = {}) {
 `;
     case "behind": {
       const incoming = s.changedPages.length ? ` Incoming: ${formatReceipt(s.changedPages)}.` : "";
-      return `${who}: ${s.behind} commit(s) behind \u2014 ${ask("pull")}.${incoming}
+      const keeps = s.dirty ? " Pulling leaves the work in your wiki folder as it is." : "";
+      return `${who}: ${s.behind} commit(s) behind \u2014 ${ask("pull")}.${keeps}${incoming}
 `;
     }
     case "ahead":
@@ -17806,6 +18403,8 @@ function formatSyncState(s, mode = null, profile = {}) {
 ` : `${who}: work in your wiki folder to publish \u2014 ${ask("push")}.
 `;
     case "diverged":
+      if (s.ahead === 0)
+        return pullBlocked({ ...s, pages: s.changedPages }, who, s.role, "status");
       return `${who}: DIVERGED (${s.ahead} ahead, ${s.behind} behind${s.dirty ? ", plus work in your wiki folder" : ""}).
   Incoming: ${formatReceipt(s.changedPages) || "(none)"}
 ` + byAudience(`  Resolve: commonground resolve <keep-local|take-remote|save-as-draft>
@@ -18084,7 +18683,10 @@ function formatInitStanding(s) {
 `;
     case "behind":
       return `  The hosted wiki is ${s.behind} commit(s) ahead of your folder.${incoming}
-  ${byAudience(`Run "commonground pull" when you want them \u2014 this init did not.`, `Offer /commonground:pull when they want them \u2014 this init did not pull.`)}
+` + // Behind with work the incoming change does not touch is `behind` since SER-331: say the
+      // work, which a pull leaves as it is.
+      (s.dirty ? `  You also have ${unpublishedPhrase(s)}, not published yet; pulling leaves that work as it is.
+` : "") + `  ${byAudience(`Run "commonground pull" when you want them \u2014 this init did not.`, `Offer /commonground:pull when they want them \u2014 this init did not pull.`)}
 `;
     case "ahead":
       return (s.ahead > 0 ? `  Your folder is ${s.ahead} commit(s) ahead of the hosted wiki${dirty} \u2014 unpublished work.
@@ -18094,6 +18696,11 @@ function formatInitStanding(s) {
 ` : `  ${keptForSuggestion()}
 `);
     case "diverged":
+      if (s.ahead === 0) {
+        return `  The hosted wiki is ${s.behind} commit(s) ahead of your folder, and a pull would stop before bringing them in.${incoming}
+  Nothing was reconciled. ${byAudience('"commonground status"', "/commonground:status")} shows the options.
+`;
+      }
       return `  You and the hosted wiki have both moved: ${s.ahead} local commit(s) ahead, ${s.behind} behind${dirty}.${incoming}
   Nothing was reconciled. ${byAudience('"commonground status"', "/commonground:status")} shows the options.
 `;
@@ -18104,7 +18711,7 @@ function formatInitStanding(s) {
   }
 }
 function importCaveats(r) {
-  const notImported = (r.notImported ?? []).map((s) => `    ${s.relPath} \u2014 ${s.reason}
+  const notImported = (r.notImported ?? []).map((s) => `    ${inert(s.relPath)} \u2014 ${inert(s.reason)}
 `).join("");
   const lossy = r.lossy ?? [];
   const dropped = new Set(lossy.flatMap((f) => f.loss.dropped));
@@ -18125,7 +18732,7 @@ function formatImport(r, v) {
   const tail = r.synced?.action === "pushed" ? ` Published to ${v.wiki}.` : r.synced?.action === "local-only" ? " Committed locally (your role is read-only, so nothing was published)." : r.synced?.action === "diverged" ? ` NOTE: ${v.wiki} diverged \u2014 ${ask("status")} to resolve.` : "";
   const normalized = r.normalized ? ` Normalized frontmatter on ${r.normalized} page(s).` : "";
   const skipped = r.skipped ? ` ${r.skipped} file(s) couldn't be normalized (imported as-is) \u2014 ${byAudience('"commonground push"', "publishing (/commonground:push)")} names them before publishing.` : "";
-  const blocked = r.synced?.action === "blocked-deletes" ? ` Committed locally, NOT published \u2014 the pending changes also REMOVE ${pageCount((r.synced.deletions ?? []).length)} from ${v.wiki}${r.synced.deletions?.length ? ` (${r.synced.deletions.map((p) => p.page).join(", ")})` : ""}.
+  const blocked = r.synced?.action === "blocked-deletes" ? ` Committed locally, NOT published \u2014 the pending changes also REMOVE ${pageCount((r.synced.deletions ?? []).length)} from ${v.wiki}${r.synced.deletions?.length ? ` (${pageNames(r.synced.deletions)})` : ""}.
 ` + byAudience(`  Review with "commonground push --dry-run", then publish with:
     commonground push --allow-deletes
 `, `  Show the preview (push --dry-run), then ${ask("push-allow-deletes")}.
@@ -18175,47 +18782,6 @@ function teamArg(rest) {
 async function voiceFor(deps, teamId) {
   const profile = await readTeamProfile(teamId, deps.configHome).catch(() => ({}));
   return wikiVoiceFor({ audience: profile.audience, shape: profile.shape });
-}
-function formatPull(r, v, label = r.teamId, role) {
-  switch (r.action) {
-    case "cloned":
-      return `Wiki cloned at ${r.clonePath}.
-`;
-    case "up-to-date": {
-      const pending = unpublishedPhrase(r);
-      if (!(r.ahead > 0 || r.dirty))
-        return `${label}: already up to date.
-`;
-      return canPublish(role) ? `${label}: nothing new to bring in \u2014 you have ${pending || "unpublished changes"} (${byAudience('"commonground push"', "to publish: /commonground:push")}).
-` : `${label}: nothing new to bring in. You have ${pending || "unpublished changes"}. ${keptForSuggestion()}
-`;
-    }
-    case "fast-forwarded": {
-      const pages = r.pages ?? [];
-      return pages.length ? `Updated ${label} \u2014 pulled ${pageCount(pages.length)}: ${formatReceipt(pages)}
-` : `Updated ${label} (+${r.behind} from ${v.wiki}).
-`;
-    }
-    case "blocked": {
-      const atRisk = r.ahead > 0 ? `${r.ahead} unpublished commit(s)${r.dirty ? `, plus ${unpublishedPhrase(r)}` : ""}` : unpublishedPhrase(r) || "unpublished work in your wiki folder";
-      return `${label}: ${r.behind} incoming change(s), but you have local work that would be overwritten (${atRisk}). Nothing was changed.
-  Incoming: ${formatReceipt(r.pages ?? []) || "(none)"}
-` + (canPublish(role) ? byAudience(`  Publish yours first: commonground push
-  Or take the published version (your work is saved first): commonground pull --take-remote
-`, `  Publish the user's local work first: ${ask("push")}.
-  Or ${ask("pull-take-remote")}.
-`) : (
-        // A member has one way through here, and publishing is not it (SER-327).
-        `  ${keptForSuggestion()}
-` + byAudience(`  To bring the published version in anyway (your work is saved first): commonground pull --take-remote
-`, `  To bring the published version in anyway, ${ask("pull-take-remote")}.
-`)
-      ));
-    }
-    case "took-remote":
-      return `${label}: adopted the published version` + (r.draftBranch ? ` \u2014 your local work is saved on ${r.draftBranch}.
-` : ".\n");
-  }
 }
 var MAX_PRINTED_IDS = 5;
 var MAX_COHESION_ROWS = 5;
@@ -18307,18 +18873,18 @@ ${structure}`;
     byKind.set(f.kind, [...byKind.get(f.kind) ?? [], f]);
   const groups = [...byKind.entries()].map(([kind, fs]) => `  ${kind} (${fs.length}):
 ` + fs.map((f) => {
-    const shown = f.pageIds.slice(0, MAX_PRINTED_IDS).join(", ");
+    const shown = f.pageIds.slice(0, MAX_PRINTED_IDS).map(inert).join(", ");
     const rest = f.pageIds.length - MAX_PRINTED_IDS;
     const fix = f.suggestedAction.trim() ? `      \u2192 ${f.suggestedAction.trim()}
 ` : "";
     if (f.pageIds.length === 0)
-      return `    ${f.detail}
+      return `    ${inert(f.detail)}
 ${fix}`;
-    return `    ${shown}${rest > 0 ? `, +${rest} more` : ""} \u2014 ${f.detail}
+    return `    ${shown}${rest > 0 ? `, +${rest} more` : ""} \u2014 ${inert(f.detail)}
 ${fix}`;
   }).join("")).join("");
   const red = r.missingLinks.length ? `  referenced but not written yet (${r.missingLinks.length}):
-` + r.missingLinks.map((m) => `    ${m.target} \u2014 linked from ${m.fromPageIds.join(", ")}
+` + r.missingLinks.map((m) => `    ${inert(m.target)} \u2014 linked from ${m.fromPageIds.map(inert).join(", ")}
 `).join("") : "";
   return `${head}${broken}${groups}${red}${structure}`;
 }
@@ -18335,8 +18901,8 @@ function formatCoverage(r) {
 ` : "")).join("");
 }
 function retiredKeyLines(r) {
-  return r.rewrites.map((f) => `  ${f.relPath}
-` + f.removed.map((k) => `    ${k.key}: ${k.value}
+  return r.rewrites.map((f) => `  ${inert(f.relPath)}
+` + f.removed.map((k) => `    ${k.key}: ${inert(k.value)}
 `).join("")).join("");
 }
 function retiredKeyList() {
@@ -18646,7 +19212,7 @@ ${formatWikiList(hits, active, boundId, alsoIds)}Say which one \u2014 the full n
       const takeRemote = rest.includes("--take-remote");
       const teamId = await resolveTeamId(deps, teamArg(rest));
       const result = await pull(deps, teamId, { takeRemote, onClone: announceClone });
-      const holdsWork = result.ahead > 0 || result.dirty;
+      const holdsWork = result.ahead > 0 || result.dirty || result.action === "blocked";
       const role = holdsWork ? await crossWikiBinding(deps.backend, teamId, deps.configHome, deps.dataHome).then((b) => b.role, () => void 0) : void 0;
       process.stdout.write(await cloneMismatchNote(deps, teamId, "pull") + formatPull(result, await voiceFor(deps, teamId), await labelFor(deps, teamId), role));
       return;

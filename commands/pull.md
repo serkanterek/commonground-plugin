@@ -54,9 +54,21 @@ Run `commonground pull` — passing `$ARGUMENTS` as the wiki when it names one, 
   that rather than offering a publish they cannot make, and offer `suggest_change` only when this
   session has it (otherwise the routes in `/commonground:push` §2b).
 - **Updated** — it fast-forwarded. Report the pages that came in, by name (the CLI prints the
-  receipt), so the user knows what changed.
-- **Blocked** — the hosted wiki moved *and* the user has local work that would be overwritten.
-  **Nothing was changed.** Show both sides: what's incoming, and that their own work is at stake.
+  receipt), so the user knows what changed. A pull brings the change in around any local work it
+  does not touch, so the receipt may add that the user **still has unpublished pages**: relay that
+  line too and offer `/commonground:push`. For a member the line says the work is safe on this
+  machine and offers a suggestion instead; relay that rather than offering a publish they cannot
+  make (the same routes as **Up to date**).
+- **Blocked** — the hosted wiki moved *and* a page the user changed here (edited, added or deleted)
+  is one the incoming change also changes, or they hold local commits. **Nothing was changed.** Show
+  both sides: what's incoming, and the pages the receipt names as ones the incoming change also
+  changes (`they change <pages>, which you changed here too`): those are what stopped it. Never
+  say all their work is at stake: when the receipt adds that they have more pages not published yet
+  which the incoming change does not touch, say those are in nothing's way. Two stops name no page.
+  When the receipt says they have unpublished commits (*a pull cannot bring the change in around
+  them*), those commits are what stopped it. When it says the incoming change *would write over a
+  file here*, git itself refused the move over a file the check before it did not catch: relay that
+  line as written and never guess which page it means. The choice below is the same for both.
   Then offer the choice — with the `AskUserQuestion` tool (multiple-choice UI) if it's available in
   this session, as a plain question otherwise. **Word it in the wiki's frame** — shared or personal,
   from the same source `/commonground:push` §0 uses (the SessionStart hook, the `CLAUDE.md` router
@@ -72,10 +84,34 @@ Run `commonground pull` — passing `$ARGUMENTS` as the wiki when it names one, 
 
   On a Mac or Windows clone whose publishes `push` refuses over a pair of pages that differ only in
   letter case (push.md §3c), option 1 is not available until this pull lands: offer 2, and say their
-  work waits on the draft branch for them to bring back and publish.
+  work waits on the draft branch for them to bring back and publish. The receipt leaves the publish
+  line out there, and prints the pair's own sentence instead. When it says instead that *the
+  incoming change renames or removes* one of the pair, *which ends the pair*, relay that line: the
+  rename they were waiting for is in this very pull, so never tell them to wait for a curator, and
+  once it is in (option 2 brings it), this folder can publish again.
+- **Blocked by a file git ignores** — the receipt says *a file this machine's git ignores sits
+  where one of them goes* (for several, *files this machine's git ignores sit where they go*) and
+  names it. **Nothing was changed.** This machine's git settings hide that file, so no publish
+  carries it: never offer publishing first here. Offer, worded and asked as for **Blocked**: move
+  or rename that file, then pull again (`/commonground:pull`); or take the published version
+  (`commonground pull --take-remote`), whose `draft/…` branch holds that file by name, so it is
+  saved too; or decide later. Relay a line about other work not published yet as **Blocked** does.
+- **Cannot bring in as an update** — the receipt says the incoming change is one *this machine
+  cannot bring in as an update*, and that nothing of theirs is at stake. It happens on a Mac or
+  Windows clone when the change updates both names of a pair of pages that differ only in letter
+  case (or in how their accents are encoded): this disk holds the pair as one file, which can hold
+  one of the two new texts, never both. **Nothing was changed.** Relay the pair's line as written,
+  say nothing of theirs is at stake, and offer only 2 (take the published version) and 3 (decide
+  later), never publishing first: the folder holds no work to publish, and `push` refuses on this
+  clone while the pair is there. With nothing at stake there is nothing to save, so never describe
+  option 2 as saving their work. The receipt's last line names who can rename one of the pair. When
+  the folder does hold other work, the receipt says *none of your work is in its way* instead and
+  counts that work: say it is safe where it is, that 3 keeps it in place until the rename arrives,
+  and that 2 saves it to a draft first; still offer only 2 and 3.
 
 Never run `--take-remote` without an explicit yes: it replaces the working copy. When it does run,
-report the draft branch it saved their work on, so they know how to get it back.
+report the draft branch it saved their work on, so they know how to get it back; when it says
+nothing of theirs was in the folder, say there was nothing to save, and name no draft.
 
 **If the pull itself fails, relay what the CLI said and stop.** It says why in a sentence: the
 sign-in is no longer accepted (offer to sign them in again, then pull again), git could not present

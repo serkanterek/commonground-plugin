@@ -144,8 +144,9 @@ The curation procedures are also exposed as slash commands — **`/commonground:
 
 A **pageId** is the repo-relative path without `.md` (e.g. `products/acme/dev/retrieval-decision`).
 Prefer lowercase words joined by `-` and `/`. However it is spelled, a NEW page's id must be one
-every machine that clones the wiki can hold: none of `: * ? " < > |`; no part ending in a dot or a
-space; no Windows device name (`con`, `nul`, `com1`, `lpt1`); never two pages or folders that differ
+every machine that clones the wiki can hold: none of `: * ? " < > | \`; no part ending in a dot or
+a space; no Windows device name (`con`, `nul`, `com1`, `lpt1`); no part that reads as `.git`
+(`.GIT`, `git~1`, or with an invisible character in it); never two pages or folders that differ
 only in capitals (a Mac or Windows keeps them as ONE file); and the file path, .md included, at
 most 180 characters. A new page that breaks this is refused: by the server in MCP mode, and by
 `/commonground:push` for a file in a local clone, which names it and asks for a rename. A page that

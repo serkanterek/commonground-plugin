@@ -48,6 +48,68 @@ Work through this conversationally — adapt to what's already true, don't robot
 `node "${CLAUDE_PLUGIN_ROOT}/bin/commonground" …`. That form works from both the Bash and the
 PowerShell tool; the bare word works only in Bash.
 
+## Before anything runs: say what is about to happen
+
+**Unless this session's context already shows this project reading a wiki** (the session-start line
+names the wiki when it does), **your first output is words, not a tool call.** The first tool call
+raises a permission prompt, and a new user who has been told nothing reads that prompt as something
+going wrong. Say this in your own voice, keeping every fact:
+
+> Here is what happens next, so nothing surprises you.
+>
+> 1. I check that this computer can run CommonGround, and whether you are signed in. If something
+>    is missing I say what and why, and we sort that out first.
+> 2. If you are not signed in yet, I sign you in: I give you a link and a short code, and on most
+>    computers the page opens by itself. You approve it there and come back.
+> 3. I settle where your wiki lives: usually a folder on this computer, sometimes kept online
+>    instead. I say where the folder goes before I create it.
+> 4. I ask about your work, suggest sections from your answers, and draft pages for you to check.
+> 5. Nothing is published until you say so.
+>
+> Along the way Claude Code asks you to allow the CommonGround commands I run and the pages I save.
+> Those and the browser sign-in are the only approvals a wiki folder needs. If your wiki is kept
+> online instead, there is one more: CommonGround asks you to approve its own connection, once.
+
+Every line there is true whatever the steps below find (someone already signed in, a machine with no
+browser to open, a wiki whose plan settles the mode), which is why it says "if" and "usually": do
+not sharpen it into a promise a later step will break. Then carry on to step 0. In a project that
+already reads a wiki, skip it: they have seen it.
+
+**Setup has two sign-ins, and only those two are CommonGround's.** The browser code, in every
+mode; and the connector's own consent, for the hosted connector only. When this session reports
+servers or tools that "need authorization":
+
+- **Name only CommonGround's own entry** (`plugin:commonground:commonground` in a notice,
+  `mcp__plugin_commonground_commonground__…` on a tool) and say whether this project's mode needs
+  it. **Before a mode is chosen,** say setup needs it only if they pick hosted, and that nothing
+  needs authorizing now. **A local wiki folder does not:** setup and seeding there use no
+  connector at all, so say that sign-in can be left alone for now. It becomes useful later, for
+  inviting a teammate, the suggestions queue, or checking two wikis for overlap.
+- **Say the others are not part of CommonGround** and can stay as they are. Never start another
+  server's sign-in, and never bring up a connector list or connector suggestions, as a step of
+  setting up CommonGround.
+
+**If this computer cannot run CommonGround yet** (step 0's first command comes back with `node` not
+found): nothing in CommonGround runs without Node.js, not this command, not its hooks, not the
+connector. Stop there: no sign-in attempt, no retry, no other route. Say so plainly (nothing is
+wrong with their wiki or their account) and offer to walk them through it, for the platform this
+session runs on:
+
+  - **macOS:** the Node.js installer from nodejs.org (the LTS download for macOS: open it and click
+    through, no terminal needed). `brew install node` only for someone who already uses Homebrew.
+  - **Windows:** Node 20 or newer from nodejs.org, and for a local wiki folder Git for Windows
+    (`winget install --id Git.Git -e --source winget`, or the installer from git-scm.com), which
+    also gives Claude Code its Bash tool.
+  - **WSL:** install inside WSL, never on the Windows side: `sudo apt install git`, and Node 20 or
+    newer (nodejs.org lists the ways; a distro's own package can be older than 20).
+  - **Linux:** Node 20 or newer, from nodejs.org or the distro's packages (check the version: a
+    distro's own package can be older than 20).
+
+  Then they **quit Claude Code completely and open it again** (in the desktop app that means
+  quitting the app, not starting a new chat) and run the same command again. A running Claude Code
+  keeps the PATH and the tools it started with, so run nothing else before the restart: it would
+  only report the same thing missing. **Never run an installer they did not ask for.**
+
 ## 0. Which wiki, and is this session signed in?
 
 Seeding is the FIRST thing a new user does, so this command cannot assume a signed-in machine or a
@@ -61,9 +123,11 @@ is the **import folder**. Both may appear, in either order; neither is required.
 **1. Signed in?** Run `commonground status`. If `commonground` or `node` is not found, follow
 `/commonground:point` step 1's not-found branch: check the spelling first (run it the way the top of
 this file says), never install anything unasked, and only after installing Node or Git, or
-reinstalling the plugin, have them restart Claude Code before anything else runs. If it reports a
-team, you're signed
-in — go to 2. If it reports "not logged in" / "no team logged in", sign in **here**, inline:
+reinstalling the plugin, have them quit Claude Code completely and open it again before anything
+else runs. That branch's walk
+is spelled out above ("If this computer cannot run CommonGround yet"), because the file it lives in
+is not open while this one runs. If it reports a team, you're signed
+in: make the quiet-checks offer below, then go to 2. If it reports "not logged in" / "no team logged in", sign in **here**, inline:
 
 - The user needs a CommonGround account **with at least one wiki** first — the authorize screen has
   nothing to approve without one, and its button is hidden rather than left dead. No account yet →
@@ -71,12 +135,42 @@ in — go to 2. If it reports "not logged in" / "no team logged in", sign in **h
 - Use the **split** form, never the one-shot `commonground login`: the one-shot blocks until the
   grant expires (~10 minutes), far longer than a tool call gets, so it is killed and looks like a
   failure when it was only waiting.
-  1. `commonground login --start` — prints the URL and code, then exits. Relay both.
+  1. `commonground login --start` — prints the URL and code, then exits. **It also opens a
+     browser tab by itself** when the machine has a way to, so say a tab is about to open BEFORE
+     you run it; a tab appearing unannounced is the first thing a new user distrusts. Then relay
+     both: *"A tab should have opened showing the code ABCD-2345: check it matches and press
+     Authorize. If no tab opened, open app.commongroundapp.io/activate and type the code in. Tell
+     me when you've approved it."*
   2. `commonground login --wait` — polls ~90 seconds. **still waiting** is not an error; run it again.
 - **Stop after the second "still waiting" and say why, instead of polling a third time.** A poll that
   never lands almost always means the user cannot press the button, not that they are slow — and the
   loop hides that completely. The two causes: they have **no wiki yet** (the screen offers no button
   at all and says to create one), or the code expired and needs a fresh `--start`. Ask which they see.
+
+**Offer quiet checks to anyone who has not answered, at most once a session.** `commonground status
+--json` carries `prefs.quietChecks` (run it now if you have not; the mode question reads the same
+output): `null` means this person has not answered, `on` or `off` means they have. **Only when it
+is `null`**, say
+that Claude Code asks before every CommonGround command and that about half of them only look, and
+ask (with `AskUserQuestion` when it is available):
+
+> One optional thing. Claude Code asks you before every CommonGround command I run, and about half
+> of them only look at things: your status, your list of wikis, what is covered, the health check,
+> the preview before publishing, and for a hosted wiki, searching and reading it. I can let those
+> run without asking. Publishing still asks you every time, and so does saving pages. Want that?
+
+- **Yes** → run `commonground prefs set quiet-checks on`. The dialog that command raises IS the
+  confirmation, so do not ask a second question of your own. Then say they can undo it by asking
+  you to turn quiet checks off.
+- **No** → leave it and carry on; they can ask for fewer prompts at any time. A plain no is not
+  recorded (recording it would cost them a prompt for saying no), so another day's session may
+  offer it again. Only if they say not to be asked again, run `commonground prefs set quiet-checks
+  off`, which records the answer for good.
+
+**Never turn it on on your own initiative**, never to get past a prompt, and never offer it twice in
+one session. With it on, a check runs without a prompt only when it is written the way the top of
+this file says, with nothing after it but `2>&1` or one `| head -N`: anything joined to another
+command asks again.
 
 **2. Resolve the target.**
 
@@ -123,7 +217,14 @@ Then, in this order:
   is present, and when it is missing lead with **Hosted connector (Recommended)** and offer the
   third option, **Help me install git**. Read that step rather than restating it here; the one
   sentence worth adding at seeding time is what each answer means for the pages you are about to
-  write, which the preamble above already states.
+  write, which the preamble above already states. Three things from that step are said here as
+  well, because that file is not open while this one runs: with the local option, that it needs no
+  connector and no sign-in beyond the browser code; with the hosted one, that it needs the row
+  named CommonGround approved under `/mcp`, and no other row (no restart here: seeding names the
+  wiki on each call); and when
+  `probe.node.supported` in the same read is false, one plain line first that this computer's
+  Node.js is older than CommonGround is built for and that updating it is the fix. That last one
+  is a warning, never a stop.
 
 **A wiki marked `(Free plan)` in the `commonground use` listing is not a question either: it is
 local.** Say why in one line (Free works through the wiki folder on this machine and does not
@@ -151,7 +252,11 @@ while the project still has its old mode, seed the wiki where it already lives.
   A bare `init <wiki>` replaces whatever set this project reads, and seeding is not the place to
   take a project's wikis away from it. Two cases:
   - **This project is not pointed at anything** → ask first, in one question: *"Point this folder at
-    **Acme Handbook** so I can seed into it?"* (`AskUserQuestion` when it's available). On yes, run
+    **Acme Handbook** so I can seed into it?"* (`AskUserQuestion` when it's available). **Say what
+    that writes in the same breath:** a short note in this folder's `CLAUDE.md` and one setting in
+    its `.claude/settings.json`, so Claude reads the wiki from here; nothing else in the folder
+    changes. Two files appearing in a folder nobody mentioned is a surprise, and the web told them
+    the folder does not matter. On yes, run
     `commonground init --mode local <wiki>` with point.md's confirm-or-override on the folder.
   - **This project already reads a wiki, or several** → add beside them:
     `commonground init --also <wiki> [--path "<folder>"]`. Nothing it already reads changes, and the
@@ -370,12 +475,30 @@ describing your own work and hearing it named back. The order below is the point
    stays in Notion; nothing about my day job lives here"). This is the contract's other
    half: without it every surface only ever says *consult this wiki*, so material drifts in and the
    wiki stops being trustworthy. Skip it gracefully if they have nothing to exclude — an absent
-   Excludes section renders exactly as before. Also mention what it does: coverage stops chasing an
-   excluded section as a gap (it reports it as excluded, never hides it), the connector's
+   Excludes section renders exactly as before. Also mention what it does: the connector's
    instructions start saying where that material belongs instead, and the CLAUDE.md router block
    points Claude at the charter page for it (it no longer quotes the anti-scope itself).
    The self-description rule holds here too: say what this wiki is NOT about, never which other
    CommonGround wiki should answer instead.
+
+   **The anti-scope never changes the checklist: reconcile it with Structure here, with them.**
+   Coverage counts pages against the Structure list from item 3 (the default sections for the
+   wiki's shape when they chose Start blank) and reads nothing else, so a section stays on the
+   checklist until it leaves that list. Before you draft the charter, read their answer against
+   the list:
+
+   - **It rules out a section you listed** ("no meeting notes here", against a *Meetings* section):
+     say so, and offer to drop that section from Structure. Drop it only on their yes. A section
+     that is both listed and ruled out is a gap the wiki gets asked to fill for good.
+   - **They chose Start blank, and it rules out one of the default sections:** there is no list to
+     drop it from, and a default section leaves the checklist only when a Structure list replaces
+     the defaults. Say so, and offer to write Structure as the defaults without that one. Only on
+     their yes; otherwise the section stays as a gap, and say that too.
+   - **It says what the wiki IS, not what stays out** ("professional profile only"): it removes
+     nothing from Structure. Offer it back as what stays out ("so nothing about your private life
+     goes in here. Is that the line?") and write Excludes from the wording they confirm. The
+     connector quotes that section to every session as what does NOT belong, so an "X only"
+     sentence there reads as the opposite of what they meant.
 
 Draft the charter page, show it, and on confirm **persist it right away** (don't defer to
 step 7 — it's the contract everything below reads). It goes at the reserved pageId `wiki-charter`
@@ -405,14 +528,16 @@ me up", "what did I miss", a codename that is never a title). Not entity names: 
 and id is already a keyword, and the instruction names the wiki and its sections on its own.>
 
 ## Excludes
-<What does NOT belong here, and where it lives instead — in the user's words. Optional. Describe
+<What does NOT belong here, and where it lives instead — in the wording the user confirmed, said
+as what stays OUT (never an "X only" sentence: that says what the wiki is). Optional. Describe
 what THIS wiki is not about; never point at another CommonGround wiki — the charter is shared
 content, and a sharper self-description routes the same way without naming a wiki a teammate may
 not have.>
 ```
 
 Keep the `##` headings exactly as written — the server parses them (coverage builds its checklist
-from Structure and marks an excluded section rather than chasing it; the keyword trigger unions
+from Structure and from nothing else, falling back to the shape's default sections only when
+there is no Structure list; the keyword trigger unions
 Pinned keywords; both instruction surfaces name the wiki and enumerate its Structure sections; the
 connector's instructions render Retrieval brief and Excludes in full, the CLAUDE.md router block
 carries the brief's first sentence as the wiki's trigger and points at the charter for the rest).
@@ -593,7 +718,18 @@ the **charter's Structure list** against what exists, take the still-empty/thin 
 most-impactful-first — offer the pick as an AskUserQuestion (the top **3** gaps + "somewhere
 else") — and
 for each, interview + draft + confirm + persist one page at a time, skipping what the user can't
-answer yet. Every page you draft here gets a `summary:` that **partitions** with its title instead
+answer yet. **A gap they say does not belong in this wiki is not one to fill:** when a still-empty
+section is one the charter's Excludes rules out, or the user says it should not be here, offer to
+drop it from the charter's Structure list (the `wiki-charter.md` file in a local folder,
+`save_charter` in hosted mode) and drop it only on their yes. It is the one way a section leaves
+the checklist; a wiki chartered before coverage stopped reading Excludes can carry such a section,
+and it would otherwise be asked for at every session. **In hosted mode read the charter first**
+(`get_page` `wiki-charter`, or `company/wiki-charter` on an older wiki) **and send every field back
+with that section removed:** `save_charter` replaces the whole charter, and a field left out is
+erased. **If neither id reads, stop and say so: never call `save_charter` with a charter you could
+not read.** In a local folder it is the same two names as files; edit the one that exists. When the charter has no Structure list
+the rows are the shape's default sections: offer to write Structure as those rows without that
+one, since a default leaves only when a list replaces the defaults. Every page you draft here gets a `summary:` that **partitions** with its title instead
 of echoing it — the title is the page's name, the summary is what is *inside* it, so `Rocket skates` +
 `Twin solid-fuel rockets on roller skates, no brake, retired Aug 2026` beats `Rocket skates —
 retired gadget (no brake)` + `Retired gadget, no brake`. Seeding is where a wiki's first twenty titles

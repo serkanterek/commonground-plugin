@@ -111,15 +111,19 @@ attention. Everything else depends on them reading a message.
   a wiki exists.
 - **Node 20 or newer, on your PATH.** The plugin's hooks, the connector's wiki header and the
   command-line helper all run on it. Claude Code installed with its native installer does not need
-  Node itself, so it may not be there. Check with `node --version`.
-- **git**, for local-clone mode (the recommended one). 2.31 or newer signs in over the fast path; an
-  older git still works, by a different route. No git on this machine means MCP mode, and
+  Node itself, so it may not be there. Check with `node --version`. On a Mac, the installer from
+  [nodejs.org](https://nodejs.org/en/download) is the simplest route: open it, click through, then
+  quit Claude Code completely and open it again.
+- **git.** Claude Code downloads the plugin with it (adding a marketplace is a clone), and
+  local-clone mode (the recommended one) keeps your wiki folder in step with it. 2.31 or newer
+  signs in over the fast path; an older git still works, by a different route. On a Mac, Apple
+  offers to install git the first time it runs, and accepting is expected.
   `/commonground:point` offers to walk you through installing it.
 - **On Windows: Git for Windows** for a local wiki folder, with
   `winget install --id Git.Git -e --source winget` or the installer from git-scm.com. It brings git,
   and the Bash tool Claude Code uses beside PowerShell; CommonGround's commands run from either.
-  Restart Claude Code after installing anything, since a running session keeps the PATH it started
-  with.
+  Quit Claude Code completely and open it again after installing anything, since a running session
+  keeps the PATH it started with.
 - **In WSL: install git and Node inside WSL** (`sudo apt install git`), never on the Windows side. The
   wiki folder then lives in Linux (`~/CommonGround/<wiki>`), and Windows apps such as Obsidian reach
   it at `\\wsl.localhost\<distro>\home\<you>\CommonGround\<wiki>`. Signing in may ask you to copy a
@@ -137,7 +141,8 @@ What they fetch is data: your wiki, facts about it, and whether a newer plugin h
 
 The hooks are dependency-free and run without a per-run permission prompt, so here is the complete
 list of what they read and write. Two of them are fail-open (a hiccup never breaks your session).
-The third is the publish guard: when it is unsure it asks you, and it never approves anything.
+The third is the publish guard: when it is unsure it asks you, and it approves nothing unless you
+have turned on quiet checks, described below.
 
 - **SessionStart** injects wiki context and tells Claude where this project's writes may land. What
   it says is text that ships in the plugin, filled in with facts it reads from CommonGround about
@@ -182,8 +187,9 @@ The third is the publish guard: when it is unsure it asks you, and it never appr
   wiki pointer, the wiki's cached profile) and the `CLAUDE.md` of this folder and its parent
   folders, for the CommonGround block. When your prompt mentions one of the wiki's keywords, it
   adds a line telling Claude to consult the wiki before answering. When the plugin was updated
-  under a running session, it tells Claude so, once, because an update disconnects the CommonGround
-  tools. It makes no network call, so your prompt is sent nowhere. It writes that marker only when
+  under a running session, it tells Claude so, once: in MCP mode because an update disconnects
+  the CommonGround tools, and in a local-clone project to say that its pages and checks are
+  unaffected. It makes no network call, so your prompt is sent nowhere. It writes that marker only when
   none exists yet or the plugin changed under a running session.
 - **PreToolUse is the publish guard.** It is registered twice, on `Bash|PowerShell|Monitor` (every
   shell command Claude runs) and on `mcp__.*` (every MCP tool call), in every project. It is
@@ -193,7 +199,7 @@ The third is the publish guard: when it is unsure it asks you, and it never appr
   server, and nothing else.
   - **In a shell command** it looks for the CommonGround CLI run with `push`, `import` or `sync`,
     the verbs that publish, and asks you first. It also asks when it cannot read which CommonGround
-    command is being run. Previews and reads (`push --dry-run`, `status`, `lint`) pass untouched.
+    command is being run, and before a command that turns quiet checks on (below). Previews and reads (`push --dry-run`, `status`, `lint`) pass untouched.
     `git push`, `gh`, `npm publish` and deploys are never judged: those belong to your own repos.
   - **In an MCP call** it looks for CommonGround's write tools: `save_page`, `save_charter`,
     `stage_sources`, `invite_teammate` and `resolve_suggestion`. In MCP mode it asks before each
@@ -207,12 +213,30 @@ The third is the publish guard: when it is unsure it asks you, and it never appr
     only ever a question: the Claude desktop app names a connector added in Claude by an id, so
     before a tool with one of those five names on an id-named server the guard asks, and its prompt
     says that it may be another service.
-  - **It never approves anything.** In 0.19.x its only answers are "ask the user" and "refuse".
-    When it has nothing to say it stays silent and Claude Code's own permission rules decide, as if
-    the hook were not there; the same happens if it crashes. When it asks or refuses, it also adds
-    a note to Claude's context saying so. It reads the command or tool call Claude is about to run,
-    the `CLAUDE.md` of this folder and its parent folders, for the CommonGround block, and the wiki
-    recorded for the session. It writes nothing and makes no network call.
+  - **It approves nothing unless you turn on quiet checks.** As installed, its only answers are
+    "ask the user" and "refuse". When it has nothing to say it stays silent and Claude Code's own
+    permission rules decide, as if the hook were not there; the same happens if it crashes. When it
+    asks or refuses, it also adds a note to Claude's context saying so.
+  - **Quiet checks are the one thing it can approve, and only after you say yes.** Claude Code asks
+    before every CommonGround command Claude runs, and about half of them only look. Claude offers,
+    at most once a session, to let those run without asking. It stays off until you say yes, and
+    the guard asks you itself before the command that turns it on. With it on, the guard answers
+    "allow" for CommonGround's own read-only checks, so they stop prompting: its status, your list
+    of wikis, coverage, the health check, the publish preview and, in a project that uses the hosted
+    connector, searching and reading that wiki. In a shell that is a command made of nothing but
+    `node "<plugin folder>/bin/commonground"`, one of `status`, `use` (the list of wikis),
+    `coverage`, `lint`, `version` or `push --dry-run`, optionally `--json` and one of your wikis by
+    name or id, and after it at most `2>&1` and, in Bash, one `| head -N` or `| tail -N`; anything
+    joined to another command asks as before. On the connector it is
+    the nine tools the server declares read-only (`search`, `get_page`, `get_index`,
+    `list_suggestions`, `lint`, `get_history`, `get_awareness`, `get_coverage`, `get_started`), on
+    the plugin's own connector, in MCP mode, for a wiki this project names. Never a write or a
+    publish. A deny or ask rule of your own in Claude Code still wins. Ask Claude to turn quiet
+    checks off at any time.
+  - **What it reads.** The command or tool call Claude is about to run, the `CLAUDE.md` of this
+    folder and its parent folders, for the CommonGround block, the wiki recorded for the session,
+    and one preference in `state.json` in the credential home: your answer about quiet checks,
+    which the CLI writes and the guard only reads. It writes nothing and makes no network call.
 - **No hook ever writes or deletes wiki page content, and none sends it anywhere.** In local-clone
   mode SessionStart asks `git` about your wiki folder (its current commit, and the names of files
   changed since the last publish) to decide whether to suggest a pull or a push.
@@ -359,6 +383,19 @@ admins/curators only.
 
 ## Troubleshooting
 
+**Errors that mention `node` on every prompt** (for example `node: command not found`, at session
+start and before every tool call). This machine has no Node.js that Claude Code can see, and every
+part of the plugin runs on it, the publish guard included. Install Node 20 or newer (see
+[What you need](#what-you-need)), then quit Claude Code completely and open it again: a running
+session keeps the PATH it started with, and in the desktop app a new chat is not a restart.
+
+**Claude lists several tools or connectors that "need authorization".** Claude Code reports every
+connector that has no sign-in yet, not only CommonGround's. The only two sign-ins CommonGround ever
+asks for are its own: the browser code when you first sign in, and, for the hosted connector only,
+the CommonGround row under `/mcp`. A local wiki folder does not need the connector for setup,
+seeding or everyday reading, so its row can wait until you want suggestions, an invite or the
+overlap check. Nothing else in that list is part of CommonGround.
+
 **The CommonGround tools disappeared mid-session.** Usually a *connection* problem: Claude Code
 re-registers a plugin's MCP server whenever the plugin version changes, which tears down the live
 connector. Run `/mcp` to reconnect, or restart the session. Meanwhile `commonground pull <team>`
@@ -401,8 +438,8 @@ sitting in your wiki folder and hasn't gone out yet. Ask Claude to stop remindin
 `commonground prefs set push-nudge off` yourself; `... on` brings it back. The pages stay where they
 are either way, and `/commonground:status` still tells you what's unpublished whenever you ask.
 
-**Upgrading.** Reinstall between sessions rather than mid-task, for the reason at the top of this
-section: a version change tears the live connector down.
+**Upgrading.** Reinstall between sessions rather than mid-task, for the reason under "The CommonGround
+tools disappeared mid-session" above: a version change tears the live connector down.
 
 ## Support
 

@@ -14,6 +14,11 @@ lint's.
 `node "${CLAUDE_PLUGIN_ROOT}/bin/commonground" …`. That form works from both the Bash and the
 PowerShell tool; the bare word works only in Bash.
 
+**If `commonground` or `node` is not found:** check the spelling first (run it the way the
+paragraph above says). If `node` itself is missing, nothing in CommonGround runs on this computer
+yet: say so plainly, never install anything unasked, and send them to `/commonground:point`,
+whose first step walks the fix.
+
 ## 0. Which wiki are you linting?
 
 Establish the project's mode first (the SessionStart hook states it; else the `./CLAUDE.md` router
@@ -321,4 +326,15 @@ UI) when it's available in this session, as a plain question otherwise:
 - **Fill a gap** — pick from the top gaps (a coverage section, or a red-link page someone already
   wants). Use the section's `prompt` (or the referencing pages) to interview the user, then draft
   schema-correct page(s) (see the `maintainer` skill) and persist the same way. This is the same
-  flow as `/commonground:ingest`, just gap-driven.
+  flow as `/commonground:ingest`, just gap-driven. **A coverage section they say does not belong
+  in this wiki is not a gap to fill:** offer to drop it from the charter's Structure list instead
+  (the `wiki-charter.md` file in a local folder; `save_charter` in hosted mode, admin/curator), and
+  only on their yes. Coverage reads the Structure list (the shape's default sections when there is
+  none) and nothing else, so that is the one way a section leaves the checklist. **In hosted mode
+  read the charter first** (`get_page` `wiki-charter`, or `company/wiki-charter` on an older wiki)
+  **and send every field back with that section removed:** `save_charter` replaces the whole
+  charter, and a field left out is erased. **If neither id reads, stop and say so: never call
+  `save_charter` with a charter you could not read.** In a local folder it is the same two names
+  as files; edit the one that exists.
+  When the charter has no Structure list, offer to write Structure as the default rows without
+  that one: a default leaves only when a list replaces the defaults.

@@ -11,6 +11,11 @@ a clash it stops and asks.
 `node "${CLAUDE_PLUGIN_ROOT}/bin/commonground" …`. That form works from both the Bash and the
 PowerShell tool; the bare word works only in Bash.
 
+**If `commonground` or `node` is not found:** check the spelling first (run it the way the
+paragraph above says). If `node` itself is missing, nothing in CommonGround runs on this computer
+yet: say so plainly, never install anything unasked, and send them to `/commonground:point`,
+whose first step walks the fix.
+
 > **Normally local-clone mode only** — in MCP mode the wiki is live through the connector, so
 > there's nothing to pull. **One exception:** if the CommonGround tools are gone or failing (a
 > plugin update can drop the connector mid-session), `commonground pull` still works — it

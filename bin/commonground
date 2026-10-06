@@ -7500,6 +7500,11 @@ function hostProbe(env = process.env) {
   const distro = os === "wsl" && env.WSL_DISTRO_NAME ? env.WSL_DISTRO_NAME : void 0;
   return { os, shell: hostShell(process.platform, env), ...distro ? { distro } : {} };
 }
+var MIN_NODE_MAJOR = 20;
+function nodeProbe(version = process.versions.node) {
+  const major = Number.parseInt(version.split(".")[0] ?? "", 10);
+  return { version, supported: Number.isFinite(major) && major >= MIN_NODE_MAJOR };
+}
 
 // ../../apps/sync-agent/dist/user-path.js
 function hostPathContext() {
@@ -7672,7 +7677,15 @@ async function writeActiveWiki(teamId, configHome = agentConfigHome()) {
   await (0, import_promises.writeFile)(path2, `${JSON.stringify(state, null, 2)}
 `, "utf8");
 }
-async function setPushNudgePref(value, configHome = agentConfigHome()) {
+async function readPrefs(configHome = agentConfigHome()) {
+  try {
+    const raw = JSON.parse(await (0, import_promises.readFile)(statePath(configHome), "utf8"));
+    return raw?.prefs && typeof raw.prefs === "object" ? raw.prefs : {};
+  } catch {
+    return {};
+  }
+}
+async function writePrefs(patch, configHome) {
   const path2 = statePath(configHome);
   let state = {};
   try {
@@ -7681,10 +7694,16 @@ async function setPushNudgePref(value, configHome = agentConfigHome()) {
       state = parsed;
   } catch {
   }
-  state.prefs = { ...state.prefs, pushNudge: value };
+  state.prefs = { ...state.prefs, ...patch };
   await (0, import_promises.mkdir)((0, import_node_path2.dirname)(path2), { recursive: true });
   await (0, import_promises.writeFile)(path2, `${JSON.stringify(state, null, 2)}
 `, "utf8");
+}
+async function setPushNudgePref(value, configHome = agentConfigHome()) {
+  await writePrefs({ pushNudge: value }, configHome);
+}
+async function setQuietChecksPref(value, configHome = agentConfigHome()) {
+  await writePrefs({ quietChecks: value }, configHome);
 }
 async function multiWikiNoticed(configHome = agentConfigHome()) {
   try {
@@ -14196,25 +14215,14 @@ var DISCIPLINE_BY_SECTION = {
   products: "pm",
   teams: "exec"
 };
-function excludeMatcher(excludes) {
-  const text = foldForMatching(excludes ?? "");
-  if (!text.trim())
-    return () => false;
-  return (label) => {
-    const tokens2 = labelTokens(label);
-    return tokens2.length > 0 && tokens2.some((token) => text.includes(token));
-  };
-}
 function computeCoverage(entries, shape, scopeKey, charter) {
   const idx = (Array.isArray(entries) ? entries : []).filter((e) => !isCharterPageId(e.pageId) && hasSubstance(e));
   const defaultScope = shapeDefaultScope(shape || "company", scopeKey || "team");
   const template = charter?.sections?.length ? sectionsFromCharter(charter.sections) : templateFor(shape, charter?.audience);
-  const isExcluded = excludeMatcher(charter?.excludes ?? null);
   return template.map((sec) => {
     const have = idx.filter(sec.match);
     const count = have.length;
-    const excluded = count === 0 && isExcluded(sec.label);
-    const status2 = excluded ? "excluded" : count === 0 ? "empty" : count >= sec.target ? "done" : "partial";
+    const status2 = count === 0 ? "empty" : count >= sec.target ? "done" : "partial";
     return {
       id: sec.id,
       label: sec.label,
@@ -14229,15 +14237,13 @@ function computeCoverage(entries, shape, scopeKey, charter) {
       scope: defaultScope,
       have,
       count,
-      status: status2,
-      ...excluded ? { excludedBy: (charter?.excludes ?? "").trim() } : {}
+      status: status2
     };
   });
 }
 function coverageProgress(rows) {
-  const counted = rows.filter((r) => r.status !== "excluded");
-  const total = counted.length;
-  const done = counted.filter((r) => r.status === "done").length;
+  const total = rows.length;
+  const done = rows.filter((r) => r.status === "done").length;
   return { done, total, pct: total ? Math.round(done / total * 100) : 0 };
 }
 
@@ -17683,7 +17689,7 @@ function packageVersion() {
   }
 }
 function cliVersion() {
-  const embedded = true ? "0.19.1".trim() : "";
+  const embedded = true ? "0.20.0".trim() : "";
   if (embedded)
     return embedded;
   const dev = packageVersion();
@@ -18458,6 +18464,12 @@ Usage:
   commonground prefs set push-nudge on|off
                                turn the start-of-session "you have unpublished pages" reminder on
                                or off for this machine
+  commonground prefs set quiet-checks on|off
+                               let CommonGround's own read-only checks (status, the wiki list,
+                               coverage, lint, the publish preview, and in a hosted project the
+                               connector's searches and reads of that wiki) run without a
+                               permission prompt each time. Off unless you turn it on; publishing
+                               always asks
   commonground status [wiki]   show sync state ("N commits behind") + local divergence, which
                                mode this project is in, and how many pages in your wiki folder
                                are not published yet. --json for the machine-readable form (it
@@ -18968,7 +18980,11 @@ async function clearStaleCredential() {
 `));
 }
 async function machineProbe() {
-  return { git: await gitProbe(), host: hostProbe() };
+  return { git: await gitProbe(), host: hostProbe(), node: nodeProbe() };
+}
+async function machinePrefs() {
+  const stored = (await readPrefs(agentConfigHome())).quietChecks;
+  return { quietChecks: stored === "on" || stored === "off" ? stored : null };
 }
 async function main(argv) {
   const [cmd, ...rest] = argv;
@@ -18998,8 +19014,16 @@ async function main(argv) {
      */
     case "prefs": {
       const [verb, key, value] = rest;
-      if (verb !== "set" || key !== "push-nudge" || value !== "on" && value !== "off") {
-        throw new AgentError("usage: commonground prefs set push-nudge on|off");
+      const known = key === "push-nudge" || key === "quiet-checks";
+      if (verb !== "set" || !known || value !== "on" && value !== "off") {
+        throw new AgentError("usage: commonground prefs set push-nudge|quiet-checks on|off");
+      }
+      if (key === "quiet-checks") {
+        await setQuietChecksPref(value, agentConfigHome());
+        process.stdout.write(value === "on" ? `Done. CommonGround's own read-only checks now run without asking each time: its status, the wiki list, coverage, the health check and the publish preview, and, in a project that uses the hosted connector, searching and reading that wiki. Publishing still asks you every time, and so does anything that changes a file. To undo it, ask Claude to turn quiet checks off.
+` : `Done. Every CommonGround call asks for your approval again.
+`);
+        return;
       }
       await setPushNudgePref(value, agentConfigHome());
       process.stdout.write(value === "off" ? `Done. CommonGround will stop reminding you about unpublished pages at the start of a session.
@@ -19254,13 +19278,13 @@ ${formatWikiList(hits, active, boundId, alsoIds)}Say which one \u2014 the full n
         if (!wantsJson)
           throw e;
         const unresolved = e instanceof GitError ? await explainGitFailure(e) : e instanceof Error ? e.message : String(e);
-        process.stdout.write(`${JSON.stringify({ mode, probe: await machineProbe(), cliVersion: cliVersion(), unresolved }, null, 2)}
+        process.stdout.write(`${JSON.stringify({ mode, probe: await machineProbe(), prefs: await machinePrefs(), cliVersion: cliVersion(), unresolved }, null, 2)}
 `);
         return;
       }
       const alsoLabels = await Promise.all((project?.alsoTeamIds ?? []).map(async (id) => wikiLabel({ teamId: id, ...await readTeamProfile(id, deps.configHome) })));
       if (wantsJson) {
-        process.stdout.write(`${JSON.stringify({ ...result, mode, probe: await machineProbe(), cliVersion: cliVersion() }, null, 2)}
+        process.stdout.write(`${JSON.stringify({ ...result, mode, probe: await machineProbe(), prefs: await machinePrefs(), cliVersion: cliVersion() }, null, 2)}
 `);
         return;
       }

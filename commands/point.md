@@ -30,7 +30,8 @@ PowerShell tool; the bare word works only in Bash.
 Run `commonground status` (`--json` gives the machine-readable form, which step 4 reads for `mode`
 and `probe`). In that form a machine with several sign-ins and no pointer answers with `unresolved`
 and no sync fields; `mode` and `probe` are still there, so step 4 can read them either way.
-- A team with a sync state → already signed in. Note the team and the `Mode:` line, then go to step 3.
+- A team with a sync state → already signed in. Note the team and the `Mode:` line, make the
+  quiet-checks offer at the end of step 2, then go to step 3.
 - "not logged in" / "no team logged in" → step 2.
 - **`more than one wiki available — say which: …`** → not a failure and not a sign-in problem. They
   are signed in; this folder is simply not pointed anywhere yet, so nothing can choose for them. The
@@ -44,16 +45,25 @@ and no sync fields; `mode` and `probe` are still there, so step 4 can read them 
   CommonGround runs without it: not this command, not its hooks, not the connector. Say so plainly
   (nothing is wrong with the wiki), and offer to walk them through installing what is missing, for
   the platform this session runs on:
+  - **macOS:** the Node.js installer from nodejs.org (the LTS download for macOS: open it and click
+    through, no terminal needed). `brew install node` only for someone who already uses Homebrew.
   - **Windows:** Node 20 or newer from nodejs.org, and for a local wiki folder Git for Windows
     (`winget install --id Git.Git -e --source winget`, or the installer from git-scm.com), which
     also gives Claude Code its Bash tool.
   - **WSL:** install inside WSL, never on the Windows side: `sudo apt install git`, and Node 20 or
     newer (nodejs.org lists the ways; a distro's own package can be older than 20).
-  - **macOS or Linux:** Node 20 or newer, from nodejs.org or the package manager.
+  - **Linux:** Node 20 or newer, from nodejs.org or the distro's packages (check the version: a
+    distro's own package can be older than 20).
 
-  Then they **restart Claude Code** and run `/commonground:point` again. A running Claude Code keeps
-  the PATH and the tools it started with, so run nothing else before the restart: it would only
-  report the same thing missing. **Never run an installer they did not ask for.**
+  Then they **quit Claude Code completely and open it again** (in the desktop app that means
+  quitting the app, not starting a new chat) and run the same command again. A running Claude Code
+  keeps the PATH and the tools it started with, so run nothing else before the restart: it would
+  only report the same thing missing. **Never run an installer they did not ask for.**
+
+  This branch serves `/commonground:seed` and `/commonground:status` too, which is why it sends
+  them back to "the same command" and not to this one. **A Node that runs but is older than 20**
+  never reaches this branch: step 4's `probe.node` reports it, and the walk above is the fix, as an
+  update.
 
 ## 2. Sign in (device-code login)
 
@@ -65,9 +75,12 @@ nothing to approve without one, and its button is hidden rather than left dead.
   one-shot blocks until the grant expires (~10 minutes), which is far longer than a tool call gets,
   so it is killed and looks like a failure when it was only waiting.
 
-  1. `commonground login --start` — prints the URL and the code, then exits.
-  2. Relay both to the user: *"Open app.commongroundapp.io/activate and enter ABCD-2345. Tell me
-     when you've approved it."*
+  1. `commonground login --start` — prints the URL and the code, then exits. **It also opens a
+     browser tab by itself** when the machine has a way to, so say a tab is about to open BEFORE
+     you run it.
+  2. Relay both to the user: *"A tab should have opened showing the code ABCD-2345: check it
+     matches and press Authorize. If no tab opened, open app.commongroundapp.io/activate and type
+     the code in. Tell me when you've approved it."*
   3. `commonground login --wait` — polls for about 90 seconds. If it reports **still waiting**, that
      is not an error: the user hasn't clicked Approve yet. Run it again.
 
@@ -80,8 +93,48 @@ nothing to approve without one, and its button is hidden rather than left dead.
 
   On success it prints `Signed in to <wiki> as <role>` — the wiki by NAME, not a pair of ids. Relay
   it as it is written; never translate a wiki back into a UUID for the user.
-  **One sign-in is all they need** — it reaches every wiki
-  they are a member of, now and later, so a wiki created or joined afterwards needs no second login.
+  **One sign-in reaches every wiki** they are a member of, now and later, so a wiki created or
+  joined afterwards needs no second login. (The hosted connector asks for its own consent on top of
+  this one, step 4; a local wiki folder needs nothing more.)
+
+**Setup has two sign-ins, and only those two are CommonGround's.** The browser code, in every
+mode; and the connector's own consent, for the hosted connector only. When this session reports
+servers or tools that "need authorization":
+
+- **Name only CommonGround's own entry** (`plugin:commonground:commonground` in a notice,
+  `mcp__plugin_commonground_commonground__…` on a tool) and say whether this project's mode needs
+  it. **Before a mode is chosen,** say setup needs it only if they pick hosted, and that nothing
+  needs authorizing now. **A local wiki folder does not:** setup and seeding there use no
+  connector at all, so say that sign-in can be left alone for now. It becomes useful later, for
+  inviting a teammate, the suggestions queue, or checking two wikis for overlap.
+- **Say the others are not part of CommonGround** and can stay as they are. Never start another
+  server's sign-in, and never bring up a connector list or connector suggestions, as a step of
+  setting up CommonGround.
+
+**Offer quiet checks to anyone who has not answered, at most once a session.** `commonground status
+--json` carries `prefs.quietChecks` (run it now if you have not; the mode question reads the same
+output): `null` means this person has not answered, `on` or `off` means they have. **Only when it
+is `null`**, say
+that Claude Code asks before every CommonGround command and that about half of them only look, and
+ask (with `AskUserQuestion` when it is available):
+
+> One optional thing. Claude Code asks you before every CommonGround command I run, and about half
+> of them only look at things: your status, your list of wikis, what is covered, the health check,
+> the preview before publishing, and for a hosted wiki, searching and reading it. I can let those
+> run without asking. Publishing still asks you every time, and so does saving pages. Want that?
+
+- **Yes** → run `commonground prefs set quiet-checks on`. The dialog that command raises IS the
+  confirmation, so do not ask a second question of your own. Then say they can undo it by asking
+  you to turn quiet checks off.
+- **No** → leave it and carry on; they can ask for fewer prompts at any time. A plain no is not
+  recorded (recording it would cost them a prompt for saying no), so another day's session may
+  offer it again. Only if they say not to be asked again, run `commonground prefs set quiet-checks
+  off`, which records the answer for good.
+
+**Never turn it on on your own initiative**, never to get past a prompt, and never offer it twice in
+one session. With it on, a check runs without a prompt only when it is written the way the top of
+this file says, with nothing after it but `2>&1` or one `| head -N`: anything joined to another
+command asks again.
 
 ## 3. Resolve which wiki this project should read
 
@@ -186,6 +239,11 @@ before the question. It decides which option LEADS and what you say about it, ne
 | git present, `headerChannel` false | **Local folder (Recommended)** | their git is older than 2.31, so the sign-in travels by the helper channel instead; local works, it just takes that route |
 | git missing | **Hosted connector (Recommended)** | local mode needs git and this machine has none, so the connector is what works today |
 
+The same read carries `probe.node`: `version` and `supported` (true at Node 20 or newer). **When
+`supported` is false, say so before the question**, in one plain line: this computer's Node.js is
+older than CommonGround is built for, things may fail in odd ways, and step 1's walk updates it.
+Then carry on if they want to: an old Node is a warning, not a stop.
+
 Ask with the `AskUserQuestion` tool (multiple-choice UI) when it is available, a plain question
 otherwise, with local FIRST and marked recommended wherever git is present, and the trade-off stated
 in the options themselves so the choice is informed:
@@ -193,17 +251,19 @@ in the options themselves so the choice is informed:
 - **Local folder (local-clone mode):** a full copy of the wiki on this machine as plain markdown.
   Faster and cheaper: Claude reads files on disk, with no connector call and no round trip to the
   server. Kept in step with `/commonground:pull` and `/commonground:push`, so every write is a file
-  you review before it publishes. Works offline; opens in Obsidian or any editor.
+  you review before it publishes. Works offline; opens in Obsidian or any editor. Needs no
+  connector, and no sign-in beyond the browser code.
 - **Hosted connector (MCP mode):** Claude queries the server live, so it always sees the latest
   published version with nothing to pull. Nothing on disk. Needs a session restart and the
-  connector's own consent (`/mcp`).
+  connector's own consent (`/mcp`): the row to approve there is the one named CommonGround, and
+  no other row is part of this.
 - **Help me install git** — offer this third option only when the probe says git is missing. Walk
   them through it for their OS: **macOS** `xcode-select --install` (Apple's Command Line Tools
   installer); **Linux** their distro's package (`sudo apt install git`, `sudo dnf install git`, and
   so on); **WSL** (`probe.host.os` is `wsl`) the same Linux package, installed inside WSL, never Git
   for Windows; **Windows** Git for Windows, `winget install --id Git.Git -e --source winget` or the
   installer from git-scm.com. On macOS, Linux and WSL, re-run the probe once it is in, then come back
-  to this question. On Windows the next step is to **restart Claude Code** and run
+  to this question. On Windows the next step is to **quit Claude Code completely, open it again** and run
   `/commonground:point` again: the running session keeps the PATH it started with, so a probe before
   the restart still says git is missing. **Never run an installer they did not ask for**, and never
   install one as a side effect of pointing a project.
@@ -365,7 +425,9 @@ one of them answers about the OLD wiki, and a right-looking answer from the wron
 failure this area exists to close. The wiki-state check and the overlap check below both wait for
 the next session.
 
-**Local mode: carry straight on** — there is no connector in the loop, so nothing is stale.
+**Local mode: carry straight on** — there is no connector in the loop, so nothing is stale. If the
+session reports CommonGround's own connector as needing authorization, say a local folder does not
+need it for this and it can wait.
 
 **After an add, run the overlap check.** Two wikis read together is the moment SER-272's boundary
 question becomes real. The `crossWiki` block comes from the MCP `lint` tool (the session's own wiki;

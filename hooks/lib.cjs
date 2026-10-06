@@ -126,6 +126,19 @@ function pushNudgeEnabled() {
   return String(readPrefs().pushNudge || '').trim().toLowerCase() !== 'off';
 }
 
+/**
+ * May the publish guard approve CommonGround's own read-only checks? OFF unless the user turned it
+ * on (SER-340).
+ *
+ * The opposite default from the nudge above, and deliberately: that preference silences a sentence,
+ * this one removes a consent prompt. Only the exact value `on` enables it, so a missing file, an
+ * unparseable one, a typo and a value of the wrong type all leave every call prompting as before.
+ * `commonground prefs set quiet-checks on|off` is the only writer.
+ */
+function quietChecksEnabled() {
+  return readPrefs().quietChecks === 'on';
+}
+
 function apiBase() {
   return (process.env.COMMONGROUND_API_URL || DEFAULT_API).replace(/\/+$/, '');
 }
@@ -1770,6 +1783,7 @@ module.exports = {
   CLONE_BLOCK_HEADING,
   readPrefs,
   pushNudgeEnabled,
+  quietChecksEnabled,
   legacyClonePath,
   pathExists,
   readStore,

@@ -10,14 +10,17 @@ project is connected, and what to do next. Adapt to what's true — don't run st
 `node "${CLAUDE_PLUGIN_ROOT}/bin/commonground" …`. That form works from both the Bash and the
 PowerShell tool; the bare word works only in Bash.
 
+**If `commonground` or `node` is not found:** check the spelling first (run it the way the
+paragraph above says). If `node` itself is missing, nothing in CommonGround runs on this computer
+yet: say so plainly, never install anything unasked, and send them to `/commonground:point`,
+whose first step walks the fix.
+
 ## 1. Connection + identity
 
 Run `commonground status` — with `$ARGUMENTS` as the wiki when it names one, bare otherwise (the
 project's own binding resolves it). Report whether the user is signed in, the team, their role,
 and (local-clone mode) the sync state / any divergence. If `commonground` or `node` is not found,
-follow `/commonground:point` step 1's not-found branch: check the spelling first (run it the way
-the top of this file says), never install anything unasked, and only after installing Node or Git,
-or reinstalling the plugin, have them restart Claude Code before anything else runs.
+the paragraph above says what to do; nothing below applies until that is fixed.
 
 **Lead with the mode**, because it decides where this project's work lands. The CLI states it
 outright on a `Mode:` line (`Mode: local, wiki folder <path>` / `Mode: hosted connector (MCP)`), so
@@ -158,13 +161,34 @@ the rest needs a connection.
 
 ## 2. Wiki state
 
-If connected, call the `get_awareness` MCP tool and report a short
-glance: `pageCount` (an **empty** wiki = `0` pages), open suggestions, lint TODOs, and the most
-recent changes. Optionally add coverage progress from `get_coverage`. If the wiki is **empty**,
-lead with that — the next step is seeding, not asking questions.
+**Read the wiki the way this project's mode reads it** (step 1 stated the mode).
 
-**Connector health.** If step 1's `commonground status` reports a team but the CommonGround tools
-are missing or a call fails, report that combination plainly: sign-in and the CLI are fine, and
+- **Local folder:** run `commonground coverage` for the section counts and `commonground lint` for
+  what needs attention. Both read the wiki folder, unpublished work included, which the connector's
+  tools cannot see. Every section empty and no pages means an **empty** wiki: lead with that. Make
+  no connector call for this, and never report a connector that is absent or not signed in as a
+  problem here: a local folder does not need one for this.
+- **Hosted connector:** call the `get_awareness` MCP tool and report a short glance: `pageCount`
+  (an **empty** wiki = `0` pages), open suggestions, lint TODOs, and the most recent changes.
+  Optionally add coverage progress from `get_coverage`. If the wiki is **empty**, lead with that —
+  the next step is seeding, not asking questions.
+
+**Setup has two sign-ins, and only those two are CommonGround's.** The browser code, in every
+mode; and the connector's own consent, for the hosted connector only. When this session reports
+servers or tools that "need authorization":
+
+- **Name only CommonGround's own entry** (`plugin:commonground:commonground` in a notice,
+  `mcp__plugin_commonground_commonground__…` on a tool) and say whether this project's mode needs
+  it. **Before a mode is chosen,** say setup needs it only if they pick hosted, and that nothing
+  needs authorizing now. **A local wiki folder does not:** setup and seeding there use no
+  connector at all, so say that sign-in can be left alone for now. It becomes useful later, for
+  inviting a teammate, the suggestions queue, or checking two wikis for overlap.
+- **Say the others are not part of CommonGround** and can stay as they are. Never start another
+  server's sign-in, and never bring up a connector list or connector suggestions, as a step of
+  setting up CommonGround.
+
+**Connector health (hosted connector only).** If step 1's `commonground status` reports a team but
+the CommonGround tools are missing or a call fails, report that combination plainly: sign-in and the CLI are fine, and
 something between this session and the wiki is not. It is **usually** a connection problem — a
 plugin update or a dropped session does this — so give those fixes first: run `/mcp` to reconnect,
 restart the session, or — asking first, because it writes files — `commonground pull [wiki]` for a
@@ -217,9 +241,12 @@ Every other surface goes quiet once there is nothing to do; **"silent" means we 
 never that we withhold on request.** So render the full ladder here even when the answer is "you're
 all set".
 
-Call the **`get_started`** MCP tool for the role + state + the single next action (it returns prose —
-relay it, don't re-derive it), and `get_coverage` for the section counts. Then draw the ladder,
-marking only what you actually know:
+**Hosted connector:** call the **`get_started`** MCP tool for the role + state + the single next
+action (it returns prose — relay it, don't re-derive it), and `get_coverage` for the section counts.
+**Local folder:** there is no connector call to make. Step 1's `commonground status` already gave
+the sign-in, the wiki, the role and the sync state, and step 2's `commonground coverage` the
+section counts; the next action is the first unticked row. Then draw the ladder, marking only what
+you actually know:
 
 ```
 [x] Plugin               commonground <version>
@@ -246,9 +273,21 @@ Rules for drawing it:
   wiki is not a team of one, and an unticked box implies a failure that does not exist.
 - **`[ ]` is a next step, not a scolding.** Put the arrow only on the FIRST unticked row — the one
   `get_started` named — and leave the rest bare.
-- If the connector is down (step 2), say so instead of drawing a ladder from stale guesses.
+- If the connector is down (step 2, hosted connector only), say so instead of drawing a ladder
+  from stale guesses. In a local folder a missing connector changes nothing here.
 
 ## 4. What you can do next
+
+**Fewer permission prompts is a setting, in either mode.** Run `commonground status --json` (it
+also gives the ladder's Plugin row its `cliVersion`) and read `prefs.quietChecks`. When it is `on`,
+say so in one line, with the way back: *"Quiet checks are on,
+so CommonGround's read-only checks run without asking. Ask me to turn them off any time."* **If
+they ask for fewer permission prompts, that is a setting too:** `commonground prefs set
+quiet-checks on` lets CommonGround's own read-only checks (the status, the list of wikis,
+coverage, the health check, the preview before publishing, and in a hosted project searching and
+reading that wiki) run without asking each time. The dialog that command raises is the
+confirmation; never turn it on on your own initiative. Publishing always asks, and so does saving
+pages. `commonground prefs set quiet-checks off` undoes it, and say so whenever you turn it on.
 
 Tailor to the user's **role** (and whether the wiki is empty). The full command set is small:
 **`/commonground:point`** (aim this project at a wiki), **`/commonground:seed`** (bootstrap/import + charter),

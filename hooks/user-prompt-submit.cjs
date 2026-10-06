@@ -51,8 +51,29 @@ const SWAP_NOTICE_OPENING = 'The CommonGround plugin changed under this session'
  * The pull is spelled `node "<cli>" pull [team]` when this build's binary is known (SER-327): the
  * bare path it used to print ran only where the Bash tool runs it, broke on a space in the path,
  * and cannot run from PowerShell at all.
+ *
+ * A LOCAL-FOLDER project gets a different notice (SER-339). The swap re-registers the connector,
+ * and a local folder's pages and checks do not go through it; yet the full notice names `/mcp` as
+ * the first fix, and a session holding that sentence is one step from sending a local-mode user to
+ * authorize something they never needed. It is not "never": a local project does use the connector
+ * for suggestions, an invite and the overlap check, and a member's only publish path is a
+ * suggestion, so the notice keeps `/mcp` as the fix for a tool that was in use and went missing,
+ * and for nothing else. `mode` is the project's own
+ * recorded mode (`lib.routerMode`); an unpointed project has none and keeps the full notice, since
+ * that is the session whose tools vanish with nothing to explain why.
  */
-function versionNotice(previous, current, cli) {
+function versionNotice(previous, current, cli, mode) {
+  if (mode === 'local') {
+    return (
+      `${SWAP_NOTICE_OPENING} (${previous} → ${current}). This project keeps its wiki in a local ` +
+      'folder, which a plugin update does not touch: its pages and its checks are unaffected, so ' +
+      'raise nothing with the user now. Only if a CommonGround connector tool this session was ' +
+      'actually using (suggestions, an invite, the overlap check) is now missing, say the update ' +
+      'dropped it and that `/mcp` or a session restart brings it back. From here on run ' +
+      `CommonGround's helper as \`${lib.cliCommand(cli, '…')}\`: the folder it lived in changed ` +
+      'with the update.'
+    );
+  }
   return (
     `${SWAP_NOTICE_OPENING} (${previous} → ${current}). Claude Code ` +
     "re-registers a plugin's MCP server on a version change, so the CommonGround tools may have " +
@@ -138,7 +159,7 @@ function main() {
   const previous = versionChange(marker, current, sessionId);
   let notice = '';
   if (previous) {
-    notice = versionNotice(previous, current, lib.cliPath());
+    notice = versionNotice(previous, current, lib.cliPath(), lib.routerMode(cwd));
     // Re-baseline to CONSUME the notice: a swap is announced exactly once, not on every prompt.
     lib.writeVersionMarker(sessionId, current);
   } else if (!marker) {

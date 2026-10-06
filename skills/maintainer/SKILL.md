@@ -26,6 +26,11 @@ curation (Model A). You produce plain markdown; the wiki is persisted either by 
 `node "${CLAUDE_PLUGIN_ROOT}/bin/commonground" …`. That form works from both the Bash and the
 PowerShell tool; the bare word works only in Bash.
 
+**If `commonground` or `node` is not found:** check the spelling first (run it the way the
+paragraph above says). If `node` itself is missing, nothing in CommonGround runs on this computer
+yet: say so plainly, never install anything unasked, and send them to `/commonground:point`,
+whose first step walks the fix.
+
 ## Step 0 — which mode is this project in? (do this before any write)
 
 The two modes persist work in completely different places, so **never guess, and never infer it from
@@ -91,6 +96,23 @@ help them read, answer, and file `suggest_change`.
   all, so offering one there sends a member after something that isn't here. Everything else a local
   project needs is on disk: `commonground lint` and `commonground coverage` run against the working
   copy, so they see unpublished work that the server's `lint` / `get_coverage` cannot.
+- **Setup has two sign-ins, and only those two are CommonGround's.** The browser code, in every
+  mode; and the connector's own consent, for the hosted connector only. When this session reports
+  servers or tools that "need authorization":
+
+  - **Name only CommonGround's own entry** (`plugin:commonground:commonground` in a notice,
+    `mcp__plugin_commonground_commonground__…` on a tool) and say whether this project's mode needs
+    it. **Before a mode is chosen,** say setup needs it only if they pick hosted, and that nothing
+    needs authorizing now. **A local wiki folder does not:** setup and seeding there use no
+    connector at all, so say that sign-in can be left alone for now. It becomes useful later, for
+    inviting a teammate, the suggestions queue, or checking two wikis for overlap.
+  - **Say the others are not part of CommonGround** and can stay as they are. Never start another
+    server's sign-in, and never bring up a connector list or connector suggestions, as a step of
+    setting up CommonGround.
+- **Fewer permission prompts is a setting the user owns.** `commonground prefs set quiet-checks on`
+  lets CommonGround's own read-only checks run without asking each time (publishing always asks,
+  and so does saving pages); `… off` undoes it. Run it only when they ask for fewer prompts, and
+  never turn it on on your own initiative: the dialog it raises is their confirmation.
 - **If the connector goes quiet** (MCP mode) — missing or failing CommonGround tools are **usually**
   a connection problem rather than a role one: a member still sees `search` / `get_page` /
   `get_index`, so if *those* are gone too the connector was dropped (a plugin update does this

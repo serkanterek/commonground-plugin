@@ -11,6 +11,11 @@ in the user's own copy.
 `node "${CLAUDE_PLUGIN_ROOT}/bin/commonground" …`. That form works from both the Bash and the
 PowerShell tool; the bare word works only in Bash.
 
+**If `commonground` or `node` is not found:** check the spelling first (run it the way the
+paragraph above says). If `node` itself is missing, nothing in CommonGround runs on this computer
+yet: say so plainly, never install anything unasked, and send them to `/commonground:point`,
+whose first step walks the fix.
+
 ## 0. Establish the FRAME before you say anything
 
 Who this wiki is for changes what publishing *means*, and getting it wrong is the single most jarring

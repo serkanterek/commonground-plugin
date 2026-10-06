@@ -34,15 +34,26 @@
  * orientation and a broken one should be silent. A guard is different: an UNCERTAIN verdict resolves
  * to `ask`, never to allow (SER-202's review found the log gate's own read failing open — the same
  * bug, one layer down). But a hook that THROWS must never wedge a session, so the process-level
- * catch stays silent. Uncertainty → ask; crash → allow.
+ * catch stays silent. Uncertainty → ask; crash → no verdict, which leaves the call to Claude Code's
+ * own permission prompt.
+ *
+ * IT CAN ALSO APPROVE, AND ONLY ONE WAY (SER-340, "quiet checks"). With the user's own preference
+ * on, a call that is POSITIVELY IDENTIFIED as one of CommonGround's read-only checks gets `allow`,
+ * which removes Claude Code's permission prompt for it. That is the reverse of everything above, so
+ * it is built the reverse way: a closed grammar matched against the WHOLE command, never a search
+ * for something inside it. Anything that is not exactly on the list gets no verdict from this
+ * path. "Uncertainty resolves to ask, never to allow" stays literally true: an approval is given
+ * only where nothing is uncertain. See QUIET CHECKS below.
  */
 
 const {
   readStdinInput,
   projectCwd,
   projectTeamId,
+  projectTeamIds,
   routerMode,
   cliPath,
+  quietChecksEnabled,
 } = require(`${__dirname}/lib.cjs`);
 
 /**
@@ -2719,6 +2730,255 @@ function unnamedConnectorVerdict(toolName) {
   };
 }
 
+/*
+ * ───────────────────────────── QUIET CHECKS (SER-340) ─────────────────────────────
+ *
+ * A first seed in a local folder runs about ten helper commands, and Claude Code asks before each
+ * one. The second beta tester read that as the product misfiring. A plugin cannot ship permission
+ * rules, `allowed-tools` lasts one turn, and a saved rule names the plugin's version folder and so
+ * dies at every update. What a plugin CAN do is answer `allow` from this hook, which runs anyway.
+ *
+ * So: one preference (`commonground prefs set quiet-checks on`, off until a person says yes to it),
+ * and with it on, this hook approves a call only when ALL of these hold.
+ *
+ * SHELL (Bash and PowerShell; never Monitor, which is a watcher):
+ *   - the WHOLE command is `node "<this build's CLI>" <args>`, optionally followed by ` 2>&1` and,
+ *     in Bash, one ` | head -N` or ` | tail -N`. Measured on real sessions before this was built:
+ *     Claude appends `2>&1` to nearly every helper call and pipes about half through `head`, so a
+ *     grammar without those two tails approved none of them;
+ *   - the path is THIS build's own (`cliPath()`), compared as a string. Never the bare word
+ *     `commonground`: on PATH it can be an alias, a function or another program, and the consent
+ *     was for CommonGround's checks, not for whatever answers to that name;
+ *   - `<args>` is one of QUIET_ARGS, in full. No prefix matching anywhere: `status
+ *     --clear-stale-credential` deletes a file, `use <wiki>` moves the machine's pointer, and
+ *     `import <dir> --dry-run` publishes for real;
+ *   - nothing else is in the string. No second command, no substitution, no variable, no redirect
+ *     to a file, no newline. The gating code above has to READ arbitrary shell to find a publish;
+ *     this code refuses to read any, which is why it has a fixed point and that code does not.
+ *
+ * CONNECTOR: one of the tools the server itself declares read-only, on the PLUGIN'S OWN server, by
+ * its whole name (never a prefix, never a connector named only by an id, which is how every
+ * claude.ai connector arrives in the desktop app, so a `search` there may be another product's), in
+ * a HOSTED project whose recorded wiki is confirmed equal to the one this session's connector
+ * serves, and only for a wiki this project DECLARES (its primary, or one it reads beside it): a
+ * call that names any other wiki in its `wiki` argument is a read of something this project does
+ * not hold, and the prompt it would lose is the one place a person sees that wiki's id. Never in a local folder (those reads describe the published copy, not the
+ * folder being worked in) and never in the unrecorded state right after a first point.
+ *
+ * WHAT IT DOES NOT COVER, on purpose: `login`, `init`, `use <wiki>`, every publish verb, and the
+ * page files Claude writes into the wiki folder (this hook is not registered on Write or Edit, and
+ * registering it there would run it on every file operation in every session on the machine).
+ *
+ * ACCEPTED RESIDUALS. The words of an approved command are the user's own shell's to interpret: a
+ * zsh GLOBAL alias (`alias -g`) named like one of them, a wiki name included, would expand. That is
+ * true of every command on such a machine and is theirs to have set. And turning the preference ON
+ * is asked about by {@link quietSwitchVerdict} for every spelling that names the CLI's `prefs`
+ * verb or the state file together with the key, not for every conceivable one: a command that
+ * assembles the key itself falls back to Claude Code's own prompt.
+ *
+ * A user's own deny or ask rule still wins over this: Claude Code evaluates those after a hook's
+ * allow. And the preference FILE is read last, after the call has been identified, so with it off
+ * nothing is read from `state.json` for a call that could not have been approved anyway.
+ */
+
+/** The connector tools the server registers with `readOnly(...)`, its `readOnlyHint: true`
+ * declaration (apps/mcp-server/src/server.ts). */
+const QUIET_CHECK_TOOLS = new Set([
+  'search', 'get_page', 'get_index', 'list_suggestions', 'lint', 'get_history', 'get_awareness',
+  'get_coverage', 'get_started',
+]);
+
+/** The shell tools a check may be approved in. Monitor reads as `sh` above, but is never a check. */
+const QUIET_SHELL_TOOLS = new Set(['Bash', 'PowerShell']);
+
+/**
+ * One wiki argument: an id, a unique prefix or a name. Bare, or double-quoted when it has a space,
+ * and in both forms drawn only from characters that mean nothing to either shell. A token that
+ * starts with `-` is a flag and is never a wiki, QUOTED OR NOT (the shell strips the quotes, so
+ * `status "--clear-stale-credential"` is that flag): this is what keeps every unlisted flag out.
+ */
+const QUIET_WIKI = String.raw`(?:[A-Za-z0-9_][A-Za-z0-9_.@:-]*|"[A-Za-z0-9_][A-Za-z0-9_ .@:-]*")`;
+
+/** Every argument list a check may have, anchored at both ends. Read-only, each of them. */
+const QUIET_ARGS = new RegExp(
+  `^(?:${[
+    `status(?: --json)?(?: ${QUIET_WIKI})?`,
+    `status ${QUIET_WIKI} --json`,
+    'use',
+    `coverage(?: --json)?(?: ${QUIET_WIKI})?`,
+    `coverage ${QUIET_WIKI} --json`,
+    `lint(?: --json)?(?: ${QUIET_WIKI})?`,
+    `lint ${QUIET_WIKI} --json`,
+    'version',
+    `push --dry-run(?: ${QUIET_WIKI})?`,
+    `push ${QUIET_WIKI} --dry-run`,
+  ].join('|')})$`,
+);
+
+/**
+ * What may follow the arguments: merging stderr, and in Bash one bounded `head` or `tail`. The dash
+ * is REQUIRED: `| head 5` reads a file named `5` in place of the check's output.
+ */
+const QUIET_TAIL = {
+  sh: /^(?: 2>&1)?(?: \| (?:head|tail) (?:-n [0-9]{1,5}|-[0-9]{1,5}))?$/,
+  ps: /^(?: 2>&1)?$/,
+};
+
+/** Where the arguments end and a tail begins. Neither sequence can occur inside QUIET_WIKI. */
+const QUIET_TAIL_START = / (?:2>&1|\|)/;
+
+/**
+ * Is this whole shell command one of CommonGround's read-only checks, run on this build's own CLI?
+ *
+ * `cli` is the path to compare against (`cliPath()`); null, when the bundle is not there, is never
+ * a match. A path either shell would REWRITE inside double quotes is never a match either: `$`, a
+ * backtick or a quote in it, or two backslashes in a row (Bash reads `\\` as one). Refusing those
+ * costs a prompt on a machine with such a path, and approving them would approve a command whose
+ * program is not the string that was compared.
+ */
+function quietCheckCommand(command, dialect, cli) {
+  if (typeof command !== 'string' || typeof cli !== 'string' || !cli) return false;
+  if (!QUIET_TAIL[dialect]) return false;
+  if (/[$`"'\n\r\t]/.test(cli) || cli.includes('\\\\')) return false;
+  const text = command.trim();
+  if (/[\n\r\t]/.test(text)) return false;
+  // On WINDOWS only, the same file has three spellings a command may carry: the path as this hook
+  // knows it (backslashes), the same with `/` throughout, and the one the command files produce,
+  // where Claude Code substitutes the plugin root as it is and the file's own `/bin/commonground`
+  // follows it. On every other system a backslash is an ordinary character in a name, so the
+  // swapped spelling would be a DIFFERENT file and is never a candidate. Nothing else is normalized.
+  const windows = /^(?:[A-Za-z]:[\\/]|\\\\)/.test(cli);
+  const paths = windows
+    ? [...new Set([cli, cli.replace(/\\/g, '/'), cli.replace(/\\bin\\commonground$/, '/bin/commonground')])]
+    : [cli];
+  const heads = paths.map((p) => `node "${p}" `);
+  // Unquoted only for a path that needs no quoting in either shell.
+  for (const p of paths) if (/^[A-Za-z0-9_./:-]+$/.test(p)) heads.push(`node ${p} `);
+  const head = heads.find((h) => text.startsWith(h));
+  if (!head) return false;
+  const rest = text.slice(head.length);
+  const cut = rest.search(QUIET_TAIL_START);
+  const args = cut === -1 ? rest : rest.slice(0, cut);
+  const tail = cut === -1 ? '' : rest.slice(cut);
+  return QUIET_ARGS.test(args) && QUIET_TAIL[dialect].test(tail);
+}
+
+/**
+ * Turning quiet checks ON is asked about here, in words, whatever Claude Code would have done.
+ *
+ * The opt-in is a CLI call, so in a session that already allows shell commands broadly the model
+ * could switch it on with nobody asked. This puts a dialog in front of exactly that, and it is the
+ * one place a person sees what they are agreeing to in plain language rather than as a command
+ * line.
+ *
+ * LOOSE ON PURPOSE, the opposite of the approval above. It asks for any command that names
+ * CommonGround and carries the key together with the CLI's `prefs set` verb or a WRITE of the state
+ * file, unless every mention of the key is the written-out OFF form. So the value in a variable,
+ * quotes inside the value, a redirect glued to it, an argv array, and a direct write of
+ * `state.json` all ask, without this trying to read which value they set. Over-asking costs one
+ * click (a `grep` for the command asks too); a command that assembles the KEY itself is not seen
+ * and falls back to Claude Code's own prompt. Two things are never asked about: turning it OFF,
+ * written out, and READING the answer (`status --json` piped through a filter for
+ * `prefs.quietChecks`), which is what point and seed do before they offer it. A dialog there would
+ * ask for consent to a command that changes nothing, and a no would block the read.
+ */
+const QUIET_KEY = /quiet-?checks/i;
+// Spaces, tabs and quotes between the words, never a newline: the shell ends a command there, so
+// `… quiet-checks` + newline + `off` is not the off form (an `xargs` can still hand it `on`).
+const QUIET_SWITCH_OFF = /prefs[ \t"']+set[ \t"']+quiet-checks[ \t"']+off(?=$|[\s"';&|)<>])/gi;
+// The CLI's verb, as a PAIR: `prefs` then `set`, with whatever quoting or punctuation an argv array
+// or a shell puts between them. The bare word `prefs` is also how the JSON field is spelled, and
+// `status --json | jq .prefs.quietChecks` is the READ the commands tell Claude to make.
+const QUIET_VERB = /\bprefs\b[^A-Za-z0-9]{1,20}set\b/i;
+// The state file, WRITTEN: a redirect, or a tool that writes in place. `cat` and `grep` on it read.
+const QUIET_FILE_WRITE = /state\.json/i;
+const QUIET_WRITES = />|\btee\b|\bsed\b[^|;&\n]*\s-i|\b(?:Set|Add)-Content\b|\bOut-File\b|\bwriteFile|\bopen\([^)]*['"][wa]|\b(?:mv|cp)\s/i;
+function quietSwitchVerdict(command) {
+  if (typeof command !== 'string' || !/commonground/i.test(command)) return null;
+  if (!QUIET_KEY.test(command)) return null;
+  const viaFile = QUIET_FILE_WRITE.test(command) && QUIET_WRITES.test(command);
+  if (!QUIET_VERB.test(command) && !viaFile) return null;
+  if (!QUIET_KEY.test(command.replace(QUIET_SWITCH_OFF, ''))) return null;
+  return {
+    decision: 'ask',
+    reason:
+      "This lets CommonGround's own read-only checks run without asking you each time: its " +
+      'status, your list of wikis, coverage, the health check and the publish preview, and, in a ' +
+      'project that uses the hosted connector, searching and reading that wiki. Publishing still ' +
+      'asks you every time, and so does anything that changes a file. To undo it, ask Claude to ' +
+      'turn quiet checks off.',
+    instruction:
+      'This dialog is the consent for quiet checks: do not ask a second yes/no question of your ' +
+      'own. Only run this command when the user has said they want fewer prompts; never turn it ' +
+      'on on your own initiative. If they decline, leave it off and do not offer it again in ' +
+      'this session.',
+  };
+}
+
+/** The approval itself. The reason reaches Claude Code's debug log only; the user sees no dialog. */
+const QUIET_ALLOW = {
+  decision: 'allow',
+  reason:
+    'CommonGround quiet checks: a read-only check, approved because this machine turned on ' +
+    '`quiet-checks` (commonground prefs set quiet-checks off undoes it).',
+};
+
+/** An approval for a shell command that is exactly one read-only check, with the preference on. */
+function quietShellVerdict(toolName, toolInput, dialect) {
+  if (!QUIET_SHELL_TOOLS.has(toolName) || typeof toolInput.command !== 'string') return null;
+  // Before anything touches the disk: every approvable command starts with this word, and almost
+  // no other command does, so an ordinary `ls` costs one test here and nothing more.
+  if (!/^\s*node /.test(toolInput.command)) return null;
+  if (!quietCheckCommand(toolInput.command, dialect, cliPath())) return null;
+  return quietChecksEnabled() ? QUIET_ALLOW : null;
+}
+
+/**
+ * The plugin's own server, by its WHOLE name. {@link PLUGIN_SERVER} is a prefix, which is right for
+ * a refusal (a wider net) and wrong for an approval: `plugin_commonground_extras_srv` is another
+ * plugin's server, and its `lint` is not ours to wave through. Claude Code names a plugin server
+ * `plugin_<plugin>_<server>` in a tool name and `plugin:<plugin>:<server>` in `mcp_server.name`.
+ */
+const PLUGIN_OWN_SERVER = 'plugin_commonground_commonground';
+const ownServerName = (name) =>
+  typeof name === 'string' && name.toLowerCase().replace(/[:\s-]/g, '_') === PLUGIN_OWN_SERVER;
+
+/**
+ * An approval for a read-only connector tool, with the preference on. Called only after
+ * {@link wrongWikiVerdict} has had its say, so a confirmed wrong-wiki session never reaches it.
+ */
+function quietReadVerdict(input, toolName, bare) {
+  // The WHOLE tool name. `serverOf` stops at the first `__`, so on a build that sends no
+  // `mcp_server` a server called `plugin_commonground_commonground__x` would pass as ours.
+  if (!QUIET_CHECK_TOOLS.has(bare)) return null;
+  if (typeof toolName !== 'string' || toolName.toLowerCase() !== `mcp__${PLUGIN_OWN_SERVER}__${bare}`) {
+    return null;
+  }
+  // Claude Code 2.1.274+ says where the server's definition came from and what it is called; trust
+  // those over the tool name. An older build sends no such field, and the name is all there is.
+  const server = input && input.mcp_server;
+  if (server !== undefined && (!server || server.source !== 'plugin' || !ownServerName(server.name))) {
+    return null;
+  }
+  const cwd = projectCwd(input);
+  if (routerMode(cwd) !== 'mcp') return null;
+  const bound = projectTeamId(cwd);
+  const serving = (process.env.COMMONGROUND_WIKI || '').trim();
+  if (!bound || !serving || bound.toLowerCase() !== serving.toLowerCase()) return null;
+  // A wiki THIS PROJECT DECLARES, and no other. Most read tools take a `wiki` argument the server
+  // authorizes by membership, so with it a call reads any wiki the person belongs to; `bound ===
+  // serving` above only proves the session's default, which such a call does not use. The declared
+  // set (the block's primary and its `also:` wikis) is the project's own statement of what it
+  // reads, and a bare `search` already answers from all of it; a wiki outside it still asks.
+  const asked = input && input.tool_input ? input.tool_input.wiki : undefined;
+  if (asked !== undefined && asked !== null) {
+    if (typeof asked !== 'string') return null;
+    const named = asked.trim().toLowerCase();
+    if (!projectTeamIds(cwd).some((id) => id.toLowerCase() === named)) return null;
+  }
+  return quietChecksEnabled() ? QUIET_ALLOW : null;
+}
+
 /**
  * The verdict for one tool call, or null to stay out of the way.
  * Exported so tests can drive every branch without spawning a process per case.
@@ -2728,7 +2988,16 @@ function decide(input) {
   const toolInput = (input && input.tool_input) || {};
 
   const dialect = SHELL_DIALECT.get(toolName);
-  if (dialect) return shellVerdict(shellCommand(toolInput), [dialect]);
+  if (dialect) {
+    const command = shellCommand(toolInput);
+    // A publish is judged first and always: nothing below can approve a command the gate asks or
+    // refuses, and a command that both publishes and flips the preference gets the publish dialog.
+    return (
+      shellVerdict(command, [dialect]) ||
+      quietSwitchVerdict(command) ||
+      quietShellVerdict(toolName, toolInput, dialect)
+    );
+  }
   // A shell tool with no dialect here. Dormant (see UNKNOWN_SHELL_NOTE); falls through on no hit,
   // so a non-shell tool that merely has a `command` field is judged exactly as before.
   if (!toolName.startsWith('mcp__') && typeof toolInput.command === 'string') {
@@ -2748,7 +3017,7 @@ function decide(input) {
     if (wrongWiki) return wrongWiki;
   }
 
-  if (!GATED_TOOLS.has(bare)) return null;
+  if (!GATED_TOOLS.has(bare)) return quietReadVerdict(input, toolName, bare);
 
   // Hosted-only, no local equivalent — the mode cannot change the answer, so it is never consulted.
   if (OUTWARD_TOOLS.has(bare)) return outwardVerdict(bare);
@@ -2827,19 +3096,22 @@ function noticeFor(decision, instruction) {
 
 function main() {
   const verdict = decide(readStdinInput());
-  if (!verdict) return; // silence = allow
-  process.stdout.write(
-    JSON.stringify({
-      hookSpecificOutput: {
-        hookEventName: 'PreToolUse',
-        permissionDecision: verdict.decision,
-        permissionDecisionReason: verdict.reason,
-        // Injected into the model's context. If a Claude Code build ignores this field on
-        // PreToolUse it is simply dropped — the gate itself is unaffected either way.
-        additionalContext: noticeFor(verdict.decision, verdict.instruction),
-      },
-    }),
-  );
+  // Nothing printed is NOT an approval: Claude Code then runs its own permission check, and asks
+  // the user wherever it normally would. Only the `allow` below removes that prompt.
+  if (!verdict) return;
+  const hookSpecificOutput = {
+    hookEventName: 'PreToolUse',
+    permissionDecision: verdict.decision,
+    permissionDecisionReason: verdict.reason,
+  };
+  // The note for the model is about a call that was intercepted. An approved check was not: it
+  // runs as if no hook were here, and telling the model "the user is being asked" would be false.
+  if (verdict.decision !== 'allow') {
+    // Injected into the model's context. If a Claude Code build ignores this field on PreToolUse
+    // it is simply dropped — the gate itself is unaffected either way.
+    hookSpecificOutput.additionalContext = noticeFor(verdict.decision, verdict.instruction);
+  }
+  process.stdout.write(JSON.stringify({ hookSpecificOutput }));
 }
 
 // Only self-run when invoked directly (so tests can require this module without side effects).
@@ -2869,4 +3141,8 @@ module.exports = {
   SHELL_DIALECT,
   PREVIEW_FLAGS,
   UNKNOWN_SHELL_NOTE,
+  quietCheckCommand,
+  quietSwitchVerdict,
+  QUIET_CHECK_TOOLS,
+  QUIET_ALLOW,
 };

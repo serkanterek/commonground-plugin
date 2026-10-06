@@ -66,11 +66,11 @@ that anyone may make (publishing is the gated step); in MCP mode writing takes a
     one that is a copy of the first body line, or pure provenance ("Stated by X on…").
   - **Redundant summary** — active pages whose `summary:` reuses their `title:` instead of adding
     to it, so the catalog line gives no new basis to choose the page. Either the whole line says
-    nothing the title doesn't (`Gaming` → "Gaming."), or it *opens* by re-saying what the title
-    already spells out past the page's name (`Lightbug — fantasy novel (on hold, wants to resume)`
-    → "Fantasy novel on hold, wants to resume. …") — most of that second kind is genuinely new
+    nothing the title doesn't (`Portable hole` → "Portable hole."), or it *opens* by re-saying what the title
+    already spells out past the page's name (`Rocket skates — retired gadget (no brake, sold to museums)`
+    → "Retired gadget, no brake, sold to museums. …") — most of that second kind is genuinely new
     material, so don't expect the finding to name a line that is nothing but its title. Naming the
-    subject and then reporting ("Pera Wallet is the main Algorand wallet…") is fine and never
+    subject and then reporting ("Portable hole is the best seller in the catalogue…") is fine and never
     flagged. The two summary checks **partition**: a page appears in one or the other, never both.
   - **Near-miss tag** — a `tags:` value that differs from a real category only by plural,
     separator, accent, or `&` vs `and` (`decisions` where the charter says `decision`). **This is
@@ -141,8 +141,8 @@ that anyone may make (publishing is the gated step); in MCP mode writing takes a
 - **Contradiction** — two pages asserting conflicting facts.
 - **Missing cross-reference** — two clearly-related pages whose bodies don't link to each other.
 - **Gap reading** — the qualitative read of the coverage gaps. The checklist above can say *which*
-  section is short; only this can say *what is missing about it*: "three pages touch Quantinium and
-  none says why you left, though a decision page references it", where the checklist's best is "the
+  section is short; only this can say *what is missing about it*: "three pages touch the rocket skates and
+  none says why they were retired, though a decision page references it", where the checklist's best is "the
   decisions section has 4 of 5".
 
 **The gap reading is opt-in, and you must ask first.** It means reading the wiki's pages properly
@@ -223,9 +223,9 @@ A short, grouped readout. Don't drown the user — surface the few that matter m
    list every category, don't re-list the uncategorised pages (kind 2 already named them), and
    **don't turn a `null` ratio into a percentage**.
 
-**Then the boundaries**, when `crossWiki` has unsettled subjects: *"You and **Hipolabs** both cover
-3 subjects — Hipolabs itself (yours: `career/hipolabs`), Pera Wallet (yours: `projects/pera-wallet`;
-theirs: `products/pera-wallet`), onboarding (…)."* One line per subject, `subject`-kind first, and
+**Then the boundaries**, when `crossWiki` has unsettled subjects: *"You and **Acme** both cover
+3 subjects — Acme itself (yours: `career/acme`), the rocket skates (yours: `projects/rocket-skates`;
+theirs: `products/rocket-skates`), onboarding (…)."* One line per subject, `subject`-kind first, and
 the settled ones as a single trailing count — never re-listed, since a charter has already answered
 them.
 
@@ -310,7 +310,7 @@ UI) when it's available in this session, as a plain question otherwise:
   question is for the pairs the frames cannot tell apart (two client wikis, two team wikis, a side
   project). Then write the answer **as a sharper self-description of the side the user controls** —
   what THIS wiki is the authority on, in the charter's retrieval brief or a Structure section's hint
-  — and **never as a sentence naming the other wiki** ("for Hipo questions use the Hipo wiki"): the
+  — and **never as a sentence naming the other wiki** ("for Acme questions use the Acme wiki"): the
   charter is shared content, a teammate may not have that wiki, and the cross-reference tells
   everyone which wikis the author belongs to. One side sharpening is usually enough, since
   over-claiming is the failure mode. Persist it as a charter edit — `save_charter` (MCP,

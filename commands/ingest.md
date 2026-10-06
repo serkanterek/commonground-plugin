@@ -43,7 +43,7 @@ block. When it does, decide which wiki this capture belongs to BEFORE writing, b
 wiki's own charter lines in the block: the organisation's or product's own facts go to its wiki;
 the user's own part in things, their preferences, their writing voice, and any subject no other
 wiki covers go to the personal wiki. Default by that rule; when a capture could genuinely belong to
-either, ask once — *"this reads like a Hipo decision; record it in the Hipolabs wiki, or in your
+either, ask once — *"this reads like an Acme decision; record it in the Acme wiki, or in your
 personal wiki as your own take on it?"* — and stay on the answer for the rest of the session. Then
 aim the write: in **MCP mode** a write that names no `wiki` lands in the **primary**, so pass
 `wiki: <teamId>` (the id from the block, the hook, or a search group) on every `stage_sources` /

@@ -1,11 +1,15 @@
 {
   "name": "commonground",
-  "version": "0.19.0",
-  "description": "A curated, version-controlled context wiki, for your team or just for you, right inside Claude. Search its knowledge, and (as an admin) seed, ingest, and curate it. All curation runs in your own Claude session on your own tokens; the CommonGround backend does storage, retrieval, and auth.",
+  "displayName": "CommonGround",
+  "version": "0.19.1",
+  "description": "A markdown wiki that Claude reads first and keeps current, curated by you. Ask a question and Claude answers from your pages and cites the ones it used. Tell it what to keep and it writes it into the right pages. One wiki for yourself, or one shared with your team.",
   "author": {
-    "name": "Serkan Terek"
+    "name": "Serkan Terek",
+    "email": "hello@commongroundapp.io",
+    "url": "https://commongroundapp.io"
   },
-  "homepage": "https://app.commongroundapp.io",
+  "homepage": "https://commongroundapp.io",
+  "repository": "https://github.com/serkanterek/commonground-plugin",
   "keywords": [
     "commonground",
     "wiki",
@@ -14,5 +18,10 @@
     "team",
     "mcp",
     "retrieval"
-  ]
+  ],
+  "icon": "./.claude-plugin/icon.png",
+  "documentationUrl": "https://commongroundapp.io/docs",
+  "supportUrl": "https://github.com/serkanterek/commonground-plugin/issues",
+  "privacyPolicyUrl": "https://commongroundapp.io/privacy",
+  "termsOfServiceUrl": "https://commongroundapp.io/terms"
 }

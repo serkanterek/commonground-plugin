@@ -17683,7 +17683,7 @@ function packageVersion() {
   }
 }
 function cliVersion() {
-  const embedded = true ? "0.19.0".trim() : "";
+  const embedded = true ? "0.19.1".trim() : "";
   if (embedded)
     return embedded;
   const dev = packageVersion();

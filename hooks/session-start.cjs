@@ -227,7 +227,7 @@ function releaseNotice(latest) {
  * Deliberately NOT used on the degraded branch. There we tried to reach the API and could not, so
  * asking it a second question would be a second thing to wait for and the same answer.
  *
- * Bounded and fail-open: `releaseVerdict` throttles to roughly two requests a day per machine and
+ * Bounded and fail-open: `releaseVerdict` asks at most once per half hour, and once per twelve hours after an answer, and
  * returns null on anything it cannot establish, which renders as silence.
  */
 async function offlineUpdateNotice() {

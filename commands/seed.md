@@ -225,7 +225,7 @@ session's wiki whenever its keywords come up — that reflex belongs to ANSWERIN
 seeding a different wiki, and it is how a seeding session quietly reads a personal wiki to ground
 a shared one. Grounding from any other wiki — especially personal → shared, the
 privacy-sensitive direction — is offer-and-consent, never silent: *"Your personal wiki has three
-Hipo pages — want me to draw on them here?"* No consent, no read; and never quote another wiki's
+Acme pages — want me to draw on them here?"* No consent, no read; and never quote another wiki's
 content into this one without it.
 
 `get_coverage` is **charter-aware**: once a charter exists it reports `chartered: true` plus the
@@ -352,7 +352,7 @@ describing your own work and hearing it named back. The order below is the point
    **Keep the default** / **Tailor it**. Tailoring: capture 1–3 sentences in the user's own words —
    which topics or questions should route here (for a just-me wiki this is the crucial fix: e.g.
    "anything about me — how I work, my projects, my preferences, my history"). **Describe this wiki,
-   never another one.** A brief that says "for Hipo questions, use the Hipo wiki" is a cross-reference
+   never another one.** A brief that says "for Acme questions, use the Acme wiki" is a cross-reference
    to a wiki a teammate may not have, and it tells everyone who reads the charter which wikis the
    author belongs to. A sharper self-description ("my own part in the companies I worked at") routes
    the same way and leaks nothing — and the frames already carry the general rule (an organization's
@@ -594,9 +594,9 @@ most-impactful-first — offer the pick as an AskUserQuestion (the top **3** gap
 else") — and
 for each, interview + draft + confirm + persist one page at a time, skipping what the user can't
 answer yet. Every page you draft here gets a `summary:` that **partitions** with its title instead
-of echoing it — the title is the page's name, the summary is what is *inside* it, so `Lightbug` +
-`Fantasy novel, 3 POV chapters drafted, magic system unresolved, paused Nov 2025` beats `Lightbug —
-fantasy novel (on hold)` + `Fantasy novel, on hold`. Seeding is where a wiki's first twenty titles
+of echoing it — the title is the page's name, the summary is what is *inside* it, so `Rocket skates` +
+`Twin solid-fuel rockets on roller skates, no brake, retired Aug 2026` beats `Rocket skates —
+retired gadget (no brake)` + `Retired gadget, no brake`. Seeding is where a wiki's first twenty titles
 get written, and a title that swallows the summary is written once and read forever. Stop when the user is done or the important sections are covered; they can always run
 `/commonground:seed` again later to pick up where they left off.
 

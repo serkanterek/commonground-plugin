@@ -865,7 +865,7 @@ function rememberReleaseCheck(latest, nowMs = Date.now()) {
 /**
  * Wrap text so Claude prints it to the USER verbatim instead of paraphrasing it into the flow.
  *
- * Reserved for the three beats that are genuinely worth interrupting for — first install, a
+ * Reserved for the few beats that are genuinely worth interrupting for — first install, a
  * delegated section someone was personally asked to fill, and a long absence. Using it more often
  * turns every session into an announcement and burns the one channel we have.
  */

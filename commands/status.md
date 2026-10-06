@@ -222,7 +222,7 @@ relay it, don't re-derive it), and `get_coverage` for the section counts. Then d
 marking only what you actually know:
 
 ```
-[x] Plugin               commonground 0.19.0
+[x] Plugin               commonground <version>
 [x] Signed in            sam@acme.com
 [x] Team                 Platform · admin
 [x] Claude connected     Code, last used today

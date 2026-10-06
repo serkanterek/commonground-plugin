@@ -290,9 +290,10 @@ function outwardVerdict(tool) {
  *   - a program slot filled from another program's output where the text gives no sign of it: a
  *     plain replace-string (`… | xargs -I CG node CG push`), a stage that does not name the binary
  *     (`cat paths.txt | xargs -I{} node {} push`), a lookup whose body holds a heredoc;
- *   - text computed while the command runs and handed to another shell or program as code: `echo
- *     <base64> | base64 -d | sh`, character codes, a reversed string, and a program name assembled
- *     by a substitution (`$(echo common)ground push`), where no word of the text is the binary;
+ *   - text computed while the command runs and handed to another shell or program as code: a
+ *     base64 string the command itself decodes and hands to a shell, character codes, a reversed
+ *     string, and a program name assembled by a substitution (`$(echo common)ground push`), where
+ *     no word of the text is the binary;
  *   - a pattern that starts and ends with `*` and opens its line (`*ground* push`, run where the
  *     binary sits): that is how markdown writes emphasis (`**On** push to main` in a PR body), and a
  *     commit message or heredoc line is read as a command start. After a runner it still asks.
@@ -402,7 +403,7 @@ const GATED_COMMANDS = [
  *
  * Takes the SEGMENT, not the whole command, and that is load-bearing rather than tidy. Reading the
  * whole string meant the dialog described a different command from the one about to run: for
- * `push --dry-run --message "preview only" && push --message "drops the poker section"` it quoted
+ * `push --dry-run --message "preview only" && push --message "drops the brake section"` it quoted
  * `preview only`, and for `push --allow-deletes --dry-run && push --message "add two pages"` it
  * announced removals the real publish would not perform. Compound preview-then-publish is not an
  * exotic input here — it is the shape this file exists to gate.
@@ -2147,12 +2148,12 @@ function legacyArgvRisk(text, kind) {
  * unless EVERY heredoc opened before it feeds a shell that reads its body as the script, and so joins
  * such lines itself ({@link readsBodyAsScript}; round 3 of the SER-331 review, judged per heredoc
  * since round 4). The scanner joins them the way bash does, and the program that really reads a
- * quoted-delimiter body may not: `pwsh -Command -`, a `$P` holding pwsh, `sed -n 1p <<'EOF' | sh`,
- * a `while read -r l; do eval "$l"; done` loop, `sh -c 'pwsh -Command -' <<'EOF'` and a pwsh
- * heredoc after a `bash <<'A'` one each ran `commonground push \` then `--dry-run` as a publish.
- * `bash <<'EOF'` joins them, and stays a preview. Even then only the body's FIRST command is sure to
- * be read by that shell ({@link rawReadable}, round 5): a first line of `pwsh -Command -` or a
- * `while read` loop takes the rest of the body raw.
+ * quoted-delimiter body may not: `pwsh -Command -`, a `$P` holding pwsh, a `sed -n 1p <<'EOF'`
+ * whose output a `sh` then reads, a `while read -r l; do eval "$l"; done` loop, `sh -c 'pwsh
+ * -Command -' <<'EOF'` and a pwsh heredoc after a `bash <<'A'` one each ran `commonground push \`
+ * then `--dry-run` as a publish. `bash <<'EOF'` joins them, and stays a preview. Even then only the
+ * body's FIRST command is sure to be read by that shell ({@link rawReadable}, round 5): a first line
+ * of `pwsh -Command -` or a `while read` loop takes the rest of the body raw.
  */
 function shellVerdict(cmd, dialects, depth = 0) {
   const unreadable = verdictFor({ command: GATED_COMMANDS[0], unreadable: true });
@@ -2573,17 +2574,18 @@ function plainUsesOnly(r, ctx, quoted) {
 }
 
 /**
- * `pwsh -EncodedCommand <base64>` (and `-e`, `-ec`, `--EncodedCommand`, Windows' `/e`):
- * PowerShell text in UTF-16LE, a spelling that sidesteps every quoting problem and so every view
- * above (SER-331). Read only where `pwsh` or `powershell` is named. Every literal payload is decoded,
- * whatever it holds (it may be another `pwsh -e`), with the whitespace pwsh ignores taken out
- * (`-e "YwBv AG0A…"`). And every other base64 word in the command that decodes to text is read as a
- * payload too (round 3 of the SER-331 review): a flag the guard cannot pair with its value (`"-e"`,
- * `('-e')`, `Start-Process pwsh -ArgumentList '-NoProfile','-e','…'`, or one string holding both) or
- * a value held in a name (`$e='…'; pwsh -e $e`) still hands pwsh the payload. More than MAX_PAYLOADS
- * is `overflow`, which asks. A value the text does not hold at all, after pwsh's own `-e` (`pwsh -e
- * $e`, `xargs pwsh -e`), is `unread`, and if no payload is ours while the command names the binary,
- * {@link shellVerdict} asks; another program's `-e` (`grep -e "$PAT"`, `echo -e "$MSG"`) is not.
+ * PowerShell's `-EncodedCommand` flag (and `-e`, `-ec`, `--EncodedCommand`, Windows' `/e`), whose
+ * value is base64 of PowerShell text in UTF-16LE, a spelling that sidesteps every quoting problem and
+ * so every view above (SER-331). Read only where `pwsh` or `powershell` is named. Every literal
+ * payload is decoded, whatever it holds (it may be another `pwsh -e`), with the whitespace pwsh
+ * ignores taken out (a quoted value split by a space). And every other base64 word in the command
+ * that decodes to text is read as a payload too (round 3 of the SER-331 review): a flag the guard
+ * cannot pair with its value (`"-e"`, `('-e')`, `Start-Process pwsh -ArgumentList
+ * '-NoProfile','-e','…'`, or one string holding both) or a value held in a name (`$e='…'; pwsh -e
+ * $e`) still hands pwsh the payload. More than MAX_PAYLOADS is `overflow`, which asks. A value the
+ * text does not hold at all, after pwsh's own `-e` (`pwsh -e $e`, `xargs pwsh -e`), is `unread`, and
+ * if no payload is ours while the command names the binary, {@link shellVerdict} asks; another
+ * program's `-e` (`grep -e "$PAT"`, `echo -e "$MSG"`) is not.
  */
 const POWERSHELL = /(?:^|[\s;&|(){}"'`\\/=])(?:pwsh|powershell)(?:\.exe)?(?=[\s;&|)"'`]|$)/i;
 const POWERSHELL_WORDS = new RegExp(POWERSHELL.source, 'gi');

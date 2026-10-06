@@ -15,8 +15,8 @@ beside the team's — one set, read over one connection (or from one clone each)
 `get_index` answering from all of them and each wiki's own charter saying what it covers. The flags
 carry it: `--also <wiki>` adds a wiki beside the ones the project already reads, `--drop <wiki>`
 stops reading one, and a bare wiki name keeps its old meaning — *this project reads THIS wiki* — so
-it replaces the set. Plain words map to the same flags ("add Hipo", "read my personal wiki here
-too" mean `--also`; "stop reading Hipo here" means `--drop`). The first wiki a project reads is its
+it replaces the set. Plain words map to the same flags ("add Acme", "read my personal wiki here
+too" mean `--also`; "stop reading Acme here" means `--drop`). The first wiki a project reads is its
 **primary** — what a bare `commonground` verb and a tool call that names no `wiki` address.
 
 The bundled `commonground` CLI talks to the hosted API by default (no env setup needed).

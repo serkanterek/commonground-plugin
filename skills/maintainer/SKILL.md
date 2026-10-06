@@ -76,7 +76,7 @@ help them read, answer, and file `suggest_change`.
   that `wiki.teamId` as `wiki` to `get_page` (and to any write) for a page from that group, since a
   call that names no `wiki` addresses the primary. In local-clone mode each wiki has its own clone;
   `commonground status` names the primary's folder and `commonground status <wiki>` the others.
-  Either way: **cite the wiki beside the pageId** — `(Hipolabs) decisions/pricing` — and **never
+  Either way: **cite the wiki beside the pageId** — `(Acme) decisions/rocket-skates-retired` — and **never
   merge two wikis' claims into one unattributed sentence**. When both could answer, each wiki's own
   router lines decide: an organisation's or product's wiki is the authority on the organisation
   itself, the personal wiki on the user's own part in it and on whatever no other wiki covers.
@@ -161,8 +161,8 @@ at `company/wiki-charter`; both are read).
 **Frontmatter** (YAML at the top of every page). Required: `title`, `updated`.
 Optional: **`summary`** (the page's catalog line — see below; write one on every page you touch),
 `scope` (see below — omit it unless this wiki partitions a real org), `section` (`dev`|`pm`), `owner`, `status` (`active`|`hypothetical`|`deprecated`, default
-`active`), `created` (`YYYY-MM-DD`), `aliases` (other names this page answers to — a `[[Ece]]` in
-any page's body resolves to a page titled "Ece Yagman" that lists it, and a search for the short
+`active`), `created` (`YYYY-MM-DD`), `aliases` (other names this page answers to — a `[[Skates]]` in
+any page's body resolves to a page titled "Rocket skates" that lists it, and a search for the short
 name finds it; write them when a page is habitually called something shorter or other than its title),
 **`tags`** (the page's categories — see below; write them on every page you touch),
 `sources` (paths under `sources/` — only when the page actually cites a stored source).
@@ -246,15 +246,15 @@ name; the summary is what is inside it.** Read together they should partition th
 restate each other. Write one on every page you touch.
 
 - **Never restate the title.** A summary that re-says its title gives a reader no new basis to
-  choose the page. `Lightbug — fantasy novel (on hold, wants to resume)` with the summary `Fantasy
-  novel on hold, wants to resume` is one fact written twice. Title `Lightbug` + summary `Fantasy
-  novel, 3 POV chapters drafted, magic system unresolved, paused Nov 2025` routes better *and* is
-  shorter. If the title already carries detail, the summary goes past it — it never echoes it.
+  choose the page. `Rocket skates — retired gadget (no brake, museum sales only)` with the summary
+  `Retired gadget with no brake, museum sales only` is one fact written twice. Title `Rocket skates` +
+  summary `Solid-fuel rockets on roller skates, no brake, retired from field use Aug 2026` routes
+  better *and* is shorter. If the title already carries detail, the summary goes past it — it never echoes it.
 - **One plain-text line, ≤140 characters.** No markdown emphasis, no `[[wikilinks]]` — it is
   rendered as data, not prose.
 - **Name the concrete things.** The nouns someone would actually search for: products, people,
-  systems, decisions, dates. `LoL, WoW, Path of Exile, Diablo-likes` beats `A hobby with several
-  distinct strands`.
+  systems, decisions, dates. `Rocket skates, portable hole, giant rubber band` beats `A catalogue
+  with several distinct gadgets`.
 - **Say when to read the page** if the title doesn't already make it obvious ("Load before drafting
   anything in the user's voice").
 - **Never provenance.** "Stated by X on 2026-05-23", "Canonical page for…", "An ADR for…" describe
@@ -303,12 +303,12 @@ unless you write it down. It goes in the **commit message** — never in a file.
 | **MCP mode** | one `save_page` | why **this page** changed |
 | **local-clone mode** | one `/commonground:push` — everything since the last one | what **this session** did |
 
-In MCP mode pass `message` to `save_page`: *"rewrote the career section after the Sequence move"*.
-In local-clone mode pass `--message` to `/commonground:push`: *"split Concepts by retrieval
-contract — 6 pages retagged, ai-web3-interest rebuilt as a runnable routine"*.
+In MCP mode pass `message` to `save_page`: *"rewrote the status section after the skates were retired"*.
+In local-clone mode pass `--message` to `/commonground:push`: *"wrote up the August 11
+canyon test — field report added, rocket skates marked retired, deploy runbook updated"*.
 
 Say what changed and **why**. Never restate what the diff already shows: "updated page" and "edited
-people/taylan" are worth nothing, because the history already lists the page and the date. Don't
+products/rocket-skates" are worth nothing, because the history already lists the page and the date. Don't
 carry a session-scale sentence into a single `save_page`, or a page-scale one into a push.
 
 `get_history` reads this back, per commit and per page. A page's own dates stay in its

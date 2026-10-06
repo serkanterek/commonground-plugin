@@ -1,0 +1,48 @@
+CommonGround Plugin Licence
+
+Copyright (c) 2026 Serkan Terek. All rights reserved.
+
+This repository holds the CommonGround plugin for Claude Code (the "Software"):
+commands, a skill, hooks and a bundled command-line client for the CommonGround
+service at https://commongroundapp.io.
+
+1. What you may do
+
+   You may download, install and run the Software, and read its source, in order
+   to use the CommonGround service, for yourself or inside your organisation.
+   You may change your own installed copy for your own use.
+
+2. What needs written permission first
+
+   Without prior written permission from the copyright holder you may not:
+
+   (a) redistribute the Software, or a substantial part of it, changed or
+       unchanged;
+   (b) build or distribute another product or service from it, including by
+       reusing its commands, skill, prompts or hooks;
+   (c) remove or alter this notice.
+
+   Plugin directories and marketplaces that the copyright holder has submitted
+   the Software to may host and distribute it unchanged.
+
+3. Third-party components
+
+   Parts of the bundled client are open-source components under their own
+   licences, reproduced in THIRD_PARTY_NOTICES.md. Nothing here limits your
+   rights under those licences.
+
+4. The service
+
+   Use of the CommonGround service is governed by its terms at
+   https://commongroundapp.io/terms and its privacy policy at
+   https://commongroundapp.io/privacy.
+
+5. No warranty
+
+   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+   IMPLIED, INCLUDING THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
+   PURPOSE AND NONINFRINGEMENT. TO THE EXTENT THE LAW ALLOWS, THE COPYRIGHT HOLDER
+   IS NOT LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY ARISING FROM THE
+   SOFTWARE OR ITS USE.
+
+Questions and permission requests: hello@commongroundapp.io

@@ -1026,6 +1026,22 @@ function pushNudgeOffSwitch() {
 }
 
 /**
+ * How to READ that unpublished work, said once per emit beside the off switch (SER-362). This emit
+ * is where a session learns the folder holds work, and its next move used to be `cd <folder> && git
+ * status && git diff`, which Claude Code stops with a security dialog every time, quiet checks on
+ * or not. The files that carry the rule (push.md, ingest.md, lint.md, the skill) load only when
+ * those commands run, so the emit carries it too, for the same reason it carries the off switch.
+ * `--stat` first: the names and counts answer "what is that work" without a page of text.
+ */
+function unpublishedReadPointer() {
+  const stat = lib.cliCommand(lib.cliPath(), 'diff --stat');
+  return (
+    `To see what that work is, run \`${stat}\` (without \`--stat\` for the text, and with a wiki's id ` +
+    'after it for one this project reads beside its first); never run git in the wiki folder to read it.'
+  );
+}
+
+/**
  * WHY the composed read did not land, in the user's terms (SER-325).
  *
  * "CommonGround could not be reached" was said for every failure, and it is wrong for the two that
@@ -1263,6 +1279,8 @@ async function main() {
     const also = await alsoWikiNudges(alsoIds, binding, localMode0, now);
     // The publish reminders' off switch, once, however many wikis have work (SER-327).
     const offSwitch = (isPushNudge(nudge ? folder : null) || also.push) ? pushNudgeOffSwitch() : '';
+    // And how to read that work without raw git, once, on the same condition (SER-362).
+    const readPointer = offSwitch ? unpublishedReadPointer() : '';
 
     // AT MOST ONE VERBATIM BLOCK PER EMIT (SER-325). Two blocks in one turn means Claude opens the
     // session with two announcements before it answers anything, and the second is the one people
@@ -1280,6 +1298,7 @@ async function main() {
       billingNotice(state, projectMode),
       nudge,
       also.text,
+      readPointer,
       offSwitch,
       welcome,
       updateNotice(state, { hold: Boolean(welcome) }),
@@ -1331,6 +1350,7 @@ module.exports = {
   syncNudge,
   folderReading,
   pushNudgeOffSwitch,
+  unpublishedReadPointer,
   cloneMissingNotice,
   alsoWikiNudges,
   canSeed,

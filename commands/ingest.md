@@ -150,6 +150,13 @@ page's name, the summary is what is *inside* it (the full contract is in the `ma
 **Show each drafted page and persist only on the user's confirm** — never
 auto-write, never assert a fact the source doesn't support.
 
+In local-clone mode, what is already written in the folder and not yet published is one command,
+run from the project like every other check: `commonground diff` (`--stat` for the names alone; for
+a wiki this project reads beside its first, `commonground diff <its id>`: the id, not the name).
+**Never run `git` in the wiki folder yourself to read it:** that command shows the change, and raw
+git aimed at that folder (`cd … && git …`) raises a Claude Code security dialog every time, with no
+way for the user to allow it for good.
+
 ## 6. Persist + report
 
 - **Local-clone mode:** write the files (each with its own `summary:`).

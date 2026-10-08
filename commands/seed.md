@@ -156,8 +156,9 @@ ask (with `AskUserQuestion` when it is available):
 
 > One optional thing. Claude Code asks you before every CommonGround command I run, and about half
 > of them only look at things: your status, your list of wikis, what is covered, the health check,
-> the preview before publishing, and for a hosted wiki, searching and reading it. I can let those
-> run without asking. Publishing still asks you every time, and so does saving pages. Want that?
+> the preview before publishing, what changed in your wiki folder, and for a hosted wiki, searching
+> and reading it. I can let those run without asking. Publishing still asks you every time, and so
+> does saving pages. Want that?
 
 - **Yes** → run `commonground prefs set quiet-checks on`. The dialog that command raises IS the
   confirmation, so do not ask a second question of your own. Then say they can undo it by asking

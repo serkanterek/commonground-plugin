@@ -95,7 +95,12 @@ help them read, answer, and file `suggest_change`.
   actually in your tool list: a local-mode project with no connector cannot file a suggestion at
   all, so offering one there sends a member after something that isn't here. Everything else a local
   project needs is on disk: `commonground lint` and `commonground coverage` run against the working
-  copy, so they see unpublished work that the server's `lint` / `get_coverage` cannot.
+  copy, so they see unpublished work that the server's `lint` / `get_coverage` cannot, and
+  `commonground diff` shows what that work changed, page by page (`--stat` for the names alone; for
+  a wiki this project reads beside its first, `commonground diff <its id>`: the id, not the name).
+  **Never run `git` in the wiki folder yourself to read it:** that command shows the change, and raw
+  git aimed at that folder (`cd … && git …`) raises a Claude Code security dialog every time, with
+  no way for the user to allow it for good.
 - **Setup has two sign-ins, and only those two are CommonGround's.** The browser code, in every
   mode; and the connector's own consent, for the hosted connector only. When this session reports
   servers or tools that "need authorization":
@@ -110,8 +115,8 @@ help them read, answer, and file `suggest_change`.
     server's sign-in, and never bring up a connector list or connector suggestions, as a step of
     setting up CommonGround.
 - **Fewer permission prompts is a setting the user owns.** `commonground prefs set quiet-checks on`
-  lets CommonGround's own read-only checks run without asking each time (publishing always asks,
-  and so does saving pages); `… off` undoes it. Run it only when they ask for fewer prompts, and
+  lets CommonGround's own read-only checks run without asking each time, `commonground diff` in a
+  local project among them (publishing always asks, and so does saving pages); `… off` undoes it. Run it only when they ask for fewer prompts, and
   never turn it on on your own initiative: the dialog it raises is their confirmation.
 - **If the connector goes quiet** (MCP mode) — missing or failing CommonGround tools are **usually**
   a connection problem rather than a role one: a member still sees `search` / `get_page` /

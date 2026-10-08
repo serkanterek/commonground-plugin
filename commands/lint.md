@@ -29,6 +29,11 @@ correct — and, more importantly, *which wiki the answer describes*:
   copy, so they include pages the user has drafted and not yet published. **Don't** use the `lint` /
   `get_coverage` MCP tools here: those describe the *published* wiki, so they'd report gaps the user
   already filled and orphans they already linked — confidently wrong about work done ten minutes ago.
+  To see what those drafts changed, run `commonground diff` (`--stat` for the names alone; for a
+  wiki this project reads beside its first, `commonground diff <its id>`: the id, not the name).
+  **Never run `git` in the wiki folder yourself to read it:** that command shows the change, and raw
+  git aimed at that folder (`cd … && git …`) raises a Claude Code security dialog every time, with
+  no way for the user to allow it for good.
 - **MCP mode** → use the `lint` and `get_coverage` tools; there is no local copy to read.
 
 **A project that reads several wikis lints one at a time, and says which.** The SessionStart hook

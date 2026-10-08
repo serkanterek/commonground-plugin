@@ -199,7 +199,7 @@ have turned on quiet checks, described below.
   server, and nothing else.
   - **In a shell command** it looks for the CommonGround CLI run with `push`, `import` or `sync`,
     the verbs that publish, and asks you first. It also asks when it cannot read which CommonGround
-    command is being run, and before a command that turns quiet checks on (below). Previews and reads (`push --dry-run`, `status`, `lint`) pass untouched.
+    command is being run, and before a command that turns quiet checks on (below). Previews and reads (`push --dry-run`, `status`, `lint`, `diff`) pass untouched.
     `git push`, `gh`, `npm publish` and deploys are never judged: those belong to your own repos.
   - **In an MCP call** it looks for CommonGround's write tools: `save_page`, `save_charter`,
     `stage_sources`, `invite_teammate` and `resolve_suggestion`. In MCP mode it asks before each
@@ -222,12 +222,17 @@ have turned on quiet checks, described below.
     at most once a session, to let those run without asking. It stays off until you say yes, and
     the guard asks you itself before the command that turns it on. With it on, the guard answers
     "allow" for CommonGround's own read-only checks, so they stop prompting: its status, your list
-    of wikis, coverage, the health check, the publish preview and, in a project that uses the hosted
+    of wikis, coverage, the health check and the publish preview; in a project with a local wiki
+    folder, the text of what changed in that folder; and, in a project that uses the hosted
     connector, searching and reading that wiki. In a shell that is a command made of nothing but
     `node "<plugin folder>/bin/commonground"`, one of `status`, `use` (the list of wikis),
     `coverage`, `lint`, `version` or `push --dry-run`, optionally `--json` and one of your wikis by
     name or id, and after it at most `2>&1` and, in Bash, one `| head -N` or `| tail -N`; anything
-    joined to another command asks as before. On the connector it is
+    joined to another command asks as before. `diff` (optionally `--stat` or `--json`) is on that
+    list too, and it is the one of these that prints the text of your pages, so it is narrower: only
+    in a project in local-clone mode, for the wiki that project names, or for another wiki it reads
+    when Claude gives that wiki's id. If you turned quiet checks on before `diff` existed (plugin
+    0.20.0), it is covered without your being asked again. On the connector, quiet checks cover
     the nine tools the server declares read-only (`search`, `get_page`, `get_index`,
     `list_suggestions`, `lint`, `get_history`, `get_awareness`, `get_coverage`, `get_started`), on
     the plugin's own connector, in MCP mode, for a wiki this project names. Never a write or a
@@ -279,6 +284,17 @@ libraries named in [THIRD_PARTY_NOTICES.md](https://github.com/serkanterek/commo
 It runs when a command calls it, and for the one repair described above, and exits when it is done.
 It signs this machine in (opening your browser for that), lists your wikis, keeps your wiki folder
 in step using `git`, and writes the files listed above. It talks to `api.commongroundapp.io` only.
+
+**`commonground diff` shows what changed in your wiki folder since its last publish, and only
+reads.** Claude runs it before a publish to see what your pages now say. It changes nothing in the
+folder and downloads nothing from the wiki. It asks git for names and committed text only (which
+commit was the last publish this folder saw, what that commit holds, and which files a publish
+would carry, for which git lists the folder and reads its ignore rules) and reads your pages
+itself, so git never reads a page and runs none of the commands a folder's own git settings can
+name (a pager, a diff or filter program, a file watcher). Given a wiki's name in place of its id, it
+first asks CommonGround for your list of wikis, as every command does. It never follows a link out
+of the folder, and the page text it prints is bounded: the first lines of a new page, the changed
+lines of an edited one.
 
 **For git it uses its own CommonGround sign-in and nothing else.** It never reads your git
 credentials, your SSH keys or any other tool's tokens. For its own git commands it switches the

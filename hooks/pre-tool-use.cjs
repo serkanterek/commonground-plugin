@@ -21,7 +21,7 @@
  * defensible when it routes the call somewhere better; for a tool with no local equivalent it just
  * removes the only path to the thing. See OUTWARD_TOOLS.
  *
- * Read-only tools and the read-only CLI forms (`--dry-run`, `lint`, `status`) pass untouched. A
+ * Read-only tools and the read-only CLI forms (`--dry-run`, `lint`, `status`, `diff`) pass untouched. A
  * guard that blocks the safe preview teaches people to click through every prompt, which destroys
  * the guard everywhere else — the same reason `save_seeding_progress` is deliberately not gated.
  *
@@ -2755,6 +2755,9 @@ function unnamedConnectorVerdict(toolName) {
  *   - nothing else is in the string. No second command, no substitution, no variable, no redirect
  *     to a file, no newline. The gating code above has to READ arbitrary shell to find a publish;
  *     this code refuses to read any, which is why it has a fixed point and that code does not.
+ *   - `diff` (SER-362) is on the list under one more condition, because it is the one check that
+ *     prints what is INSIDE pages: only in a LOCAL-mode project, and with a wiki argument only when
+ *     that argument is the id of a wiki this project declares. See {@link quietDiffInProject}.
  *
  * CONNECTOR: one of the tools the server itself declares read-only, on the PLUGIN'S OWN server, by
  * its whole name (never a prefix, never a connector named only by an id, which is how every
@@ -2812,6 +2815,8 @@ const QUIET_ARGS = new RegExp(
     'version',
     `push --dry-run(?: ${QUIET_WIKI})?`,
     `push ${QUIET_WIKI} --dry-run`,
+    `diff(?: --stat| --json)?(?: ${QUIET_WIKI})?`,
+    `diff ${QUIET_WIKI} (?:--stat|--json)`,
   ].join('|')})$`,
 );
 
@@ -2837,11 +2842,16 @@ const QUIET_TAIL_START = / (?:2>&1|\|)/;
  * program is not the string that was compared.
  */
 function quietCheckCommand(command, dialect, cli) {
-  if (typeof command !== 'string' || typeof cli !== 'string' || !cli) return false;
-  if (!QUIET_TAIL[dialect]) return false;
-  if (/[$`"'\n\r\t]/.test(cli) || cli.includes('\\\\')) return false;
+  return quietCheckArgs(command, dialect, cli) !== null;
+}
+
+/** {@link quietCheckCommand}'s answer as the check's own arguments (`status --json acme`), or null. */
+function quietCheckArgs(command, dialect, cli) {
+  if (typeof command !== 'string' || typeof cli !== 'string' || !cli) return null;
+  if (!QUIET_TAIL[dialect]) return null;
+  if (/[$`"'\n\r\t]/.test(cli) || cli.includes('\\\\')) return null;
   const text = command.trim();
-  if (/[\n\r\t]/.test(text)) return false;
+  if (/[\n\r\t]/.test(text)) return null;
   // On WINDOWS only, the same file has three spellings a command may carry: the path as this hook
   // knows it (backslashes), the same with `/` throughout, and the one the command files produce,
   // where Claude Code substitutes the plugin root as it is and the file's own `/bin/commonground`
@@ -2855,12 +2865,57 @@ function quietCheckCommand(command, dialect, cli) {
   // Unquoted only for a path that needs no quoting in either shell.
   for (const p of paths) if (/^[A-Za-z0-9_./:-]+$/.test(p)) heads.push(`node ${p} `);
   const head = heads.find((h) => text.startsWith(h));
-  if (!head) return false;
+  if (!head) return null;
   const rest = text.slice(head.length);
   const cut = rest.search(QUIET_TAIL_START);
   const args = cut === -1 ? rest : rest.slice(0, cut);
   const tail = cut === -1 ? '' : rest.slice(cut);
-  return QUIET_ARGS.test(args) && QUIET_TAIL[dialect].test(tail);
+  return QUIET_ARGS.test(args) && QUIET_TAIL[dialect].test(tail) ? args : null;
+}
+
+/** A wiki id as the server mints one: the sync agent's own `FULL_WIKI_ID` (team-resolve.ts). */
+const FULL_WIKI_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * May a `diff` that passed the grammar run unasked in THIS project (SER-362)? True for every other
+ * check.
+ *
+ * `diff` prints page text, up to a couple of hundred lines of it, where the other checks print
+ * counts, names and findings. So it gets the boundary the connector's reads already have
+ * ({@link quietReadVerdict}): a session reads, unasked, only the wikis its project declares.
+ *
+ *   - Only in a project whose router block says LOCAL mode and names its wiki. There the CLI
+ *     resolves a bare `diff` to that wiki, by the block. In a hosted project, or a folder that names
+ *     no wiki, a bare `diff` would fall through to the machine's active wiki, whose folder this
+ *     project never asked to read.
+ *   - A wiki ARGUMENT must be the id of a wiki the project declares, its primary or one it reads
+ *     beside it, compared whole. Never a name or a prefix: the CLI resolves those among every wiki
+ *     the person belongs to, and this hook cannot. An id needs no quotes, so a quoted one is no id.
+ *   - An id means the SHAPE of one (FULL_WIKI_ID, the server's), on both sides. A block is a file
+ *     in the folder, and a marker reading `1111` or `acme` is a prefix or a name wearing a
+ *     marker's clothes: the CLI would resolve it among all the person's wikis. Such a marker
+ *     declares nothing here.
+ *
+ * The CLI holds the other half: a block whose wiki this machine cannot read as this person makes
+ * `diff` refuse, where every other verb falls through to the active wiki (`case 'diff'` in the
+ * sync agent's cli.ts). Without that, a well-formed id nobody on this machine belongs to would be
+ * approved here and answered from another wiki there.
+ *
+ * Everything else falls back to Claude Code's own prompt, which is the ordinary one for a command.
+ * Accepted residual: the project is read from the hook's `cwd`, and the CLI resolves from the
+ * shell's. Claude Code reports the shell's, and no approved command can change directory, but a
+ * session whose shell stands elsewhere reads the wiki THAT folder resolves to, which is the wiki
+ * `status` and the publish preview already name there.
+ */
+function quietDiffInProject(args, cwd) {
+  const words = args.split(' ');
+  if (words[0] !== 'diff') return true;
+  if (routerMode(cwd) !== 'local') return false;
+  const [primary, ...also] = projectTeamIds(cwd).map((id) => id.toLowerCase());
+  // The primary decides the bare form, so a block whose own wiki is no id approves nothing.
+  if (!primary || !FULL_WIKI_ID.test(primary)) return false;
+  const wiki = words.slice(1).filter((w) => !w.startsWith('--')).join(' ').toLowerCase();
+  return wiki === '' || (FULL_WIKI_ID.test(wiki) && [primary, ...also].includes(wiki));
 }
 
 /**
@@ -2903,7 +2958,8 @@ function quietSwitchVerdict(command) {
     decision: 'ask',
     reason:
       "This lets CommonGround's own read-only checks run without asking you each time: its " +
-      'status, your list of wikis, coverage, the health check and the publish preview, and, in a ' +
+      'status, your list of wikis, coverage, the health check and the publish preview; in a ' +
+      'project with a local wiki folder, the text of what changed in that folder; and, in a ' +
       'project that uses the hosted connector, searching and reading that wiki. Publishing still ' +
       'asks you every time, and so does anything that changes a file. To undo it, ask Claude to ' +
       'turn quiet checks off.',
@@ -2924,12 +2980,13 @@ const QUIET_ALLOW = {
 };
 
 /** An approval for a shell command that is exactly one read-only check, with the preference on. */
-function quietShellVerdict(toolName, toolInput, dialect) {
+function quietShellVerdict(input, toolName, toolInput, dialect) {
   if (!QUIET_SHELL_TOOLS.has(toolName) || typeof toolInput.command !== 'string') return null;
   // Before anything touches the disk: every approvable command starts with this word, and almost
   // no other command does, so an ordinary `ls` costs one test here and nothing more.
   if (!/^\s*node /.test(toolInput.command)) return null;
-  if (!quietCheckCommand(toolInput.command, dialect, cliPath())) return null;
+  const args = quietCheckArgs(toolInput.command, dialect, cliPath());
+  if (args === null || !quietDiffInProject(args, projectCwd(input))) return null;
   return quietChecksEnabled() ? QUIET_ALLOW : null;
 }
 
@@ -2995,7 +3052,7 @@ function decide(input) {
     return (
       shellVerdict(command, [dialect]) ||
       quietSwitchVerdict(command) ||
-      quietShellVerdict(toolName, toolInput, dialect)
+      quietShellVerdict(input, toolName, toolInput, dialect)
     );
   }
   // A shell tool with no dialect here. Dormant (see UNKNOWN_SHELL_NOTE); falls through on no hit,
@@ -3142,6 +3199,7 @@ module.exports = {
   PREVIEW_FLAGS,
   UNKNOWN_SHELL_NOTE,
   quietCheckCommand,
+  quietDiffInProject,
   quietSwitchVerdict,
   QUIET_CHECK_TOOLS,
   QUIET_ALLOW,

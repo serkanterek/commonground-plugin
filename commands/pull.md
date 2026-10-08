@@ -54,7 +54,8 @@ Run `commonground pull` — passing `$ARGUMENTS` as the wiki when it names one, 
   a question from it. If they'd rather it lived somewhere else, offer to move it for them — you
   run `commonground relocate "<folder>"`, which moves the files and records the new spot.
 - **Up to date** — nothing incoming. If it also mentions **unpublished changes**, tell the user
-  they have local work that hasn't been published and offer `/commonground:push`. For a member the
+  they have local work that hasn't been published and offer `/commonground:push` (`commonground
+  diff --stat` lists it if they ask what it is). For a member the
   line says the work is safe on this machine and offers a suggestion for a curator instead; relay
   that rather than offering a publish they cannot make, and offer `suggest_change` only when this
   session has it (otherwise the routes in `/commonground:push` §2b).

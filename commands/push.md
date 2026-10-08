@@ -95,6 +95,16 @@ pages that *would* be published (including brand-new pages that were never stage
 - Otherwise, show the user the page list in plain language: what's being added, what's being
   updated.
 
+**To read what a change SAYS, run `commonground diff`.** The preview names the pages; this prints
+each one with the text that changed (a new page's opening lines, a changed page's edits), cut to a
+readable length. `commonground diff --stat` gives the names and line counts alone. It takes no page
+and no path, only a wiki: for one this project reads beside its first, `commonground diff <its id>`
+(the id, not the name: the SessionStart note and the router block both carry it). It only reads:
+nothing in the folder changes, and nothing is downloaded from the wiki. **Never run `git` in the
+wiki folder yourself to read it** (not `git status`, not `git diff`): that command shows the
+change, and raw git aimed at that folder (`cd … && git …`) raises a Claude Code security dialog
+every time, with no way for the user to allow it for good.
+
 ## 2. Confirm — ONE prompt, and it is the guard's
 
 **Do not raise your own yes/no question here.** The `PreToolUse` publish guard intercepts
@@ -134,7 +144,9 @@ the push, not after, so the user gets one question and one dialog rather than fo
 Run `commonground push --message "<what this session did>"` — one session-scale
 sentence saying what changed and why, which becomes the commit message and is the only record of
 your reasoning that outlives the session. If `$ARGUMENTS` carries the user's own line about what
-changed, that IS the message (don't ask again); if it names a wiki, pass that wiki to the verb. Never restate what the diff shows ("updated pages"). It
+changed, that IS the message (don't ask again); if it names a wiki, pass that wiki to the verb. Never restate what the diff shows ("updated pages"). For pages you did not write in this
+session, read what they say with `commonground diff` first (§1) so the sentence is true, never with
+git. The push
 publishes and reports the receipt (the pages published) — unless it comes back
 **needs-delete-confirm** (§3), **needs-unparseable-fix** (§3b) or **needs-rename** (§3c), in which
 case nothing was published and that section takes over. If this publishes a change someone asked

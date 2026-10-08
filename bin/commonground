@@ -599,8 +599,8 @@ var require_Node = __commonJS({
         };
         const res = toJS.toJS(this, "", ctx);
         if (typeof onAnchor === "function")
-          for (const { count, res: res2 } of ctx.anchors.values())
-            onAnchor(res2, count);
+          for (const { count: count2, res: res2 } of ctx.anchors.values())
+            onAnchor(res2, count2);
         return typeof reviver === "function" ? applyReviver.applyReviver(reviver, { "": res }, "", res) : res;
       }
     };
@@ -706,13 +706,13 @@ var require_Alias = __commonJS({
         const anchor = anchors2 && source && anchors2.get(source);
         return anchor ? anchor.count * anchor.aliasCount : 0;
       } else if (identity.isCollection(node)) {
-        let count = 0;
+        let count2 = 0;
         for (const item of node.items) {
           const c = getAliasCount(doc, item, anchors2);
-          if (c > count)
-            count = c;
+          if (c > count2)
+            count2 = c;
         }
-        return count;
+        return count2;
       } else if (identity.isPair(node)) {
         const kc = getAliasCount(doc, node.key, anchors2);
         const vc = getAliasCount(doc, node.value, anchors2);
@@ -3665,8 +3665,8 @@ var require_Document = __commonJS({
         };
         const res = toJS.toJS(this.contents, jsonArg ?? "", ctx);
         if (typeof onAnchor === "function")
-          for (const { count, res: res2 } of ctx.anchors.values())
-            onAnchor(res2, count);
+          for (const { count: count2, res: res2 } of ctx.anchors.values())
+            onAnchor(res2, count2);
         return typeof reviver === "function" ? applyReviver.applyReviver(reviver, { "": res }, "", res) : res;
       }
       /**
@@ -3743,12 +3743,12 @@ var require_errors = __commonJS({
         lineStr = prev + lineStr;
       }
       if (/[^ ]/.test(lineStr)) {
-        let count = 1;
+        let count2 = 1;
         const end = error.linePos[1];
         if (end?.line === line && end.col > col) {
-          count = Math.max(1, Math.min(end.col - col, 80 - ci));
+          count2 = Math.max(1, Math.min(end.col - col, 80 - ci));
         }
-        const pointer = " ".repeat(ci) + "^".repeat(count);
+        const pointer = " ".repeat(ci) + "^".repeat(count2);
         error.message += `:
 
 ${lineStr}
@@ -7359,9 +7359,9 @@ var require_dist = __commonJS({
 });
 
 // ../../apps/sync-agent/dist/cli.js
-var import_node_fs5 = require("node:fs");
-var import_promises7 = require("node:fs/promises");
-var import_node_path11 = require("node:path");
+var import_node_fs6 = require("node:fs");
+var import_promises8 = require("node:fs/promises");
+var import_node_path12 = require("node:path");
 
 // ../../apps/sync-agent/dist/args.js
 function takeFlagValue(rest, flag) {
@@ -7730,8 +7730,8 @@ async function markMultiWikiNoticed(configHome = agentConfigHome(), now = () => 
   } catch {
   }
 }
-function crossedToMultiWiki(count, alreadyNoticed) {
-  return count >= 2 && !alreadyNoticed;
+function crossedToMultiWiki(count2, alreadyNoticed) {
+  return count2 >= 2 && !alreadyNoticed;
 }
 async function readTeamProfiles(configHome = agentConfigHome()) {
   try {
@@ -12337,8 +12337,8 @@ var WIKI_AUDIENCES = ["just-me", "my-team", "whole-company"];
 var CHARTER_PAGE_ID = "wiki-charter";
 var LEGACY_CHARTER_PAGE_IDS = ["company/wiki-charter"];
 var CHARTER_PAGE_IDS = [CHARTER_PAGE_ID, ...LEGACY_CHARTER_PAGE_IDS];
-function isCharterPageId(pageId) {
-  return CHARTER_PAGE_IDS.includes(pageId);
+function isCharterPageId(pageId2) {
+  return CHARTER_PAGE_IDS.includes(pageId2);
 }
 function resolveCharterPageId(pageIds) {
   const present2 = new Set(pageIds);
@@ -12999,6 +12999,44 @@ async function runGit(cwd, args, env, config = []) {
     throw new GitError(`git ${args.join(" ")} failed`, exitCode, stderr, typeof err.code === "string" ? err.code : void 0);
   }
 }
+var INERT_READ = ["--no-pager", "--no-optional-locks", "-c", "core.fsmonitor="];
+var INERT_READ_ENV = {
+  GIT_ALLOW_PROTOCOL: "none",
+  GIT_NO_LAZY_FETCH: "1",
+  GIT_TERMINAL_PROMPT: "0"
+};
+async function readGit(cwd, args) {
+  return runGit(cwd, args, INERT_READ_ENV, INERT_READ);
+}
+async function readBlobs(cwd, oids) {
+  const blobs = /* @__PURE__ */ new Map();
+  if (oids.length === 0)
+    return blobs;
+  const args = ["cat-file", "--batch"];
+  const out = await new Promise((resolve6, reject) => {
+    const child = (0, import_node_child_process.execFile)("git", ["-c", "core.quotePath=false", ...INERT_READ, ...args], { cwd, env: { ...process.env, ...INERT_READ_ENV, ...GIT_IN_ENGLISH }, encoding: "buffer", maxBuffer: 256 * 1024 * 1024 }, (e, stdout, stderr) => {
+      if (!e)
+        return resolve6(stdout);
+      const code = e.code;
+      reject(new GitError(`git ${args.join(" ")} failed`, typeof code === "number" ? code : null, stderr.toString(), typeof code === "string" ? code : void 0));
+    });
+    child.stdin?.on("error", () => void 0);
+    child.stdin?.end(oids.map((oid) => `${oid}
+`).join(""));
+  });
+  let at = 0;
+  for (const oid of oids) {
+    const eol = out.indexOf(10, at);
+    const [, type, size] = out.subarray(at, eol < 0 ? out.length : eol).toString("latin1").split(" ");
+    if (eol < 0 || type !== "blob") {
+      throw new GitError(`git ${args.join(" ")} failed`, null, `the wiki folder does not hold object ${oid}`);
+    }
+    const start = eol + 1;
+    blobs.set(oid, out.subarray(start, start + Number(size)));
+    at = start + Number(size) + 1;
+  }
+  return blobs;
+}
 function authHeaderEnv(url, token) {
   const ambient = Number.parseInt(process.env.GIT_CONFIG_COUNT ?? "", 10);
   let n = Number.isInteger(ambient) && ambient > 0 ? ambient : 0;
@@ -13324,8 +13362,10 @@ async function unpublishedWork(dir, leaving) {
   const entries = parseStatusZ(await runGit(dir, ["status", "--porcelain", "-z", "--untracked-files=all"]));
   const phantoms = await foldedTwinPhantoms(dir, entries);
   const paths = entries.map((e) => e.path).filter((p) => !isFolderNoise(p) && !phantoms.has(p) && !leaving?.has(p));
-  const pages = paths.filter((p) => p.toLowerCase().endsWith(".md") && p !== WIKI_LAYOUT.indexFile && !p.startsWith(`${WIKI_LAYOUT.sourcesDir}/`));
-  return { pages: pages.length, files: paths.length };
+  return { pages: paths.filter(isCountedPage).length, files: paths.length };
+}
+function isCountedPage(path2) {
+  return path2.toLowerCase().endsWith(".md") && path2 !== WIKI_LAYOUT.indexFile && !path2.startsWith(`${WIKI_LAYOUT.sourcesDir}/`);
 }
 async function aheadBehind(dir, local, remote) {
   const out = (await runGit(dir, ["rev-list", "--left-right", "--count", `${local}...${remote}`])).trim();
@@ -13900,8 +13940,8 @@ function findCharterPage(pages) {
   for (const page of pages)
     if (isCharterPageId(page.pageId))
       found.set(page.pageId, page);
-  const pageId = resolveCharterPageId(found.keys());
-  return pageId ? found.get(pageId) : null;
+  const pageId2 = resolveCharterPageId(found.keys());
+  return pageId2 ? found.get(pageId2) : null;
 }
 function categoryOrderFromPages(pages) {
   const page = findCharterPage(pages);
@@ -14221,8 +14261,8 @@ function computeCoverage(entries, shape, scopeKey, charter) {
   const template = charter?.sections?.length ? sectionsFromCharter(charter.sections) : templateFor(shape, charter?.audience);
   return template.map((sec) => {
     const have = idx.filter(sec.match);
-    const count = have.length;
-    const status2 = count === 0 ? "empty" : count >= sec.target ? "done" : "partial";
+    const count2 = have.length;
+    const status2 = count2 === 0 ? "empty" : count2 >= sec.target ? "done" : "partial";
     return {
       id: sec.id,
       label: sec.label,
@@ -14236,7 +14276,7 @@ function computeCoverage(entries, shape, scopeKey, charter) {
       discipline: DISCIPLINE_BY_SECTION[sec.id] ?? "other",
       scope: defaultScope,
       have,
-      count,
+      count: count2,
       status: status2
     };
   });
@@ -14394,10 +14434,10 @@ function toIndexEntry(p) {
     entry.aliases = p.frontmatter.aliases;
   return entry;
 }
-function placeholderEntry(pageId) {
+function placeholderEntry(pageId2) {
   return {
-    pageId,
-    title: pageId,
+    pageId: pageId2,
+    title: pageId2,
     scope: "(unparseable)",
     summary: "\u26A0 could not parse frontmatter \u2014 needs attention",
     // No frontmatter to read it from; sorts last wherever freshness is used, and (since every
@@ -14521,19 +14561,19 @@ function normalizeImport(files, opts) {
   const skipped = [];
   const seen = /* @__PURE__ */ new Map();
   for (const file of files) {
-    const pageId = pageIdFromPath(file.relPath);
-    const first = seen.get(pathFoldKey(pageId));
+    const pageId2 = pageIdFromPath(file.relPath);
+    const first = seen.get(pathFoldKey(pageId2));
     if (first !== void 0) {
       skipped.push({
         relPath: file.relPath,
-        reason: pageIdFromPath(first) === pageId ? "duplicate pageId" : `differs only in letter case from ${first}, which a Mac or Windows disk holds as the same file`
+        reason: pageIdFromPath(first) === pageId2 ? "duplicate pageId" : `differs only in letter case from ${first}, which a Mac or Windows disk holds as the same file`
       });
       continue;
     }
     try {
       parsePage(file.content);
-      out.push({ relPath: file.relPath, content: file.content, pageId, action: "kept" });
-      seen.set(pathFoldKey(pageId), file.relPath);
+      out.push({ relPath: file.relPath, content: file.content, pageId: pageId2, action: "kept" });
+      seen.set(pathFoldKey(pageId2), file.relPath);
       continue;
     } catch {
     }
@@ -14547,11 +14587,11 @@ function normalizeImport(files, opts) {
     out.push({
       relPath: file.relPath,
       content,
-      pageId,
+      pageId: pageId2,
       action: "normalized",
       ...lost ? { loss } : {}
     });
-    seen.set(pathFoldKey(pageId), file.relPath);
+    seen.set(pathFoldKey(pageId2), file.relPath);
   }
   return { files: out, skipped };
 }
@@ -14765,13 +14805,13 @@ function extractBodyLinks(body) {
 }
 function buildBodyLinkResolver(pages) {
   const byId = /* @__PURE__ */ new Set();
-  const byName = /* @__PURE__ */ new Map();
+  const byName2 = /* @__PURE__ */ new Map();
   const add = (k, v) => {
-    const set2 = byName.get(k);
+    const set2 = byName2.get(k);
     if (set2)
       set2.add(v);
     else
-      byName.set(k, /* @__PURE__ */ new Set([v]));
+      byName2.set(k, /* @__PURE__ */ new Set([v]));
   };
   for (const p of pages) {
     byId.add(p.pageId);
@@ -14793,7 +14833,7 @@ function buildBodyLinkResolver(pages) {
       return null;
     if (byId.has(raw))
       return raw;
-    const candidates = byName.get(raw.toLowerCase());
+    const candidates = byName2.get(raw.toLowerCase());
     return candidates?.size === 1 ? candidates.values().next().value ?? null : null;
   };
 }
@@ -15404,7 +15444,7 @@ function categoryCohesion(input) {
       ratio: pages < 2 || a.outgoing === 0 ? null : a.internal / a.outgoing,
       unresolved: a.unresolved,
       offCatalog: a.offCatalog,
-      outboundTo: [...a.outboundTo.entries()].map(([c, count]) => ({ category: c, count })).sort((x, y) => y.count - x.count || compare(x.category, y.category))
+      outboundTo: [...a.outboundTo.entries()].map(([c, count2]) => ({ category: c, count: count2 })).sort((x, y) => y.count - x.count || compare(x.category, y.category))
     };
   }).sort((x, y) => compare(x.category, y.category));
   const singles = categories.filter((c) => c.pageCount === 1).map((c) => c.category);
@@ -15639,17 +15679,17 @@ function captureClause(plural, mode) {
 }
 var CHARTER_FILE_NOTE = "its charter page `wiki-charter.md` (older wikis: `company/wiki-charter.md`) says in full when to consult it and what does not belong there";
 var CHARTER_PAGE_NOTE = "`wiki-charter` is the charter page, which says in full when to consult a wiki and what does not belong there";
-function localParagraph(count) {
-  if (count === 1) {
+function localParagraph(count2) {
+  if (count2 === 1) {
     return `This project reads the CommonGround wiki below, a local clone on this machine (its folder is named at session start; \`/commonground:status\` shows it on demand). When a question touches its subject, start at its \`index.md\` (the catalog) and open only the pages you need; ${CHARTER_FILE_NOTE}. ${citeClause(false)} ${captureClause(false, "local")}`;
   }
-  return `This project reads ${count} CommonGround wikis, each a local clone on this machine (each clone's folder is named at session start; \`/commonground:status <wiki>\` shows it on demand). When a question touches a wiki's subject, start at that wiki's \`index.md\` (its catalog) and open only the pages you need; ${CHARTER_FILE_NOTE}. ${citeClause(true)} ` + captureClause(true, "local");
+  return `This project reads ${count2} CommonGround wikis, each a local clone on this machine (each clone's folder is named at session start; \`/commonground:status <wiki>\` shows it on demand). When a question touches a wiki's subject, start at that wiki's \`index.md\` (its catalog) and open only the pages you need; ${CHARTER_FILE_NOTE}. ${citeClause(true)} ` + captureClause(true, "local");
 }
-function mcpParagraph(count, primaryLabel) {
-  if (count === 1) {
+function mcpParagraph(count2, primaryLabel) {
+  if (count2 === 1) {
     return `This project reads the CommonGround wiki below through the CommonGround MCP connector: \`get_index\` is its catalog, \`search\` finds pages, \`get_page\` reads one in full, and ${CHARTER_PAGE_NOTE}. Load context on demand; don't read everything. ${citeClause(false)} ${captureClause(false, "mcp")} ${CONNECTOR_HEALTH_RULE}`;
   }
-  return `This project reads ${count} CommonGround wikis through the CommonGround MCP connector: \`search\` and \`get_index\` answer from every wiki it reads, and a call that names no \`wiki\` addresses the primary, ${primaryLabel} (the connector's own tools say how to address another). ${CHARTER_PAGE_NOTE}. Load context on demand; don't read everything. ${citeClause(true)} ${captureClause(true, "mcp")} ` + CONNECTOR_HEALTH_RULE;
+  return `This project reads ${count2} CommonGround wikis through the CommonGround MCP connector: \`search\` and \`get_index\` answer from every wiki it reads, and a call that names no \`wiki\` addresses the primary, ${primaryLabel} (the connector's own tools say how to address another). ${CHARTER_PAGE_NOTE}. Load context on demand; don't read everything. ${citeClause(true)} ${captureClause(true, "mcp")} ` + CONNECTOR_HEALTH_RULE;
 }
 function cloneRouterRule(voice, naming, teamId) {
   const name = sanitizeName(fenceSafe(naming?.name));
@@ -15719,8 +15759,8 @@ function parseRouterBlock(claudeMd) {
 }
 async function charterVoiceFromWiki(wikiDir) {
   let raw = "";
-  for (const pageId of CHARTER_PAGE_IDS) {
-    raw = await readFileOr((0, import_node_path6.join)(wikiDir, `${pageId}.md`), "");
+  for (const pageId2 of CHARTER_PAGE_IDS) {
+    raw = await readFileOr((0, import_node_path6.join)(wikiDir, `${pageId2}.md`), "");
     if (raw)
       break;
   }
@@ -16885,10 +16925,10 @@ function refusedWithHttp403(stderr) {
   return /the requested url returned error: 403|rpc failed;\s*http 403/i.test(stderr);
 }
 function authHeaderOf(origin) {
-  const count = Number.parseInt(origin.env.GIT_CONFIG_COUNT ?? "", 10);
-  if (!Number.isInteger(count))
+  const count2 = Number.parseInt(origin.env.GIT_CONFIG_COUNT ?? "", 10);
+  if (!Number.isInteger(count2))
     return void 0;
-  for (let i = 0; i < count; i++) {
+  for (let i = 0; i < count2; i++) {
     if (origin.env[`GIT_CONFIG_KEY_${i}`] !== `http.${origin.url}.extraHeader`)
       continue;
     const header = /^authorization:\s*(.+)$/i.exec(origin.env[`GIT_CONFIG_VALUE_${i}`] ?? "");
@@ -17675,21 +17715,640 @@ function modeRequired() {
   return new AgentError("this project is not pointed at a wiki yet, so say which way it should read one: --mode local keeps the wiki as markdown files in a folder on this machine (needs git), --mode mcp reads it live through the hosted connector.");
 }
 
-// ../../apps/sync-agent/dist/version.js
+// ../../apps/sync-agent/dist/local-diff.js
+var import_node_crypto2 = require("node:crypto");
 var import_node_fs3 = require("node:fs");
+var import_promises7 = require("node:fs/promises");
 var import_node_path9 = require("node:path");
+var MAX_TEXT_BYTES = 2 * 1024 * 1024;
+var MAX_TEXT_LINES = 2e4;
+var MAX_EDITS = 1e3;
+var CONTEXT = 3;
+var READS_AT_ONCE = 16;
+var MAX_RENAME_PAIRS = 4e4;
+var BLOB_BATCH_BYTES = 16 * 1024 * 1024;
+var RENAME_SIMILARITY = 0.5;
+function lineDiff(a, b, maxEdits = MAX_EDITS) {
+  let head = 0;
+  while (head < a.length && head < b.length && a[head] === b[head])
+    head++;
+  let endA = a.length;
+  let endB = b.length;
+  while (endA > head && endB > head && a[endA - 1] === b[endB - 1]) {
+    endA--;
+    endB--;
+  }
+  const middle = shortestEdit(a.slice(head, endA), b.slice(head, endB), maxEdits);
+  if (middle === null)
+    return null;
+  const keep = (text) => ({ op: " ", text });
+  return [...a.slice(0, head).map(keep), ...removalsFirst(middle), ...a.slice(endA).map(keep)];
+}
+function shortestEdit(a, b, maxEdits) {
+  const n = a.length;
+  const m = b.length;
+  if (n === 0)
+    return b.map((text) => ({ op: "+", text }));
+  if (m === 0)
+    return a.map((text) => ({ op: "-", text }));
+  const max = Math.min(n + m, maxEdits);
+  const off = max + 1;
+  const v = new Int32Array(2 * max + 3);
+  const rounds = [];
+  let found = -1;
+  search: for (let d = 0; d <= max; d++) {
+    rounds.push(v.slice());
+    for (let k = -d; k <= d; k += 2) {
+      const down = k === -d || k !== d && v[k - 1 + off] < v[k + 1 + off];
+      let x2 = down ? v[k + 1 + off] : v[k - 1 + off] + 1;
+      let y2 = x2 - k;
+      while (x2 < n && y2 < m && a[x2] === b[y2]) {
+        x2++;
+        y2++;
+      }
+      v[k + off] = x2;
+      if (x2 >= n && y2 >= m) {
+        found = d;
+        break search;
+      }
+    }
+  }
+  if (found < 0)
+    return null;
+  const ops = [];
+  let x = n;
+  let y = m;
+  for (let d = found; d > 0; d--) {
+    const before = rounds[d];
+    const k = x - y;
+    const down = k === -d || k !== d && before[k - 1 + off] < before[k + 1 + off];
+    const prevK = down ? k + 1 : k - 1;
+    const prevX = before[prevK + off];
+    const prevY = prevX - prevK;
+    while (x > prevX && y > prevY) {
+      ops.push({ op: " ", text: a[--x] });
+      y--;
+    }
+    if (down)
+      ops.push({ op: "+", text: b[--y] });
+    else
+      ops.push({ op: "-", text: a[--x] });
+  }
+  while (x > 0 && y > 0) {
+    ops.push({ op: " ", text: a[--x] });
+    y--;
+  }
+  return ops.reverse();
+}
+function removalsFirst(ops) {
+  const out = [];
+  let added = [];
+  for (const o of ops) {
+    if (o.op === "+") {
+      added.push(o);
+      continue;
+    }
+    if (o.op === " ") {
+      out.push(...added);
+      added = [];
+    }
+    out.push(o);
+  }
+  return [...out, ...added];
+}
+function hunks(ops) {
+  const ranges = [];
+  ops.forEach((o, i) => {
+    if (o.op === " ")
+      return;
+    const from = Math.max(0, i - CONTEXT);
+    const to = Math.min(ops.length, i + CONTEXT + 1);
+    const last = ranges[ranges.length - 1];
+    if (last && from <= last[1])
+      last[1] = Math.max(last[1], to);
+    else
+      ranges.push([from, to]);
+  });
+  const oldAt = [];
+  const newAt = [];
+  let oldLine = 1;
+  let newLine = 1;
+  for (const o of ops) {
+    oldAt.push(oldLine);
+    newAt.push(newLine);
+    if (o.op !== "+")
+      oldLine++;
+    if (o.op !== "-")
+      newLine++;
+  }
+  const out = [];
+  for (const [from, to] of ranges) {
+    const part = ops.slice(from, to);
+    const olds = part.filter((o) => o.op !== "+").length;
+    const news = part.filter((o) => o.op !== "-").length;
+    out.push(`@@ -${olds ? oldAt[from] : oldAt[from] - 1},${olds} +${news ? newAt[from] : newAt[from] - 1},${news} @@`);
+    for (const o of part)
+      out.push(`${o.op}${o.text}`);
+  }
+  return out;
+}
+async function publishedBase(dir) {
+  const branch = (await readGit(dir, ["rev-parse", "--abbrev-ref", "HEAD"])).trim();
+  try {
+    return (await readGit(dir, ["merge-base", "HEAD", `origin/${branch}`])).trim();
+  } catch (e) {
+    if (!(e instanceof GitError) || e.spawnCode)
+      throw e;
+    throw new AgentError(`the wiki folder at ${dir} has no published version to compare with: it has never been brought in step with the published wiki. Nothing was changed. ` + byAudience('Run "commonground pull" first.', "Pull first (offer /commonground:pull)."));
+  }
+}
+async function publishedTree(dir, commit) {
+  const tree = /* @__PURE__ */ new Map();
+  for (const row of (await readGit(dir, ["ls-tree", "-r", "-z", "-l", commit])).split("\0")) {
+    const tab = row.indexOf("	");
+    if (tab < 0)
+      continue;
+    const [mode, type, oid, size] = row.slice(0, tab).split(" ").filter(Boolean);
+    if (type === "blob" && mode && oid)
+      tree.set(row.slice(tab + 1), { mode, oid, size: Number(size) || 0 });
+  }
+  return tree;
+}
+async function publishablePaths(dir) {
+  const list = async (args) => (await readGit(dir, ["ls-files", "-z", ...args])).split("\0").filter(Boolean);
+  const [tracked, untracked] = await Promise.all([
+    list(["--cached"]),
+    list(["--others", "--exclude-standard"])
+  ]);
+  return { tracked, untracked };
+}
+async function cloneSettings(dir) {
+  const wanted = "^(core\\.(autocrlf|filemode|symlinks|ignorecase)|extensions\\.partialclone|remote\\..*\\.(promisor|partialclonefilter))$";
+  const out = await readGit(dir, ["config", "-z", "--get-regexp", wanted]).catch((e) => {
+    if (e instanceof GitError && e.exitCode === 1)
+      return "";
+    throw e;
+  });
+  const set2 = /* @__PURE__ */ new Map();
+  for (const row of out.split("\0").filter(Boolean)) {
+    const nl = row.indexOf("\n");
+    set2.set((nl < 0 ? row : row.slice(0, nl)).toLowerCase(), nl < 0 ? "true" : row.slice(nl + 1).toLowerCase());
+  }
+  return set2;
+}
+async function requireReadableClone(dir, label) {
+  if (!await (0, import_promises7.lstat)(dir).then(() => true, () => false)) {
+    throw new AgentError(`there is no wiki folder for ${label} on this machine yet, so there is nothing to compare. ` + byAudience('Run "commonground pull" first.', "Pull it first (offer /commonground:pull)."));
+  }
+  const notAWiki = new AgentError(`there is a folder at ${dir}, but it is not a CommonGround wiki folder (it holds no wiki history), so there is nothing to compare. Nothing in it was touched.`);
+  const orNotAWiki = (e) => {
+    if (e instanceof GitError && !e.spawnCode && (e.exitCode === 1 || /not a git repository/i.test(e.stderr))) {
+      throw notAWiki;
+    }
+    throw e;
+  };
+  const top = (await readGit(dir, ["rev-parse", "--show-toplevel"]).catch(orNotAWiki)).trim();
+  if (await (0, import_promises7.realpath)(top) !== await (0, import_promises7.realpath)(dir))
+    throw notAWiki;
+  const settings = await cloneSettings(dir);
+  const partial = [...settings.keys()].some((key) => key === "extensions.partialclone" || key.endsWith(".partialclonefilter") || key.endsWith(".promisor"));
+  if (partial) {
+    throw new AgentError(`the wiki folder at ${dir} is marked as a partial copy of its history, which CommonGround never makes, so it was not read. Nothing in it was touched. If you did not set that up yourself, move the folder aside and ` + byAudience('run "commonground pull" for a fresh one.', "pull a fresh one (offer /commonground:pull)."));
+  }
+  await readGit(dir, ["rev-parse", "--verify", "--quiet", "HEAD^{commit}"]).catch(orNotAWiki);
+  return settings;
+}
+function staysInside(path2) {
+  if (path2 === "" || path2.startsWith("/"))
+    return false;
+  if (process.platform === "win32" && (path2.includes("\\") || /^[A-Za-z]:/.test(path2)))
+    return false;
+  const segments = (path2.endsWith("/") ? path2.slice(0, -1) : path2).split("/");
+  return segments.every((segment) => segment !== "" && segment !== "." && segment !== "..");
+}
+async function storeRules(dir, set2) {
+  const on = (key, unset) => set2.has(key) ? ["true", "yes", "on", "1"].includes(set2.get(key)) : unset;
+  return {
+    autocrlf: on("core.autocrlf", false) || set2.get("core.autocrlf") === "input",
+    filemode: on("core.filemode", true),
+    symlinks: on("core.symlinks", true),
+    folds: on("core.ignorecase", false) || await diskFoldsCase(dir)
+  };
+}
+function storedWithLf(path2, rules) {
+  return rules.autocrlf || path2.endsWith(".md") && !path2.startsWith(`${WIKI_LAYOUT.sourcesDir}/`);
+}
+async function readOnDisk(dir, path2, realFolder, like, lf) {
+  const file = (0, import_node_path9.join)(dir, path2);
+  let info;
+  try {
+    info = await (0, import_promises7.lstat)(file);
+  } catch {
+    return null;
+  }
+  if (!await realFolder((0, import_node_path9.dirname)(path2)))
+    return null;
+  if (info.isSymbolicLink()) {
+    const target = Buffer.from(await (0, import_promises7.readlink)(file));
+    return { link: true, exec: false, ids: [blobId(target, like)], bytes: null };
+  }
+  if (!info.isFile())
+    return null;
+  const exec = (info.mode & 64) !== 0;
+  const fh = await (0, import_promises7.open)(file, import_node_fs3.constants.O_RDONLY | (import_node_fs3.constants.O_NOFOLLOW ?? 0));
+  try {
+    const { size } = await fh.stat();
+    if (size > MAX_TEXT_BYTES)
+      return { link: false, exec, ids: await largeFileIds(fh, size, like, lf), bytes: null };
+    const bytes = await fh.readFile();
+    return { link: false, exec, ids: storedForms(path2, bytes, lf).map((form) => blobId(form, like)), bytes };
+  } finally {
+    await fh.close();
+  }
+}
+function count(chunk2, byte) {
+  let n = 0;
+  for (let at = chunk2.indexOf(byte); at !== -1; at = chunk2.indexOf(byte, at + 1))
+    n++;
+  return n;
+}
+async function largeFileIds(fh, size, like, lf) {
+  const raw = (0, import_node_crypto2.createHash)(hashOf(like)).update(`blob ${size}\0`);
+  let cr = 0;
+  let crlf = 0;
+  let nul = false;
+  let endedWithCr = false;
+  for await (const piece of fh.createReadStream({ autoClose: false, start: 0 })) {
+    const chunk2 = piece;
+    raw.update(chunk2);
+    nul ||= chunk2.includes(0);
+    cr += count(chunk2, 13);
+    if (endedWithCr && chunk2[0] === 10)
+      crlf++;
+    for (let at = chunk2.indexOf("\r\n"); at !== -1; at = chunk2.indexOf("\r\n", at + 2))
+      crlf++;
+    endedWithCr = chunk2[chunk2.length - 1] === 13;
+  }
+  const ids = [raw.digest("hex")];
+  if (!lf || nul || crlf === 0 || cr !== crlf)
+    return ids;
+  const stored = (0, import_node_crypto2.createHash)(hashOf(like)).update(`blob ${size - crlf}\0`);
+  for await (const piece of fh.createReadStream({ autoClose: false, start: 0 })) {
+    const chunk2 = piece;
+    let from = 0;
+    for (let at = chunk2.indexOf(13); at !== -1; at = chunk2.indexOf(13, from)) {
+      stored.update(chunk2.subarray(from, at));
+      from = at + 1;
+    }
+    stored.update(chunk2.subarray(from));
+  }
+  return [...ids, stored.digest("hex")];
+}
+function folderCheck(dir) {
+  const seen = /* @__PURE__ */ new Map();
+  const real = (rel) => {
+    if (rel === "." || rel === "")
+      return Promise.resolve(true);
+    let answer = seen.get(rel);
+    if (!answer) {
+      answer = real((0, import_node_path9.dirname)(rel)).then(async (above) => above && await (0, import_promises7.lstat)((0, import_node_path9.join)(dir, rel)).then((s) => s.isDirectory(), () => false));
+      seen.set(rel, answer);
+    }
+    return answer;
+  };
+  return real;
+}
+var MARKED_PAGE_START2 = Buffer.from([239, 187, 191, 45, 45, 45]);
+function storedForms(path2, bytes, lf) {
+  const forms = [bytes];
+  if (bytes.includes(0))
+    return forms;
+  const marked = isPageFile(path2) && bytes.subarray(0, MARKED_PAGE_START2.length).equals(MARKED_PAGE_START2);
+  if (marked)
+    forms.push(bytes.subarray(3));
+  if (!lf || !bytes.includes("\r\n"))
+    return forms;
+  const text = bytes.toString("latin1");
+  if (/\r(?!\n)/.test(text))
+    return forms;
+  return [...forms, ...forms.map((form) => Buffer.from(form.toString("latin1").replace(/\r\n/g, "\n"), "latin1"))];
+}
+function hashOf(like) {
+  return like.length === 64 ? "sha256" : "sha1";
+}
+function blobId(bytes, like) {
+  return (0, import_node_crypto2.createHash)(hashOf(like)).update(`blob ${bytes.length}\0`).update(bytes).digest("hex");
+}
+var utf8 = new TextDecoder("utf-8", { fatal: true });
+function textLines(bytes, link2 = false) {
+  if (link2)
+    return "not-text";
+  if (bytes === null || bytes.length > MAX_TEXT_BYTES)
+    return "too-large";
+  if (bytes.includes(0))
+    return "not-text";
+  let text;
+  try {
+    text = utf8.decode(bytes);
+  } catch {
+    text = bytes.toString("latin1");
+  }
+  const lines = text.replace(/^\uFEFF/, "").split(/\r?\n/);
+  if (lines[lines.length - 1] === "")
+    lines.pop();
+  return lines.length > MAX_TEXT_LINES ? "too-large" : lines;
+}
+async function eachLimited(items, work) {
+  const out = new Array(items.length);
+  let next = 0;
+  const run = async () => {
+    while (next < items.length) {
+      const i = next++;
+      out[i] = await work(items[i]);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(READS_AT_ONCE, items.length) }, run));
+  return out;
+}
+function leftOut(path2) {
+  return path2 === WIKI_LAYOUT.indexFile || isFolderNoise(path2) || isInjectedTooling(path2) || path2.startsWith(".claude/");
+}
+function pageId(path2) {
+  return path2.endsWith(".md") ? path2.slice(0, -3) : path2;
+}
+var byName = (x, y) => x < y ? -1 : x > y ? 1 : 0;
+function pieces(lines) {
+  const of = /* @__PURE__ */ new Map();
+  let size = 0;
+  for (const line of lines) {
+    const whole = `${line}
+`;
+    size += whole.length;
+    for (let at = 0; at < whole.length; at += 64) {
+      const piece = whole.slice(at, at + 64);
+      of.set(piece, (of.get(piece) ?? 0) + 1);
+    }
+  }
+  return { of, size };
+}
+function similarity(a, b) {
+  if (a.size === 0 || b.size === 0)
+    return 0;
+  let carried = 0;
+  for (const [piece, n] of a.of)
+    carried += Math.min(n, b.of.get(piece) ?? 0) * piece.length;
+  return carried / Math.max(a.size, b.size);
+}
+function textChange(kind, path2, was, now, from) {
+  const head = { kind, page: pageId(path2), path: path2, ...from ? { from } : {} };
+  if (typeof was === "string")
+    return { ...head, lines: [], noText: was };
+  if (typeof now === "string")
+    return { ...head, lines: [], noText: now };
+  const ops = lineDiff(was, now);
+  if (ops === null)
+    return { ...head, added: now.length, removed: was.length, lines: [], noText: "rewritten" };
+  return {
+    ...head,
+    added: ops.filter((o) => o.op === "+").length,
+    removed: ops.filter((o) => o.op === "-").length,
+    lines: hunks(ops)
+  };
+}
+async function localDiff(deps, teamId) {
+  const dir = await resolveClonePath(teamId, deps.configHome, deps.dataHome);
+  const label = wikiLabel({ teamId, ...await readTeamProfile(teamId, deps.configHome) });
+  const settings = await requireReadableClone(dir, label);
+  const base = await publishedBase(dir);
+  const [tree, listed, rules] = await Promise.all([
+    publishedTree(dir, base),
+    publishablePaths(dir),
+    storeRules(dir, settings)
+  ]);
+  if (listed.tracked.length === 0 && await readGit(dir, ["ls-tree", "-r", "-z", "--name-only", "HEAD"]) !== "") {
+    throw new AgentError(`the wiki folder at ${dir} never finished downloading, so there is nothing to compare yet. Nothing in it was touched; ${ask("pull")}.`);
+  }
+  const published = new Map([...tree].filter(([path2]) => staysInside(path2) && !leftOut(path2)));
+  const sameBytes = (path2, here) => here.ids.includes(published.get(path2)?.oid ?? "");
+  const sameKind = (path2, here) => {
+    const entry = published.get(path2);
+    const link2 = entry.mode === "120000";
+    if (rules.symlinks && link2 !== here.link)
+      return false;
+    return !rules.filemode || link2 || here.link || entry.mode === "100755" === here.exec;
+  };
+  const realFolder = folderCheck(dir);
+  const candidates = [.../* @__PURE__ */ new Set([...listed.tracked, ...listed.untracked])].filter((p) => staysInside(p) && !leftOut(p)).sort(byName);
+  const disk = /* @__PURE__ */ new Map();
+  const nested = candidates.filter((p) => p.endsWith("/"));
+  const read = await eachLimited(candidates, async (path2) => {
+    if (path2.endsWith("/"))
+      return null;
+    const found = await readOnDisk(dir, path2, realFolder, base, storedWithLf(path2, rules));
+    if (!found)
+      return null;
+    const shown = isCountedPage(path2) && !(published.has(path2) && sameBytes(path2, found));
+    return shown ? found : { ...found, bytes: null };
+  });
+  candidates.forEach((path2, i) => {
+    const found = read[i];
+    if (found)
+      disk.set(path2, found);
+  });
+  const twinsOf = /* @__PURE__ */ new Map();
+  if (rules.folds) {
+    for (const group of caseTwins([...published.keys(), ...candidates])) {
+      for (const p of group)
+        twinsOf.set(p, group);
+    }
+  }
+  const staged = /* @__PURE__ */ new Map();
+  if (twinsOf.size > 0) {
+    for (const row of (await readGit(dir, ["ls-files", "-s", "-z"])).split("\0")) {
+      const tab = row.indexOf("	");
+      const [, oid, stage] = row.slice(0, Math.max(tab, 0)).split(" ");
+      if (tab > 0 && oid && stage === "0")
+        staged.set(row.slice(tab + 1), oid);
+    }
+  }
+  const isPhantom = (path2, here) => (twinsOf.get(path2) ?? []).some((other) => other !== path2 && (here.ids.includes(published.get(other)?.oid ?? "") || here.ids.includes(staged.get(other) ?? "")));
+  const added = [...nested];
+  const removed = [];
+  const modified = [];
+  const modeOnly = /* @__PURE__ */ new Set();
+  for (const path2 of [...published.keys()].sort(byName)) {
+    const here = disk.get(path2);
+    if (!here)
+      removed.push(path2);
+    else if (sameBytes(path2, here)) {
+      if (!sameKind(path2, here)) {
+        modeOnly.add(path2);
+        modified.push(path2);
+      }
+    } else if (!isPhantom(path2, here))
+      modified.push(path2);
+  }
+  for (const path2 of disk.keys())
+    if (!published.has(path2))
+      added.push(path2);
+  added.sort(byName);
+  const diskText = (path2) => textLines(disk.get(path2).bytes, disk.get(path2).link);
+  const publishedText = async (paths) => {
+    const text = /* @__PURE__ */ new Map();
+    let batch = [];
+    let bytes = 0;
+    const flush = async () => {
+      const blobs = await readBlobs(dir, [...new Set(batch.map((p) => published.get(p).oid))]);
+      for (const p of batch)
+        text.set(p, textLines(blobs.get(published.get(p).oid)));
+      batch = [];
+      bytes = 0;
+    };
+    for (const path2 of paths) {
+      const entry = published.get(path2);
+      if (entry.mode === "120000")
+        text.set(path2, "not-text");
+      else if (entry.size > MAX_TEXT_BYTES)
+        text.set(path2, "too-large");
+      else {
+        if (batch.length > 0 && bytes + entry.size > BLOB_BATCH_BYTES)
+          await flush();
+        batch.push(path2);
+        bytes += entry.size;
+      }
+    }
+    if (batch.length > 0)
+      await flush();
+    return text;
+  };
+  const renames = /* @__PURE__ */ new Map();
+  const gonePages = removed.filter(isCountedPage);
+  const newPages = added.filter(isCountedPage);
+  const claimed = /* @__PURE__ */ new Set();
+  const goneById = /* @__PURE__ */ new Map();
+  for (const g of gonePages) {
+    const oid = published.get(g).oid;
+    goneById.set(oid, [...goneById.get(oid) ?? [], g]);
+  }
+  for (const path2 of goneById.size > 0 ? newPages : []) {
+    const from = disk.get(path2).ids.flatMap((id) => goneById.get(id) ?? []).find((g) => !claimed.has(g));
+    if (from) {
+      renames.set(path2, { from, sameText: true });
+      claimed.add(from);
+    }
+  }
+  const stillGone = gonePages.filter((g) => !claimed.has(g));
+  const stillNew = newPages.filter((p) => !renames.has(p));
+  const modifiedPages = modified.filter((p) => isCountedPage(p) && !modeOnly.has(p));
+  const movedAndEdited = stillGone.length > 0 && stillNew.length > 0;
+  const lookForMoves = movedAndEdited && stillGone.length * stillNew.length <= MAX_RENAME_PAIRS;
+  const oldText = await publishedText([...modifiedPages, ...lookForMoves ? stillGone : []]);
+  if (lookForMoves) {
+    const textOf = (lines) => typeof lines === "string" ? null : pieces(lines);
+    const was = new Map(stillGone.map((g) => [g, textOf(oldText.get(g))]));
+    const pairs = [];
+    for (const to of stillNew) {
+      const now = textOf(diskText(to));
+      if (!now)
+        continue;
+      for (const from of stillGone) {
+        const old = was.get(from);
+        const score = old ? similarity(old, now) : 0;
+        if (score >= RENAME_SIMILARITY)
+          pairs.push({ score, from, to });
+      }
+    }
+    pairs.sort((x, y) => y.score - x.score || byName(x.to, y.to) || byName(x.from, y.from));
+    for (const { from, to } of pairs) {
+      if (claimed.has(from) || renames.has(to))
+        continue;
+      renames.set(to, { from, sameText: false });
+      claimed.add(from);
+    }
+  }
+  const pages = [];
+  const files = [];
+  for (const path2 of added) {
+    if (!isCountedPage(path2)) {
+      files.push({ kind: "added", path: path2 });
+      continue;
+    }
+    if (renames.has(path2))
+      continue;
+    const now = diskText(path2);
+    pages.push(typeof now === "string" ? { kind: "added", page: pageId(path2), path: path2, lines: [], noText: now } : { kind: "added", page: pageId(path2), path: path2, added: now.length, removed: 0, lines: now.map((l) => `+${l}`) });
+  }
+  for (const path2 of removed) {
+    if (!isCountedPage(path2))
+      files.push({ kind: "deleted", path: path2 });
+    else if (!claimed.has(path2))
+      pages.push({ kind: "deleted", page: pageId(path2), path: path2, lines: [] });
+  }
+  for (const path2 of modified) {
+    if (!isCountedPage(path2))
+      files.push({ kind: "modified", path: path2 });
+    else if (modeOnly.has(path2)) {
+      pages.push({ kind: "modified", page: pageId(path2), path: path2, added: 0, removed: 0, lines: [], modeOnly: true });
+    } else
+      pages.push(textChange("modified", path2, oldText.get(path2), diskText(path2)));
+  }
+  for (const [path2, { from, sameText }] of renames) {
+    pages.push(sameText ? { kind: "renamed", page: pageId(path2), path: path2, from, added: 0, removed: 0, lines: [] } : textChange("renamed", path2, oldText.get(from), diskText(path2), from));
+  }
+  const byPath = (x, y) => byName(x.path, y.path);
+  return {
+    teamId,
+    clonePath: dir,
+    base,
+    pages: pages.sort(byPath),
+    files: files.sort(byPath),
+    ...movedAndEdited && !lookForMoves ? { movesNotMatched: true } : {}
+  };
+}
+var DIFF_LIMITS = { newPage: 10, changedPage: 40, total: 200, lineChars: 240, pages: 200, files: 20 };
+function clipped(line, max) {
+  if (line.length <= max)
+    return line;
+  const cut = /[\uD800-\uDBFF]/.test(line[max - 1]) ? max - 1 : max;
+  return `${line.slice(0, cut)} \u2026`;
+}
+function boundLocalDiff(result, opts = {}) {
+  const limits = opts.limits ?? DIFF_LIMITS;
+  const counts = { added: 0, modified: 0, deleted: 0, renamed: 0 };
+  for (const p of result.pages)
+    counts[p.kind]++;
+  let budget = opts.stat ? 0 : limits.total;
+  const pages = result.pages.slice(0, limits.pages).map((p) => {
+    const room = Math.min(p.kind === "added" ? limits.newPage : limits.changedPage, budget);
+    const lines = p.lines.slice(0, room).map((l) => clipped(l, limits.lineChars));
+    budget -= lines.length;
+    return { ...p, lines, more: p.lines.length - lines.length };
+  });
+  return {
+    ...result,
+    counts,
+    pages,
+    pagesNotListed: result.pages.length - pages.length,
+    files: result.files.slice(0, limits.files),
+    filesNotListed: Math.max(0, result.files.length - limits.files)
+  };
+}
+
+// ../../apps/sync-agent/dist/version.js
+var import_node_fs4 = require("node:fs");
+var import_node_path10 = require("node:path");
 var import_node_url = require("node:url");
 function packageVersion() {
   try {
-    const pkg = (0, import_node_path9.join)((0, import_node_path9.dirname)((0, import_node_url.fileURLToPath)(__commongroundImportMetaUrl)), "..", "package.json");
-    const parsed = JSON.parse((0, import_node_fs3.readFileSync)(pkg, "utf8"));
+    const pkg = (0, import_node_path10.join)((0, import_node_path10.dirname)((0, import_node_url.fileURLToPath)(__commongroundImportMetaUrl)), "..", "package.json");
+    const parsed = JSON.parse((0, import_node_fs4.readFileSync)(pkg, "utf8"));
     return typeof parsed.version === "string" && parsed.version.trim() ? parsed.version.trim() : null;
   } catch {
     return null;
   }
 }
 function cliVersion() {
-  const embedded = true ? "0.20.0".trim() : "";
+  const embedded = true ? "0.21.0".trim() : "";
   if (embedded)
     return embedded;
   const dev = packageVersion();
@@ -17783,8 +18442,8 @@ function copyLinkLine(url) {
 }
 
 // ../../apps/sync-agent/dist/team-resolve.js
-var import_node_fs4 = require("node:fs");
-var import_node_path10 = require("node:path");
+var import_node_fs5 = require("node:fs");
+var import_node_path11 = require("node:path");
 var FULL_WIKI_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 async function resolveWiki(deps, arg, projectDir = process.cwd()) {
   if (arg)
@@ -17885,18 +18544,18 @@ function describeWikiChoice(choice, label, alsoLabels = []) {
 `);
 }
 function canon(p) {
-  const abs = (0, import_node_path10.resolve)(p);
+  const abs = (0, import_node_path11.resolve)(p);
   try {
-    return import_node_fs4.realpathSync.native(abs);
+    return import_node_fs5.realpathSync.native(abs);
   } catch {
-    const parent = (0, import_node_path10.dirname)(abs);
-    return parent === abs ? abs : (0, import_node_path10.join)(canon(parent), (0, import_node_path10.basename)(abs));
+    const parent = (0, import_node_path11.dirname)(abs);
+    return parent === abs ? abs : (0, import_node_path11.join)(canon(parent), (0, import_node_path11.basename)(abs));
   }
 }
 function within(child, root) {
   const c = canon(child);
   const r = canon(root);
-  return c === r || c.startsWith(r.endsWith(import_node_path10.sep) ? r : r + import_node_path10.sep);
+  return c === r || c.startsWith(r.endsWith(import_node_path11.sep) ? r : r + import_node_path11.sep);
 }
 async function isCloneDir(deps, teamId, dir) {
   try {
@@ -17956,6 +18615,9 @@ var UNSAFE = /[\u0000-\u001f\u007f-\u009f\u061c\u200b-\u200f\u2028-\u202e\u2060-
 function inert(text) {
   return text.replace(UNSAFE, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`);
 }
+function inertLine(text) {
+  return text.split("	").map(inert).join("	");
+}
 var PAGE_SYMBOL = {
   added: "+",
   modified: "~",
@@ -17964,6 +18626,54 @@ var PAGE_SYMBOL = {
 };
 function formatReceipt(pages) {
   return pages.map((p) => `${PAGE_SYMBOL[p.kind]} ${inert(p.page)}`).join(" \xB7 ");
+}
+var lineCount = (n) => `${n} line${n === 1 ? "" : "s"}`;
+var NO_TEXT = {
+  "not-text": "not text, so there are no lines to show",
+  "too-large": "too large to show line by line",
+  rewritten: "rewritten"
+};
+var NO_LINE = "no line of text differs: its line endings, a byte-order mark or its final newline";
+function diffPageHead(p) {
+  const counts = p.noText === "rewritten" ? `rewritten: ${lineCount(p.removed ?? 0)} before, ${lineCount(p.added ?? 0)} now` : p.noText ? NO_TEXT[p.noText] : `+${p.added ?? 0} -${p.removed ?? 0}`;
+  const what = {
+    added: p.noText ? `new page, ${NO_TEXT[p.noText]}` : `new page, ${lineCount(p.added ?? 0)}`,
+    deleted: "removed",
+    modified: p.modeOnly ? "only its file mode differs" : !p.noText && !p.added && !p.removed ? NO_LINE : counts,
+    renamed: `renamed from ${inert((p.from ?? "").replace(/\.md$/i, ""))}, ` + (!p.noText && !p.added && !p.removed ? "same text" : counts)
+  }[p.kind];
+  return `${PAGE_SYMBOL[p.kind]} ${inert(p.page)} (${what})
+`;
+}
+var KIND_WORD = [
+  ["added", "new"],
+  ["modified", "changed"],
+  ["renamed", "renamed"],
+  ["deleted", "removed"]
+];
+function formatLocalDiff(view, label, opts = {}) {
+  const { pages, files } = view;
+  const total = pages.length + view.pagesNotListed;
+  const fileTotal = files.length + view.filesNotListed;
+  const others = files.map((f) => `${PAGE_SYMBOL[f.kind]} ${inert(f.path)}`).join(" \xB7 ") + (view.filesNotListed ? ` \xB7 and ${view.filesNotListed} more` : "");
+  const fileCount = `${fileTotal} other file${fileTotal === 1 ? "" : "s"}`;
+  if (total === 0) {
+    return fileTotal === 0 ? `${label}: no unpublished changes in ${view.clonePath}.
+` : `${label}: no page changes in ${view.clonePath}; ${fileCount} not published yet: ${others}
+`;
+  }
+  const how = KIND_WORD.filter(([kind]) => view.counts[kind] > 0).map(([kind, word]) => `${view.counts[kind]} ${word}`).join(", ");
+  const cut = !opts.stat && pages.some((p) => p.more > 0);
+  return `${label}: ${pageCount(total)} changed in ${view.clonePath} since the last publish (${how}).
+` + (fileTotal ? `  Also ${fileCount}: ${others}
+` : "") + "\n" + pages.map((p) => diffPageHead(p) + p.lines.map((l) => `    ${inertLine(l)}
+`).join("") + (!opts.stat && p.more > 0 ? `    \u2026 ${lineCount(p.more).replace(" ", " more ")} not shown
+` : "")).join("") + (view.pagesNotListed ? `\u2026 and ${pageCount(view.pagesNotListed).replace(" ", " more ")}, counted above and not listed.
+` : "") + (view.movesNotMatched ? `
+Too many pages were removed and added at once to match moved pages up, so a page that moved and changed is listed as one removed and one new.
+` : "") + (cut ? `
+Some text is not shown, to keep this readable. The page files in the folder hold the rest.
+` : "");
 }
 function pageNames(pages) {
   return pages.map((p) => inert(p.page)).join(", ");
@@ -18466,10 +19176,11 @@ Usage:
                                or off for this machine
   commonground prefs set quiet-checks on|off
                                let CommonGround's own read-only checks (status, the wiki list,
-                               coverage, lint, the publish preview, and in a hosted project the
-                               connector's searches and reads of that wiki) run without a
-                               permission prompt each time. Off unless you turn it on; publishing
-                               always asks
+                               coverage, lint, the publish preview; in a project with a local
+                               wiki folder, the text of what changed in it; and in a hosted
+                               project the connector's searches and reads of that wiki) run
+                               without a permission prompt each time. Off unless you turn it on;
+                               publishing always asks
   commonground status [wiki]   show sync state ("N commits behind") + local divergence, which
                                mode this project is in, and how many pages in your wiki folder
                                are not published yet. --json for the machine-readable form (it
@@ -18485,6 +19196,13 @@ Usage:
   commonground coverage [wiki] what the wiki's own checklist still wants (everyone), against your
                                LOCAL copy: the charter's structure when chartered, else the team
                                shape template. --json for the machine-readable form
+  commonground diff [wiki]     what changed in your wiki folder since its last publish (everyone):
+                               one line per page, then the text of each change, cut to a readable
+                               length. Unpublished edits and new pages count, and so do changes
+                               already committed in the folder. --stat for the names and line
+                               counts alone, --json for the machine-readable form. It only reads:
+                               nothing in the folder changes, nothing is downloaded from the
+                               wiki, and git never reads your pages
   commonground normalize --drop-retired-keys
                                remove frontmatter keys CommonGround has RETIRED (type, related,
                                and scope: company where nothing else is scoped) from your local
@@ -18521,7 +19239,7 @@ async function buildDeps() {
   const reposDir = process.env.COMMONGROUND_REPOS_DIR;
   if (reposDir && !process.env.COMMONGROUND_API_URL) {
     const membershipsPath = process.env.COMMONGROUND_MEMBERSHIPS;
-    const memberships = membershipsPath ? JSON.parse(await (0, import_promises7.readFile)(membershipsPath, "utf8")) : {};
+    const memberships = membershipsPath ? JSON.parse(await (0, import_promises8.readFile)(membershipsPath, "utf8")) : {};
     return { backend: new LocalSyncBackend({ reposDir, memberships }), configHome, dataHome };
   }
   return {
@@ -18904,11 +19622,11 @@ function formatCoverage(r) {
   const basis = r.chartered ? "against this wiki's charter" : `against the default "${r.shape}" shape template` + (r.assumed ? ` (no cached team profile \u2014 ${ask("pull")} to refresh)` : "");
   const head = `${r.clonePath} \u2014 ${r.progress.done}/${r.progress.total} section(s) complete, ${basis}.
 `;
-  const open3 = r.rows.filter((s) => s.status === "empty" || s.status === "partial");
-  if (!open3.length)
+  const open4 = r.rows.filter((s) => s.status === "empty" || s.status === "partial");
+  if (!open4.length)
     return `${head}  Nothing outstanding.
 `;
-  return head + open3.map((s) => `  [${s.status}] ${s.label}${s.have.length ? ` \u2014 has: ${s.have.map((e) => e.pageId).join(", ")}` : ""}
+  return head + open4.map((s) => `  [${s.status}] ${s.label}${s.have.length ? ` \u2014 has: ${s.have.map((e) => e.pageId).join(", ")}` : ""}
 ` + (s.prompt ? `      ${s.prompt}
 ` : "")).join("");
 }
@@ -18967,15 +19685,15 @@ async function clearStaleCredential() {
     throw new AgentError(state === "live" ? `refusing to remove ${legacy} \u2014 that file IS your sign-in on this machine, so removing it would sign you out. ${byAudience('Run "commonground login" to move it instead.', "Offer to sign them in again, which moves it instead.")}` : state === "unreadable" ? `refusing to remove ${legacy} \u2014 CommonGround can't read that file, so it can't prove it isn't your only sign-in. ${byAudience(`Make it readable ("chmod 600 ${legacy}") and run this again, or remove it yourself.`, "It stays put until the user makes it readable or removes it themselves.")}` : `refusing to remove ${legacy} \u2014 CommonGround can't prove that file is unused (it may hold a sign-in ${storePath()} doesn't), so it isn't ours to destroy. ${byAudience('Run "commonground login" to consolidate', "Offer to sign them in again to consolidate")}, or remove that file yourself.`);
   }
   try {
-    await (0, import_promises7.unlink)(legacy);
+    await (0, import_promises8.unlink)(legacy);
   } catch (e) {
     if (e.code !== "ENOENT") {
       throw new AgentError(`couldn't remove ${legacy} (${e.message}) \u2014 fix the permissions on that folder, or remove the file yourself`);
     }
   }
-  await (0, import_promises7.rmdir)((0, import_node_path11.dirname)(legacy)).catch(() => void 0);
+  await (0, import_promises8.rmdir)((0, import_node_path12.dirname)(legacy)).catch(() => void 0);
   process.stdout.write(`Removed ${legacy}.
-` + ((0, import_node_fs5.existsSync)(storePath()) ? `  Your sign-in is unaffected \u2014 CommonGround reads it from ${storePath()}.
+` + ((0, import_node_fs6.existsSync)(storePath()) ? `  Your sign-in is unaffected \u2014 CommonGround reads it from ${storePath()}.
 ` : `  It held no sign-in, so nothing changed about how this machine is signed in.
 `));
 }
@@ -19020,7 +19738,7 @@ async function main(argv) {
       }
       if (key === "quiet-checks") {
         await setQuietChecksPref(value, agentConfigHome());
-        process.stdout.write(value === "on" ? `Done. CommonGround's own read-only checks now run without asking each time: its status, the wiki list, coverage, the health check and the publish preview, and, in a project that uses the hosted connector, searching and reading that wiki. Publishing still asks you every time, and so does anything that changes a file. To undo it, ask Claude to turn quiet checks off.
+        process.stdout.write(value === "on" ? `Done. CommonGround's own read-only checks now run without asking each time: its status, the wiki list, coverage, the health check and the publish preview; in a project with a local wiki folder, the text of what changed in that folder; and, in a project that uses the hosted connector, searching and reading that wiki. Publishing still asks you every time, and so does anything that changes a file. To undo it, ask Claude to turn quiet checks off.
 ` : `Done. Every CommonGround call asks for your approval again.
 `);
         return;
@@ -19329,6 +20047,29 @@ ${formatWikiList(hits, active, boundId, alsoIds)}Say which one \u2014 the full n
       const result = await coverage(deps, await resolveTeamId(deps, teamArg(rest)));
       process.stdout.write(rest.includes("--json") ? `${JSON.stringify(result, null, 2)}
 ` : formatCoverage(result));
+      return;
+    }
+    // WHAT CHANGED, AS TEXT (SER-362). The one read the helper could not give, so Claude reached
+    // for raw git in the wiki folder, which Claude Code stops with a security dialog every time.
+    // No role and no network once the wiki is resolved: it is the user's own folder.
+    case "diff": {
+      const deps = await buildDeps();
+      const choice = await resolveWiki(deps, teamArg(rest));
+      if (choice.unreachable) {
+        throw new AgentError(`this project is connected to wiki ${choice.unreachable}, which this machine cannot read as you (it holds no sign-in for it, or you are not a member of it), so there is nothing to compare here. No other wiki was read. ` + byAudience('Run "commonground status" to see what this project reads.', "Offer /commonground:status to see what this project reads."));
+      }
+      const teamId = choice.teamId;
+      const named = teamArg(rest);
+      if (named !== void 0) {
+        if (FULL_WIKI_ID.test(named.trim()) && teamId.toLowerCase() !== named.trim().toLowerCase()) {
+          throw new AgentError(`"${named.trim()}" is written as a wiki id, and no wiki of yours has that id (it matched ${await labelFor(deps, teamId)} by name instead), so nothing was read. Name the wiki by its own id.`);
+        }
+        await crossWikiBinding(deps.backend, teamId, deps.configHome, deps.dataHome);
+      }
+      const stat5 = rest.includes("--stat");
+      const view = boundLocalDiff(await localDiff(deps, teamId), { stat: stat5 });
+      process.stdout.write(rest.includes("--json") ? `${JSON.stringify(view, null, 2)}
+` : formatLocalDiff(view, await labelFor(deps, teamId), { stat: stat5 }));
       return;
     }
     case "export": {

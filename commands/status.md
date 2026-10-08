@@ -35,7 +35,8 @@ relay that rather than inferring one:
   reports unpublished work, lead with the count it gives** (`N pages in your wiki folder are not
   published yet`, or files when none of them are pages). That line counts pages the user has WRITTEN,
   committed or not, so it is the honest answer to "did my work go out?" — never soften it into "up to
-  date", and offer `/commonground:push`. **When the same output says the folder is behind**
+  date", and offer `/commonground:push`. To name those pages or show what they say, run
+  `commonground diff --stat` or `commonground diff`, never `git` in the wiki folder. **When the same output says the folder is behind**
   (`<n> commit(s) behind`), offer `/commonground:pull` first and the publish after it: a pull brings
   the change in around their work, and a publish made while behind stops and leaves a harder choice.
   For a member (no publishing role) the CLI says
@@ -284,8 +285,9 @@ say so in one line, with the way back: *"Quiet checks are on,
 so CommonGround's read-only checks run without asking. Ask me to turn them off any time."* **If
 they ask for fewer permission prompts, that is a setting too:** `commonground prefs set
 quiet-checks on` lets CommonGround's own read-only checks (the status, the list of wikis,
-coverage, the health check, the preview before publishing, and in a hosted project searching and
-reading that wiki) run without asking each time. The dialog that command raises is the
+coverage, the health check, the preview before publishing; in a project with a local wiki folder,
+the text of what changed in that folder; and in a hosted project searching and reading that wiki)
+run without asking each time. The dialog that command raises is the
 confirmation; never turn it on on your own initiative. Publishing always asks, and so does saving
 pages. `commonground prefs set quiet-checks off` undoes it, and say so whenever you turn it on.
 
@@ -294,8 +296,8 @@ Tailor to the user's **role** (and whether the wiki is empty). The full command 
 **`/commonground:ingest`** (capture anything — notes, docs, transcripts, URLs, decisions),
 **`/commonground:lint`** (health + coverage gaps), **`/commonground:pull`** / **`/commonground:push`**
 (local-clone only — get the published latest / publish yours), and **`/commonground:status`** (this).
-In local-clone mode `commonground lint` and `commonground coverage` also run directly against the
-clone, so they include work not yet published. With more than one wiki, `/commonground:lint` also
+In local-clone mode `commonground lint`, `commonground coverage` and `commonground diff` also run
+directly against the clone, so they include work not yet published. With more than one wiki, `/commonground:lint` also
 shows where this wiki and the others overlap and settles which answers for what (SER-272).
 
 - **admin / curator:** if the wiki is **empty or thin**, start with **`/commonground:seed`** (the

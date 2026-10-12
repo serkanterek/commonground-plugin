@@ -91,16 +91,32 @@ help them read, answer, and file `suggest_change`.
   for getting it right here.
 - **What stays server-side, WHEN this session has a connector:** the **suggestions queue**
   (`list_suggestions` / `suggest_change` / `resolve_suggestion`). It can't live in git — it carries
-  messages from people who have no write access to the repo. Say it only when those tools are
-  actually in your tool list: a local-mode project with no connector cannot file a suggestion at
-  all, so offering one there sends a member after something that isn't here. Everything else a local
+  messages from people who have no write access to the repo. Offer one of those tools only when it
+  is in your tool list. **In a local project CommonGround's own connector is switched off by
+  CommonGround, unless this session lists it as needing authorization.** So when a connector tool
+  you need there is not in this session and the session does not list the connector, say that in
+  one sentence and offer to switch it on (`commonground connector on`, then a new session), and
+  relay what that command answers. When the session does list it, the tool waits on the
+  connector's own sign-in (`/mcp`, the row named CommonGround). **Never work around a missing tool
+  by any other route.** What needs the connector in a local project is sending a suggestion, the
+  suggestions queue, an invite, and the overlap check between two wikis. Everything else a local
   project needs is on disk: `commonground lint` and `commonground coverage` run against the working
   copy, so they see unpublished work that the server's `lint` / `get_coverage` cannot, and
   `commonground diff` shows what that work changed, page by page (`--stat` for the names alone; for
   a wiki this project reads beside its first, `commonground diff <its id>`: the id, not the name).
   **Never run `git` in the wiki folder yourself to read it:** that command shows the change, and raw
   git aimed at that folder (`cd … && git …`) raises a Claude Code security dialog every time, with
-  no way for the user to allow it for good.
+  no way for the user to allow it for good. The other side and saved drafts have reads of their
+  own under that rule, so never `git show` or a checkout there either: `commonground diff
+  --incoming` shows what the published wiki changed (as the folder last saw it; nothing is
+  downloaded), `commonground drafts` lists the drafts saved in the folder, and `commonground drafts
+  show <name>` shows what one holds (`<name>` is the whole `draft/…` name). Another wiki by its id,
+  after `--incoming`: `commonground diff --incoming <its id>` (the id before it works and prompts).
+  `commonground drafts restore <name> <page>` brings ONE file back and it WRITES: **run it only on
+  the user's explicit yes, one file at a time, never on your own initiative**, and when it refuses,
+  relay its sentence and never work around it; a file the ignore rules hide comes back only under
+  another name, on the same yes: `commonground drafts restore <name> <path> --as <new name>`
+  (`/commonground:pull` carries the full rule).
 - **Setup has two sign-ins, and only those two are CommonGround's.** The browser code, in every
   mode; and the connector's own consent, for the hosted connector only. When this session reports
   servers or tools that "need authorization":
@@ -115,8 +131,9 @@ help them read, answer, and file `suggest_change`.
     server's sign-in, and never bring up a connector list or connector suggestions, as a step of
     setting up CommonGround.
 - **Fewer permission prompts is a setting the user owns.** `commonground prefs set quiet-checks on`
-  lets CommonGround's own read-only checks run without asking each time, `commonground diff` in a
-  local project among them (publishing always asks, and so does saving pages); `… off` undoes it. Run it only when they ask for fewer prompts, and
+  lets CommonGround's own read-only checks run without asking each time, `commonground diff`,
+  `diff --incoming` and the `drafts` reads in a local project among them (publishing always asks,
+  saving pages asks as before, and `drafts restore` is never approved by it); `… off` undoes it. Run it only when they ask for fewer prompts, and
   never turn it on on your own initiative: the dialog it raises is their confirmation.
 - **If the connector goes quiet** (MCP mode) — missing or failing CommonGround tools are **usually**
   a connection problem rather than a role one: a member still sees `search` / `get_page` /
@@ -441,7 +458,8 @@ the same kinds:
   referencing each). Surface as "referenced but not written yet" — ready candidates to ingest next.
 
 **Coverage gaps** (the `get_coverage` tool, charter-aware): the empty/partial sections of the
-charter's Structure list (or the org-shape template if the wiki isn't chartered yet), each with its
+charter's Structure list (or a default template if the charter lists no sections or the wiki isn't
+chartered yet), each with its
 intent (`prompt`) and the pages it already has. **The progress number is deterministic — report it,
 never recompute it.**
 
@@ -458,7 +476,8 @@ the **gap reading** — the qualitative read of the coverage gaps, which is the 
 say *what* is missing from a section rather than *that* it is short.
 
 The gap reading is **opt-in**: it costs the user's own tokens, so say so and get a yes before
-running it, only on a chartered wiki, and never because a report looked thin. Cite real pageIds and
+running it, only on a chartered wiki whose charter lists its own sections, and never because a
+report looked thin. Cite real pageIds and
 **never name a page the wiki does not have**; drop an observation you cannot cite. Read the sections'
 statuses and counts — never restate or re-derive them, and never produce a second percentage.
 

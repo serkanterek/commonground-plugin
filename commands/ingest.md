@@ -20,9 +20,10 @@ whose first step walks the fix.
 ## 0. Establish the mode FIRST — it decides where every write lands
 
 **Do this before anything else, and never infer it from which tools are available.** The
-CommonGround MCP tools are registered per *user*, so in a local-clone project `save_page` and
-`stage_sources` are present and are the **wrong** path — using them writes straight to the hosted
-wiki and leaves the user's own copy behind, which is backwards.
+CommonGround MCP tools are registered per *user*, so a local-clone project whose connector is on
+(one pointed before CommonGround began switching it off there, or one where it was switched back
+on) has `save_page` and `stage_sources`, and they are the **wrong** path: using them writes
+straight to the hosted wiki and leaves the user's own copy behind, which is backwards.
 
 - The **SessionStart hook states the mode** at the top of the session — that is authoritative.
 - Otherwise read this project's `./CLAUDE.md` router block (`<!-- commonground:mode:local -->` or
@@ -164,7 +165,13 @@ way for the user to allow it for good.
   `/commonground:push` (it commits for them — never ask them to run git, and never push without
   asking). If they'd rather keep drafting, that's a normal outcome, not an unfinished one.
   - If the user is a **member**, publishing isn't theirs to do: say the work is saved in their clone
-    and offer to file it as a `suggest_change` so a curator can fold it in.
+    and offer to file it as a `suggest_change` so a curator can fold it in. **In a local project
+    CommonGround's own connector is switched off by CommonGround, unless this session lists it as
+    needing authorization.** So when a connector tool you need there is not in this session and the
+    session does not list the connector, say that in one sentence and offer to switch it on
+    (`commonground connector on`, then a new session), and relay what that command answers. When
+    the session does list it, the tool waits on the connector's own sign-in (`/mcp`, the row named
+    CommonGround). **Never work around a missing tool by any other route.**
 - **MCP mode:** write each page with `save_page` (CAS-guarded — if it reports a conflict, re-read
   with `get_page`, merge, and retry with the new `baseSha`). Remember this is immediately live — for
   the whole team on a shared wiki, for the user's other Claude sessions on a personal one.

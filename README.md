@@ -199,7 +199,11 @@ have turned on quiet checks, described below.
   server, and nothing else.
   - **In a shell command** it looks for the CommonGround CLI run with `push`, `import` or `sync`,
     the verbs that publish, and asks you first. It also asks when it cannot read which CommonGround
-    command is being run, and before a command that turns quiet checks on (below). Previews and reads (`push --dry-run`, `status`, `lint`, `diff`) pass untouched.
+    command is being run, and before a command that turns quiet checks on (below). Previews and
+    reads (`push --dry-run`, `status`, `lint`, `diff`, `diff --incoming`, `drafts`, `drafts show`)
+    pass untouched. `drafts restore` writes one file in your wiki folder and publishes nothing, so
+    the guard does not ask about it, and it is never approved by the guard either: Claude Code's
+    own permission prompt decides.
     `git push`, `gh`, `npm publish` and deploys are never judged: those belong to your own repos.
   - **In an MCP call** it looks for CommonGround's write tools: `save_page`, `save_charter`,
     `stage_sources`, `invite_teammate` and `resolve_suggestion`. In MCP mode it asks before each
@@ -223,28 +227,69 @@ have turned on quiet checks, described below.
     the guard asks you itself before the command that turns it on. With it on, the guard answers
     "allow" for CommonGround's own read-only checks, so they stop prompting: its status, your list
     of wikis, coverage, the health check and the publish preview; in a project with a local wiki
-    folder, the text of what changed in that folder; and, in a project that uses the hosted
+    folder, the text of what changed in that folder, of what is incoming from the published wiki,
+    and of the drafts saved in that folder; and, in a project that uses the hosted
     connector, searching and reading that wiki. In a shell that is a command made of nothing but
     `node "<plugin folder>/bin/commonground"`, one of `status`, `use` (the list of wikis),
     `coverage`, `lint`, `version` or `push --dry-run`, optionally `--json` and one of your wikis by
     name or id, and after it at most `2>&1` and, in Bash, one `| head -N` or `| tail -N`; anything
-    joined to another command asks as before. `diff` (optionally `--stat` or `--json`) is on that
-    list too, and it is the one of these that prints the text of your pages, so it is narrower: only
-    in a project in local-clone mode, for the wiki that project names, or for another wiki it reads
-    when Claude gives that wiki's id. If you turned quiet checks on before `diff` existed (plugin
-    0.20.0), it is covered without your being asked again. On the connector, quiet checks cover
-    the nine tools the server declares read-only (`search`, `get_page`, `get_index`,
-    `list_suggestions`, `lint`, `get_history`, `get_awareness`, `get_coverage`, `get_started`), on
-    the plugin's own connector, in MCP mode, for a wiki this project names. Never a write or a
-    publish. A deny or ask rule of your own in Claude Code still wins. Ask Claude to turn quiet
-    checks off at any time.
+    joined to another command asks as before. Four more forms are on that list: `diff` (what you
+    changed in your wiki folder), `diff --incoming` (what the published wiki changed) and
+    `drafts show <draft>` (what one saved draft holds), each optionally with `--stat` or `--json`,
+    and `drafts` (the list of saved drafts), optionally with `--json`. These are the ones that
+    print what your pages say, or for the list of drafts the names of pages you have not
+    published, so they are narrower: only in a project in local-clone mode, for the wiki that
+    project names, or for another wiki it reads when Claude gives that wiki's id. `drafts restore`
+    writes a file and is not on the list in any form. If you turned quiet checks on before these
+    reads existed (plugin 0.21.0 or earlier), they are covered without your being asked again. On
+    the connector, quiet checks cover the nine tools the server declares read-only (`search`,
+    `get_page`, `get_index`, `list_suggestions`, `lint`, `get_history`, `get_awareness`,
+    `get_coverage`, `get_started`), on the plugin's own connector, in MCP mode, for a wiki this
+    project names. Never a write or a publish. A deny or ask rule of your own in Claude Code still
+    wins. Ask Claude to turn quiet checks off at any time.
+  - **What decides that a folder is one of your projects: its own `CLAUDE.md`.** CommonGround
+    keeps no list of the folders you connected yourself. The guard goes by the `CLAUDE.md` of the
+    folder Claude is working in and of its parent folders. A folder whose `CLAUDE.md` carries a
+    CommonGround block naming a wiki you belong to is treated as a project that reads that wiki,
+    whoever wrote that file: you with `/commonground:point`, a teammate whose repository you
+    cloned, or anyone else. With quiet checks off the guard approves nothing, so that file decides
+    only whether it asks or refuses. With quiet checks on, three things follow:
+    - **In such a folder, the reads of that wiki run without a prompt.** In local-clone mode those
+      are the checks that print what is in your wiki folder (`diff`, `diff --incoming`, `drafts`,
+      `drafts show`). In MCP mode they are the connector's searches and reads.
+    - **`status`, `coverage`, `lint`, the publish preview and the list of wikis do not look at the
+      folder at all.** They run without a prompt in any folder, for any wiki you belong to. They
+      print wiki and page names, ids, counts and findings, the category tags and link targets your
+      pages carry, and, from the wiki's charter page, the labels and hints of its section list.
+      One form prints more: `coverage --json` also prints, for every page a section lists, the
+      page's title, the other names it declares (its aliases), its scope, section and category
+      tags, its last-updated date, and one line of it. That line is the summary the page declares
+      (up to 200 characters) or, when it declares none, the first line of the page's text, cut at
+      140 characters. So with quiet checks on, all of that can be printed without a prompt, in any
+      folder, for any wiki you belong to.
+    - **SessionStart records the wiki from that block by itself**, as described above: it writes
+      `COMMONGROUND_WIKI` into that folder's `.claude/settings.json` whether quiet checks are on or
+      off.
+
+    None of this publishes anything or writes a page. These reads ask CommonGround's server for
+    nothing from a wiki you are not a member of. A wiki folder that is already on this machine
+    stays readable here, including after you have left that wiki. If you would rather be asked in
+    every folder, leave quiet checks off.
   - **What it reads.** The command or tool call Claude is about to run, the `CLAUDE.md` of this
     folder and its parent folders, for the CommonGround block, the wiki recorded for the session,
     and one preference in `state.json` in the credential home: your answer about quiet checks,
     which the CLI writes and the guard only reads. It writes nothing and makes no network call.
 - **No hook ever writes or deletes wiki page content, and none sends it anywhere.** In local-clone
   mode SessionStart asks `git` about your wiki folder (its current commit, and the names of files
-  changed since the last publish) to decide whether to suggest a pull or a push.
+  changed since the last publish) to decide whether to suggest a pull or a push. Every git call a
+  hook makes is a read, and each one carries the four pins described under "The bundled CLI"
+  below: the folder's file watcher setting (`core.fsmonitor`) emptied, its git hooks switched off,
+  its alternate-refs command emptied, and no optional locks taken. So neither a watcher program
+  nor a git hook named in that folder's settings runs when a hook looks. Taking no optional locks
+  leaves git's index file in the folder as it was for every call but one: when the folder holds work that is committed there and not published, SessionStart
+  compares it with the files in the folder, and git rewrites the index file during that comparison
+  (the same entries with fresh timestamps, and no hook runs for it). "The bundled CLI" below says
+  what is still honoured.
 
 **The header helper** (`hooks/mcp-wiki-header.cjs`) is not a hook. Claude Code runs it once each
 time it connects to the CommonGround connector, and it prints the wiki ids from
@@ -263,6 +308,21 @@ wiki this project names. It reads nothing else, writes nothing and makes no netw
 - **Your wiki folder**, in local-clone mode: the wiki as plain markdown, by default
   `~/CommonGround/<wiki-name>/`, plus a `CLAUDE.md` of its own that tells Claude the folder is the
   working copy. That file is never published.
+
+**A project connected in local-clone mode also gets one entry in its `.claude/settings.local.json`**,
+Claude Code's settings file for this computer only (keep it out of git: if `git status` lists it,
+add it to your `.gitignore`):
+`{ "serverName": "plugin:commonground:commonground" }` in the `deniedMcpServers` list, with every
+other key and entry in the file kept. It switches CommonGround's own connector off for that
+project, which reads the wiki folder and would otherwise show the connector as needing
+authorization in every session. The switch applies to sessions opened on the connected folder, and,
+when that folder is the root of a git repository, to sessions opened anywhere under it; a session
+opened on a subfolder outside git still lists the connector. To switch it back on, for sending a
+suggestion, the suggestions queue, an invite, and the overlap check between two wikis, ask Claude
+or run `commonground connector on`, then start a new session.
+The entry is written once, when the project is first connected that way or switched to it from the
+hosted connector. After that only you switch it, so a connector you switched on stays on, and a
+project that was connected before version 0.23.0 gets the entry from `commonground connector off`.
 
 Your sign-in lives outside your wiki folder, so moving, clearing or re-pointing that folder never
 signs you out.
@@ -296,12 +356,101 @@ first asks CommonGround for your list of wikis, as every command does. It never 
 of the folder, and the page text it prints is bounded: the first lines of a new page, the changed
 lines of an edited one.
 
+**`commonground diff --incoming` and `commonground drafts` only read too, the same way `diff`
+does.** `diff --incoming` shows what the published wiki changed since your folder last matched it,
+with the pages you also changed listed first and marked. It answers from what the folder last saw:
+nothing is downloaded, so it is as of the last time the folder checked. `drafts` lists the drafts
+saved in your wiki folder, newest first. A draft is the work your folder held when it was set
+aside: taking the published version, keeping your version in a conflict and saving your work as a
+draft each make one. `drafts show <name>` shows what one draft holds and, page by page, whether
+your folder now holds the same text, different text or no such page. Like `diff`, these ask git
+only about names and committed text (for drafts, also which drafts exist and which file names the
+folder's ignore rules hide), git never reads a page, and the text they print is bounded. A file a
+draft kept that your git ignore rules hide is named, and its text is never printed.
+
+**`commonground drafts restore <name> <path>` is the one of these that writes.** It brings one file
+back from one draft into your wiki folder as an ordinary unpublished edit: nothing is published,
+and `commonground diff` then shows the change. It runs no git write of any kind. The CLI writes the
+file itself, and git's index and everything else under `.git` stay as they were. It never replaces
+text that is saved nowhere else: it writes only when your folder has no such file or an empty one,
+or when the folder's copy is the same as what the folder's own wiki history last recorded for it or
+as what some draft holds. Otherwise it refuses and tells you to publish that text or save it as a
+draft first. A restore is not crash-proof: if the write fails part-way it tries to put the old
+text back, and failing that to leave the file empty, and a write that is cut off can leave the file
+cut short. Whatever it was replacing is saved elsewhere by the rule above. It also refuses the wiki's catalog, CommonGround's own tooling files, anything under
+`.claude/` or `.git`, links, names another machine could not hold, and, under its own name, a file
+your git ignore rules hide (the next paragraph is the way back for that one). Claude runs a restore
+only when you ask for it, one file at a time, and the guard never approves it.
+
+**`commonground drafts restore <name> <path> --as <new name>` writes a hidden file back under
+another name.** When you take the published version over a file your git ignore rules hide, the
+draft keeps your file and the published file takes its name. The plain restore refuses that file:
+put back under its own name it would replace the published file and go out with your next publish.
+With `--as` the CLI writes it into your wiki folder under a new name and leaves the file at its own
+name as it is. It is the same kind of write: the CLI creates the file itself, runs no git write,
+and leaves everything under `.git` as it was. The new name has to be free and new. It refuses a
+name where a file, a folder or a link already sits, a name the wiki already holds, a name outside
+the folder, a path through a link, and a name another machine could not hold. It also refuses
+every name git or a Claude session reads as its own, wherever in the folder it sits: any name that
+starts with `.git` (git reads `.gitignore`, `.gitattributes` and `.gitmodules` as its settings),
+`CLAUDE.md`, `CLAUDE.local.md`, `.mcp.json`, `.claude` and `.commonground`, and at the top of the
+folder the wiki's catalog. It
+works only for a file
+a draft kept that your ignore rules hide, judged by those rules as they are when you run it: for
+any other file it refuses and points to the plain restore. Two kinds of hidden file that no publish
+carries under any name are kept and come back this way as well: a Claude session's own file under
+`.claude/`, and a `CLAUDE.md` you added lines of your own to. A pull stops over those as over any
+other hidden file of yours, `drafts show` names them, and `--as` writes them beside your pages,
+never back where a session reads them. A `CLAUDE.md` that holds only CommonGround's own block,
+CommonGround's own tooling files and the files a system leaves in folders (`.DS_Store`) are not
+kept: they are made again without you. A hidden file that was a link is kept as the path it
+pointed to and is never written back: the command answers with that path, and making the link
+again is yours to do. The receipt says whether your ignore
+rules hide the new name. If they do, no publish carries the file. If they do not, the file is
+ordinary unpublished work from then on and your next publish would carry it. What it writes is the
+text the draft stored, so a `.md` file you had saved with Windows line endings comes back with
+plain ones. Claude runs this only when you ask for it, one file at a time, under a name you chose,
+and the guard never approves it.
+
+**`commonground connector` says whether a project's own settings switch CommonGround's connector
+off, and `commonground connector on` or `off` switches it.** It reads and writes one thing: the entry
+described above, in the `.claude/settings.local.json` of the folder it runs in. So what it reports
+is what that one file holds: an entry in another settings file switches the connector off as well,
+and after `on` the connector is back from the next session unless another settings file switches it
+off. It works only in a folder whose own `CLAUDE.md` carries CommonGround's block, and never in
+your home folder; in a folder under a connected one it says so and names the connected folder. It
+refuses to switch the connector off in a project that reads its wiki through the connector, and a
+file it cannot read as settings is left exactly as it is, as is one it cannot open or write. It
+needs no sign-in and makes no network call, and a change starts with the next session. Connecting a
+project in local-clone mode for the first time, or switching it from MCP mode, switches it off;
+connecting in MCP mode switches it on. The guard never approves this command.
+
+**On a read-only check, git runs with its file watcher, its hooks and its alternate-refs command
+switched off.** A git folder's own settings can name programs for git to run. So every git call
+made by the CLI's read-only checks (`status`, `coverage`, `lint`, the publish preview, and the
+`diff` and `drafts` reads) and by the plugin's hooks carries four pins. The file watcher setting
+(`core.fsmonitor`) is emptied, so the program it names does not run. The hooks path
+(`core.hooksPath`) is pointed at a file, under which no hook can exist, so no git hook of the
+folder's runs. The alternate-refs command (`core.alternateRefsCommand`) is emptied, so the program
+it names does not run when git fetches. And git is told to take no optional locks, so a check by
+the CLI leaves git's index file in the folder byte for byte as it was (the one hook call that does
+not is described above). Publishing and pulling are not pinned this way: they run git as the folder
+is set up. Two things are still honoured on a read-only check, and each can run a program. One is a
+content filter, a program that the folder's git settings define and its attributes select, and that
+git runs when it compares a file with what is stored (`diff` and the `drafts` reads never have git
+read a file, so they run none). The other is the folder's remote settings, which decide where a
+fetch goes and can name a program for it. Such a program runs with CommonGround's sign-in in its
+environment and can read it. So the `.git` folder inside your wiki folder should stay
+CommonGround's own: let CommonGround create it, and do not add settings, hooks or remotes to it.
+
 **For git it uses its own CommonGround sign-in and nothing else.** It never reads your git
 credentials, your SSH keys or any other tool's tokens. For its own git commands it switches the
 machine's credential helpers off, so your keychain is neither read nor written, and the sign-in is
 never written into the wiki folder. It hands that sign-in to git in the environment of the git
-process it starts (`COMMONGROUND_GIT_TOKEN`, and git's own `GIT_CONFIG_*` variables), for
-CommonGround's address only: never on a command line and never in a file.
+process it starts (`COMMONGROUND_GIT_TOKEN`, and git's own `GIT_CONFIG_*` variables): never on a
+command line and never in a file. Sending it to CommonGround's address only is git's own doing:
+the variables tell git to present the sign-in to that address and no other. They are still in
+that git process's environment, so any program git itself starts during that call can read them.
 
 **Prefer the terminal?** You can also run the CLI directly (`commonground status`,
 `commonground lint`, `commonground coverage`, `commonground pull`, `commonground push`;
@@ -375,8 +524,9 @@ and the [docs](https://commongroundapp.io/docs) list what the connector can do.
 `/commonground:point` asks which one you want and recommends local: it is faster and cheaper,
 because Claude reads files on disk instead of calling the connector. MCP mode is for when always
 seeing the latest published version, with nothing to pull, matters more. A project decides this
-once, and whichever of `/commonground:point` and `/commonground:seed` you run first is where the
-question comes up.
+once, in `/commonground:point`. `/commonground:seed` connects no project: it asks where the wiki it
+is filling should live, keeps it in a folder of its own, and connects nothing to the folder you run
+it from.
 
 During the beta the hosted connector is on for every plan.
 
@@ -409,8 +559,12 @@ session keeps the PATH it started with, and in the desktop app a new chat is not
 connector that has no sign-in yet, not only CommonGround's. The only two sign-ins CommonGround ever
 asks for are its own: the browser code when you first sign in, and, for the hosted connector only,
 the CommonGround row under `/mcp`. A local wiki folder does not need the connector for setup,
-seeding or everyday reading, so its row can wait until you want suggestions, an invite or the
-overlap check. Nothing else in that list is part of CommonGround.
+seeding or everyday reading, so its row can wait until one of these comes up: sending a suggestion,
+the suggestions queue, an invite, and the overlap check between two wikis. When a project is first
+connected in local-clone mode, CommonGround switches its own connector off for that project, so
+from the next session the row is gone there (`commonground connector on` brings it back). A project
+connected that way before version 0.23.0 keeps the row until you run `commonground connector off`
+in it. Nothing else in that list is part of CommonGround.
 
 **The CommonGround tools disappeared mid-session.** Usually a *connection* problem: Claude Code
 re-registers a plugin's MCP server whenever the plugin version changes, which tears down the live

@@ -146,10 +146,16 @@ function cannotPublish(role) {
  * (SER-327). Only a session holding the connector's `suggest_change` can file a suggestion, and a
  * local project often has none (push.md §2b: never offer a tool that isn't here). This context
  * loads before any command file that could qualify it, so the condition travels with the offer.
+ *
+ * Since SER-342 a project made local has CommonGround's connector switched off, so the tool is
+ * missing there by design and nothing on screen says why. "The work stays here until a curator
+ * takes it" then told Claude to leave a member with no route at all. The offer now names the way
+ * to get the tool: the same words the CLI's own receipts use (`keptForSuggestion` in format.ts).
  */
 const SUGGESTION_OFFER =
   'offer to file it as a suggestion for a curator if this session has suggest_change; otherwise ' +
-  'the work stays here until a curator takes it.';
+  "say CommonGround's connector is not available in this session and offer to switch it on, " +
+  'which takes one command and a new session.';
 
 /**
  * Tell the user a newer plugin has shipped — the ONLY channel that exists for it (SER-225).
@@ -581,6 +587,26 @@ function bindingRepairClause(cwd, mode) {
       : `This project names CommonGround wiki ${bound}, but this session's connector was ` +
         (serving ? `told to serve ${serving} instead. ` : 'never told which wiki to serve. ');
 
+  // The session's own folder is the home folder, one above it, or the top of a drive, and carries a
+  // note from a release that still allowed that (SER-343). In the home folder its
+  // `.claude/settings.json` is the user's own Claude Code settings, so the CLI names the case and
+  // writes nothing. The record does not say which of the three it is, so the sentence is true of
+  // all three. No offer to re-point: `/commonground:point` is refused here for the same reason.
+  if (done && done.outcome === 'every-folder') {
+    return (
+      head +
+      'It was NOT recorded, on purpose: this folder is the home folder, a folder above it, or the ' +
+      'top of a drive, so its CLAUDE.md connects every folder under it to that wiki, and in the ' +
+      "home folder its .claude/settings.json is the user's own Claude Code settings. CommonGround " +
+      'no longer writes there. TELL THE USER in a sentence that this folder is connected to a wiki, ' +
+      'and that a wiki is connected from a project folder instead; do not offer to re-point this ' +
+      'folder, and a restart will not change it. ' +
+      (mode === 'local'
+        ? `${consequence}.`
+        : 'Wiki answers in this session may come from another wiki entirely, and such an answer is ' +
+          'fluent, sourced and indistinguishable from a right one.')
+    );
+  }
   if (done && done.outcome === 'unreadable') {
     return (
       head +
@@ -1131,12 +1157,20 @@ async function main() {
   if (!initialized) {
     // First-boot nudge — only if they've actually signed in somewhere (else the plugin's mere
     // presence is enough; don't badger a brand-new user).
+    // A session opened on the HOME folder (SER-343): that folder is never connected to a wiki, so
+    // none of the three sentences below may send the user to point it. Filling a wiki works from
+    // anywhere, and connecting one belongs in a project folder.
+    const atHome = lib.isHomeFolder(cwd);
     if (lib.isSignedIn()) {
       // Tier B — audience-NEUTRAL by construction. This branch runs before any team is resolved,
       // so it cannot know whether the wiki is personal or shared and must not guess.
-      const claudeFacing =
-        "You're signed in to CommonGround, but this project isn't connected to a wiki yet. " +
-        'If the user wants their curated context available here, suggest running /commonground:point.';
+      const claudeFacing = atHome
+        ? "You're signed in to CommonGround. This session's folder is the user's home folder, which " +
+          'is never connected to a wiki: that would connect every folder on this computer. Do not ' +
+          'suggest /commonground:point here. /commonground:seed works from this folder if they ' +
+          'want to fill a wiki, and /commonground:point belongs in a session opened on a project folder.'
+        : "You're signed in to CommonGround, but this project isn't connected to a wiki yet. " +
+          'If the user wants their curated context available here, suggest running /commonground:point.';
       // The FIRST time this user sees the plugin anywhere, say it to THEM rather than only to
       // Claude — otherwise beat zero of the whole product is silence, and the person who just
       // installed it has no idea anything happened. Once ever, per user (see `hasWelcomed`).
@@ -1145,9 +1179,14 @@ async function main() {
         emit(
           claudeFacing,
           lib.verbatimBlock(
-            'CommonGround is connected to your account, but not to this project yet.\n' +
-              'Run /commonground:point here and I\'ll aim this folder at your wiki — ' +
-              'after that I can answer from it, and cite what I used.',
+            atHome
+              ? 'CommonGround is connected to your account.\n' +
+                  'This is your home folder, which I never connect to a wiki. Run /commonground:seed ' +
+                  'here to fill your wiki, or open a project folder and run /commonground:point ' +
+                  'there so I can answer from it.'
+              : 'CommonGround is connected to your account, but not to this project yet.\n' +
+                  'Run /commonground:point here and I\'ll aim this folder at your wiki. ' +
+                  'After that I can answer from it, and cite what I used.',
           ),
         );
         return;
@@ -1170,8 +1209,11 @@ async function main() {
       lib.markWelcomed(Date.now(), 'install');
       emit(
         lib.verbatimBlock(
-          'CommonGround is installed. Run /commonground:seed to fill a wiki, or /commonground:point ' +
-            'to connect this project to one you already have.',
+          atHome
+            ? 'CommonGround is installed. Run /commonground:seed to fill a wiki. To connect a wiki ' +
+                'you already have, open a project folder and run /commonground:point there.'
+            : 'CommonGround is installed. Run /commonground:seed to fill a wiki, or /commonground:point ' +
+                'to connect this project to one you already have.',
         ),
       );
     }

@@ -37,7 +37,8 @@ relay that rather than inferring one:
   committed or not, so it is the honest answer to "did my work go out?" — never soften it into "up to
   date", and offer `/commonground:push`. To name those pages or show what they say, run
   `commonground diff --stat` or `commonground diff`, never `git` in the wiki folder. **When the same output says the folder is behind**
-  (`<n> commit(s) behind`), offer `/commonground:pull` first and the publish after it: a pull brings
+  (`<n> commit(s) behind`; `commonground diff --incoming` shows what the published wiki changed),
+  offer `/commonground:pull` first and the publish after it: a pull brings
   the change in around their work, and a publish made while behind stops and leaves a harder choice.
   For a member (no publishing role) the CLI says
   instead that the work is safe on this machine and can go to a curator as a suggestion; relay that, offering
@@ -168,7 +169,8 @@ the rest needs a connection.
   what needs attention. Both read the wiki folder, unpublished work included, which the connector's
   tools cannot see. Every section empty and no pages means an **empty** wiki: lead with that. Make
   no connector call for this, and never report a connector that is absent or not signed in as a
-  problem here: a local folder does not need one for this.
+  problem here: a local folder does not need one for this. CommonGround switches its own connector
+  off in a local project, so absent is how it is meant to be there.
 - **Hosted connector:** call the `get_awareness` MCP tool and report a short glance: `pageCount`
   (an **empty** wiki = `0` pages), open suggestions, lint TODOs, and the most recent changes.
   Optionally add coverage progress from `get_coverage`. If the wiki is **empty**, lead with that —
@@ -187,6 +189,17 @@ servers or tools that "need authorization":
 - **Say the others are not part of CommonGround** and can stay as they are. Never start another
   server's sign-in, and never bring up a connector list or connector suggestions, as a step of
   setting up CommonGround.
+
+**In a local project CommonGround's own connector is switched off by CommonGround, unless this
+session lists it as needing authorization.** So when a connector tool you need there is not in this
+session and the session does not list the connector, say that in one sentence and offer to switch
+it on (`commonground connector on`, then a new session), and relay what that command answers. When
+the session does list it, the tool waits on the connector's own sign-in (`/mcp`, the row named
+CommonGround). **Never work around a missing tool by any other route.** `commonground connector`
+says what this project's own settings file holds, and it is the answer when someone asks where the
+connector went: the point that made the project local recorded the switch in its
+`.claude/settings.local.json`. What needs it in a local project is sending a suggestion, the
+suggestions queue, an invite, and the overlap check between two wikis.
 
 **Connector health (hosted connector only).** If step 1's `commonground status` reports a team but
 the CommonGround tools are missing or a call fails, report that combination plainly: sign-in and the CLI are fine, and
@@ -286,10 +299,15 @@ so CommonGround's read-only checks run without asking. Ask me to turn them off a
 they ask for fewer permission prompts, that is a setting too:** `commonground prefs set
 quiet-checks on` lets CommonGround's own read-only checks (the status, the list of wikis,
 coverage, the health check, the preview before publishing; in a project with a local wiki folder,
-the text of what changed in that folder; and in a hosted project searching and reading that wiki)
+the text of what changed in that folder, of what is incoming from the published wiki, and of the
+drafts saved in that folder; and in a hosted project searching and reading that wiki)
 run without asking each time. The dialog that command raises is the
-confirmation; never turn it on on your own initiative. Publishing always asks, and so does saving
-pages. `commonground prefs set quiet-checks off` undoes it, and say so whenever you turn it on.
+confirmation; never turn it on on your own initiative. Publishing always asks: the guard raises its
+dialog before every publish, whatever the user's own settings. Saving pages asks as before.
+Bringing a file back from a draft (`commonground drafts restore`) is never approved by quiet
+checks, so Claude Code's own prompt asks unless the user has allowed that command themselves, and
+it is never run unasked (`/commonground:pull` has its rules). `commonground prefs set quiet-checks
+off` undoes it, and say so whenever you turn it on.
 
 Tailor to the user's **role** (and whether the wiki is empty). The full command set is small:
 **`/commonground:point`** (aim this project at a wiki), **`/commonground:seed`** (bootstrap/import + charter),
@@ -297,7 +315,9 @@ Tailor to the user's **role** (and whether the wiki is empty). The full command 
 **`/commonground:lint`** (health + coverage gaps), **`/commonground:pull`** / **`/commonground:push`**
 (local-clone only — get the published latest / publish yours), and **`/commonground:status`** (this).
 In local-clone mode `commonground lint`, `commonground coverage` and `commonground diff` also run
-directly against the clone, so they include work not yet published. With more than one wiki, `/commonground:lint` also
+directly against the clone, so they include work not yet published; `commonground diff --incoming`
+shows what the published wiki changed, and `commonground drafts` lists the drafts saved in the
+folder (`commonground drafts show <name>` for what one holds). With more than one wiki, `/commonground:lint` also
 shows where this wiki and the others overlap and settles which answers for what (SER-272).
 
 - **admin / curator:** if the wiki is **empty or thin**, start with **`/commonground:seed`** (the
@@ -312,6 +332,8 @@ shows where this wiki and the others overlap and settles which answers for what 
   - **In local-clone mode, you can curate too** — `/commonground:ingest`, `/commonground:lint` and
     edits all work on your own copy of the wiki. What's reserved for admins/curators is
     **publishing**; when you have something worth sharing, it goes to the team as a suggestion.
+    Sending one needs the connector: step 2's rule says what to offer when the tool is not in the
+    session.
   - **In MCP mode** there's no local copy, so writing pages is admin/curator-only.
   - If the wiki is empty, note that an admin or curator needs to run `/commonground:seed` first.
 

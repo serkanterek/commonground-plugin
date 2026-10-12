@@ -466,6 +466,25 @@ function isInside(parent, child) {
 }
 
 /**
+ * Is this folder the user's HOME folder itself (SER-343)? The CLI never connects that folder to a
+ * wiki (`reachesEveryFolder` in `apps/sync-agent/src/commands.ts`), so a session opened on it must
+ * not be told to run `/commonground:point` "here".
+ *
+ * Only the home folder, and only to WORD a nudge. The CLI's check is the authority and also knows
+ * a folder above home, the top of a drive and the Windows side of WSL; a session in one of those
+ * gets the ordinary nudge here and the CLI's refusal one step later. Fail-open for the same reason:
+ * a home folder this cannot name is an ordinary folder to it.
+ */
+function isHomeFolder(cwd) {
+  try {
+    const home = os.homedir();
+    return Boolean(home) && isInside(home, cwd) && isInside(cwd, home);
+  } catch {
+    return false;
+  }
+}
+
+/**
  * `fsync` a DIRECTORY, so a freshly created dirent survives a power loss. Opening a directory for
  * reading is POSIX-only, so a failure means "no barrier available" — the worst case is the ordering
  * guarantee we wanted, not a broken session.
@@ -1001,7 +1020,7 @@ function legacyClonePath(cwd) {
  * we are talking to a CLI that has moved on, and the honest response to that is "I don't know what
  * happened", not to render a receipt for an outcome we cannot name.
  */
-const RECORD_OUTCOMES = ['written', 'unchanged', 'unreadable', 'no-marker'];
+const RECORD_OUTCOMES = ['written', 'unchanged', 'unreadable', 'no-marker', 'every-folder'];
 function parseRecordWiki(stdout) {
   try {
     const parsed = JSON.parse(String(stdout).trim());
@@ -1303,11 +1322,58 @@ function askGitDir(dir) {
   }
 }
 
-/** One bounded git read in the clone at `dir`: its stdout, or a throw. A slow git never stalls startup. */
-function gitRead(dir, args, timeout = 1000) {
-  return cp.execFileSync('git', ['-C', dir, ...args], {
+/**
+ * What every git call the hooks make carries (SER-365, part 2). The hooks run git inside the wiki
+ * folder, at every session start, in up to five folders, with no prompt in front of any of it, and
+ * git honours that folder's own settings. Measured on git 2.50.1: in a folder whose `.git/config`
+ * names a `core.fsmonitor` program, the `status` and the commit-to-worktree `diff` below each ran
+ * it, and so did `ls-files` once the index carried the fsmonitor extension; and each of those two
+ * refreshed the index, wrote it back, and so fired `post-index-change` from the folder's hooks path.
+ *
+ *   - `--no-optional-locks`: the `status` leaves the index file as it found it. NOT the `diff`:
+ *     measured, porcelain `git diff` refreshes the index and writes it back whatever this switch
+ *     says (and with `diff.autoRefreshIndex` off it lists a merely touched file as changed, so that
+ *     is no way out). The index it rewrites is the same entries with fresh timestamps;
+ *   - `-c core.fsmonitor=`: EMPTY, not `false`. Before git 2.36 the value was only ever a command
+ *     name, so `false` there would run the program of that name, and empty is "none" on every git;
+ *   - `-c core.hooksPath=<a regular file>`: no hook of the folder's runs, wherever its config
+ *     points. This is what keeps `post-index-change` from firing when the `diff` writes the index
+ *     back. The value is the Node binary running this hook: git looks for a hook at `<hooks
+ *     path>/<name>`, and a path that runs through a FILE is "not a directory" on every operating
+ *     system, so there is nothing a hook could be. Not `/dev/null`: on native Windows git a path
+ *     that starts with `/` is relative to the current drive's root, so git would have looked in
+ *     `<drive>:\dev\null\`, a folder another user of a shared machine can usually create, and their
+ *     hooks would have run in this user's session start;
+ *   - `-c core.alternateRefsCommand=`: EMPTY. In a folder that names an alternate object store, a
+ *     FETCH runs the program this setting names. No hook fetches; it is here so that this list and
+ *     the CLI's stay one list, and a call added later is covered before anyone has to remember.
+ *
+ * Mirrors `READ_ONLY_PINS` in the agent's `transport.ts`, which the CLI's own read-only checks
+ * carry. Every git call the hooks make is a read, so every one goes through {@link gitRead}: there
+ * is no second spawn of git in this file, and `hook-git-pins.test.ts` keeps it that way.
+ *
+ * NOT closed, on purpose (the agent's `GIT-TRANSPORT.md` says why): a clean filter the folder's
+ * config defines and its attributes select still runs on the `status`, the `diff` and the
+ * `hash-object` here. Pinned off, these reads would stop agreeing with what a publish stores.
+ */
+const GIT_READ_PINS = [
+  '--no-optional-locks',
+  '-c', 'core.fsmonitor=',
+  '-c', `core.hooksPath=${process.execPath}`,
+  '-c', 'core.alternateRefsCommand=',
+];
+
+/**
+ * One bounded git read in the clone at `dir`: its stdout, or a throw. A slow git never stalls startup.
+ * `maxBuffer` is Node's own default for a synchronous child (1 MB) unless a caller that lists the
+ * whole index asks for more: past it the call throws, which every caller here reads as "git could
+ * not say".
+ */
+function gitRead(dir, args, timeout = 1000, maxBuffer = 1024 * 1024) {
+  return cp.execFileSync('git', [...GIT_READ_PINS, '-C', dir, ...args], {
     encoding: 'utf8',
     timeout,
+    maxBuffer,
     stdio: ['ignore', 'pipe', 'ignore'],
   });
 }
@@ -1337,10 +1403,7 @@ function holdsRef(dir, gitDir) {
   }
   if (listable) return fs.readdirSync(heads).length > 0;
   try {
-    cp.execFileSync('git', ['-C', dir, 'rev-parse', '--verify', '--quiet', 'HEAD'], {
-      timeout: 1000,
-      stdio: 'ignore',
-    });
+    gitRead(dir, ['rev-parse', '--verify', '--quiet', 'HEAD']);
     return true;
   } catch (e) {
     return !(e && typeof e.status === 'number' && e.status !== 0);
@@ -1408,13 +1471,7 @@ function localCloneHead(teamId) {
   try {
     const dir = clonePath(teamId);
     if (!fs.existsSync(path.join(dir, '.git'))) return null; // MCP mode or not cloned
-    const head = cp
-      .execFileSync('git', ['-C', dir, 'rev-parse', 'HEAD'], {
-        encoding: 'utf8',
-        timeout: 1000,
-        stdio: ['ignore', 'pipe', 'ignore'],
-      })
-      .trim();
+    const head = gitRead(dir, ['rev-parse', 'HEAD']).trim();
     return head || null;
   } catch {
     return null;
@@ -1610,6 +1667,249 @@ function withoutFoldedPhantoms(dir, changes) {
   return phantoms.size === 0 ? changes : changes.filter((c) => !phantoms.has(c.path));
 }
 
+/*
+ * ───────────── WHAT A PUBLISH WOULD STORE FOR A FILE (SER-363) ─────────────
+ *
+ * `git status` reads a tracked file as modified when its SIZE differs from the index's record, and
+ * never compares content to say so. A page an editor re-saved with CRLF endings, or with a
+ * byte-order mark before its frontmatter, is the same page to a publish (the clone's own `*.md
+ * text=auto eol=lf` stores it with LF, and `push` takes the mark off), so counted as work it was
+ * work nothing could publish: this reminder fired at every session start, over a folder the
+ * publish preview and `commonground diff` both called unchanged.
+ *
+ * From here down to {@link withoutStoredAsIndexed} is a HAND MIRROR of the agent's
+ * `apps/sync-agent/src/stored-form.ts` (the rule) and of `storedAsIndexed` in its `transport.ts`
+ * (the filter), function for function and under the same names, because this file ships standalone
+ * and cannot import either. `unpublished-drift.test.ts` runs both counts on the same folders, row by
+ * row. A change to a rule there is a change here.
+ *
+ * Node reads the file. Never `git hash-object`: measured, it runs the folder's clean filter, and it
+ * knows nothing of the mark. No git call per file either: two in all, however many files.
+ */
+
+/** `MAX_TEXT_BYTES`: a file past this size is hashed a piece at a time, and never read for a mark. */
+const MAX_TEXT_BYTES = 2 * 1024 * 1024;
+/** `MARKED_PAGE_START`: a UTF-8 byte-order mark followed by a frontmatter fence. */
+const MARKED_PAGE_START = Buffer.from([0xef, 0xbb, 0xbf, 0x2d, 0x2d, 0x2d]);
+/**
+ * How long the proof may take in all. The HOOK'S ALONE, like its limit on every git call: the CLI
+ * reads to the end, and a session start does not wait on a folder of large re-saved files. What is
+ * not proven unchanged in time is counted, as git read it.
+ */
+const STORED_FORM_BUDGET_MS = 1500;
+
+/** `isPageFile` (the agent's `wiki-paths.ts`): markdown that is neither wiki-owned, tooling, nor a raw source. */
+function isPageFile(rel) {
+  if (!rel.endsWith('.md')) return false;
+  const segments = rel.normalize('NFC').split(/[/\\]/).map((s) => s.toLowerCase());
+  if (segments.some((s) => s === '.git' || s === CONFIG_DIR)) return false;
+  if (segments.length === 1 && ['claude.md', 'index.md', 'log.md'].includes(segments[0])) return false;
+  return segments[0] !== 'sources';
+}
+
+/** `hashOf`: the hash a repository names its objects with, read off any id of its own. */
+function hashOf(like) {
+  return like.length === 64 ? 'sha256' : 'sha1';
+}
+
+/** `blobId`: the id git gives a blob holding `bytes`. */
+function blobId(bytes, like) {
+  return crypto.createHash(hashOf(like)).update(`blob ${bytes.length}\0`).update(bytes).digest('hex');
+}
+
+/**
+ * `storedForms`: every form in which a publish could STORE these bytes, the bytes themselves first.
+ * A page loses a leading mark; where git stores the path with LF (`lf`), CRLF endings go in as LF,
+ * but only when git itself would call the file text (no NUL byte, no CR on its own).
+ *
+ * `strips` is whether the publish WOULD take the mark off: not for a file it cannot rewrite
+ * ({@link stageCanRewrite}), which it publishes mark and all.
+ */
+function storedForms(rel, bytes, lf, strips) {
+  const forms = [bytes];
+  if (bytes.includes(0)) return forms; // not text: stored as it is
+  const marked =
+    strips && isPageFile(rel) && bytes.subarray(0, MARKED_PAGE_START.length).equals(MARKED_PAGE_START);
+  if (marked) forms.push(bytes.subarray(3));
+  if (!lf || !bytes.includes('\r\n')) return forms;
+  const text = bytes.toString('latin1');
+  if (/\r(?!\n)/.test(text)) return forms;
+  return [...forms, ...forms.map((form) => Buffer.from(form.toString('latin1').replace(/\r\n/g, '\n'), 'latin1'))];
+}
+
+/**
+ * `stageCanRewrite`: could the publish rewrite this file in place, which is how it takes a mark off
+ * a page? A file it cannot write keeps its mark and is published as found, so a read-only page that
+ * only gained a mark IS work: counted here, as the CLI counts it and its preview names it.
+ */
+function stageCanRewrite(file) {
+  try {
+    fs.accessSync(file, fs.constants.W_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * `largeFileIds`: {@link storedForms}' ids for a file too large to hold. Its bytes as they are, a
+ * piece at a time, and, when git would store it with LF and every CR in it belongs to a CRLF, a
+ * second pass without the CRs. It has no mark form, there or here.
+ */
+function largeFileIds(fd, size, like, lf, deadline) {
+  const piece = Buffer.allocUnsafe(1024 * 1024);
+  const pieces = function* pieces() {
+    for (let at = 0, n; (n = fs.readSync(fd, piece, 0, piece.length, at)) > 0; at += n) {
+      if (Date.now() > deadline) throw new Error('out of time'); // the hook's alone: see the budget
+      yield piece.subarray(0, n);
+    }
+  };
+  const raw = crypto.createHash(hashOf(like)).update(`blob ${size}\0`);
+  let cr = 0;
+  let crlf = 0;
+  let nul = false;
+  let endedWithCr = false;
+  for (const chunk of pieces()) {
+    raw.update(chunk);
+    nul = nul || chunk.includes(0);
+    for (let at = chunk.indexOf(0x0d); at !== -1; at = chunk.indexOf(0x0d, at + 1)) cr += 1;
+    if (endedWithCr && chunk[0] === 0x0a) crlf += 1;
+    for (let at = chunk.indexOf('\r\n'); at !== -1; at = chunk.indexOf('\r\n', at + 2)) crlf += 1;
+    endedWithCr = chunk[chunk.length - 1] === 0x0d;
+  }
+  const ids = [raw.digest('hex')];
+  if (!lf || nul || crlf === 0 || cr !== crlf) return ids;
+  // Every CR is half of a CRLF, so the LF form is the same bytes with the CRs left out.
+  const stored = crypto.createHash(hashOf(like)).update(`blob ${size - crlf}\0`);
+  for (const chunk of pieces()) {
+    let from = 0;
+    for (let at = chunk.indexOf(0x0d); at !== -1; at = chunk.indexOf(0x0d, from)) {
+      stored.update(chunk.subarray(from, at));
+      from = at + 1;
+    }
+    stored.update(chunk.subarray(from));
+  }
+  return [...ids, stored.digest('hex')];
+}
+
+/**
+ * `cloneSettings` and `storeRules` (the agent's `transport.ts`): how git would store a file in this
+ * clone, from the three settings that decide. Git answers with the value in force, whichever of its
+ * config files set it (Git for Windows keeps `core.autocrlf` in the machine's own).
+ */
+function storeRules(dir) {
+  let out = '';
+  try {
+    out = gitRead(dir, ['config', '-z', '--get-regexp', '^core\\.(autocrlf|filemode|symlinks)$']);
+  } catch (e) {
+    if (!(e && e.status === 1)) throw e; // exit 1: none of them is set
+  }
+  const set = new Map();
+  for (const row of out.split('\0').filter(Boolean)) {
+    // `-z` prints `key\nvalue\0`; a key set with no value at all prints `key\0` and means true.
+    const nl = row.indexOf('\n');
+    set.set((nl < 0 ? row : row.slice(0, nl)).toLowerCase(), nl < 0 ? 'true' : row.slice(nl + 1).toLowerCase());
+  }
+  const on = (key, unset) => (set.has(key) ? ['true', 'yes', 'on', '1'].includes(set.get(key)) : unset);
+  return {
+    autocrlf: on('core.autocrlf', false) || set.get('core.autocrlf') === 'input',
+    filemode: on('core.filemode', true),
+    symlinks: on('core.symlinks', true),
+  };
+}
+
+/**
+ * `storedAs`: would a publish store, for the file now at `rel`, exactly what the index `entry`
+ * holds, the same bytes (CRLF endings and a page's mark aside) under the same mode? It is
+ * `readOnDisk`, `sameBytes` and `sameKind` in one, since the three have this one caller here.
+ *
+ * BOTH halves, never the bytes alone: a page made executable hashes to the very blob the index
+ * holds, and it is a change the publish preview names and the publish carries. False for anything
+ * that cannot be read, so what is not proven unchanged still counts.
+ */
+function storedAs(dir, rel, entry, rules, deadline) {
+  try {
+    const file = path.join(dir, rel);
+    const info = fs.lstatSync(file);
+    // A path behind a linked folder is not in the work tree: every folder on the way is a real one.
+    const folders = rel.split('/').slice(0, -1);
+    for (let depth = 1; depth <= folders.length; depth += 1) {
+      if (!fs.lstatSync(path.join(dir, ...folders.slice(0, depth))).isDirectory()) return false;
+    }
+    // `storedWithLf`: a page always (the clone's own attributes), anything where the machine says so.
+    const lf = rules.autocrlf || (rel.endsWith('.md') && !rel.startsWith('sources/'));
+    let here;
+    if (info.isSymbolicLink()) {
+      // Read as the link it is and never followed: its target is what git stores.
+      here = { link: true, exec: false, ids: [blobId(Buffer.from(fs.readlinkSync(file)), entry.oid)] };
+    } else if (!info.isFile()) {
+      return false; // a folder where a file was, a socket, a device
+    } else {
+      // `O_NOFOLLOW` (absent on Windows, where it is 0): still a file when it is opened.
+      const fd = fs.openSync(file, fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW || 0));
+      try {
+        const { size, mode } = fs.fstatSync(fd);
+        // Asked only of a page: nothing else has a mark the publish takes off.
+        const strips = isPageFile(rel) && stageCanRewrite(file);
+        const ids =
+          size > MAX_TEXT_BYTES
+            ? largeFileIds(fd, size, entry.oid, lf, deadline)
+            : storedForms(rel, fs.readFileSync(fd), lf, strips).map((form) => blobId(form, entry.oid));
+        here = { link: false, exec: (mode & 0o100) !== 0, ids };
+      } finally {
+        fs.closeSync(fd);
+      }
+    }
+    if (!here.ids.includes(entry.oid)) return false; // `sameBytes`
+    // `sameKind`: a link or not, executable or not, where this disk keeps either.
+    const link = entry.mode === '120000';
+    if (rules.symlinks && link !== here.link) return false;
+    return !rules.filemode || link || here.link || (entry.mode === '100755') === here.exec;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * `changes` without the tracked files a publish would store exactly as the index holds them
+ * (SER-363): mirrors `storedAsIndexed` in the agent's `transport.ts`, which
+ * `unpublished-drift.test.ts` holds this to.
+ *
+ * ` M` ONLY: a staged change, an untracked file, a deletion, a rename and a twin pair's phantom
+ * ({@link withoutFoldedPhantoms}) all count exactly as they did. A folder with no ` M` (the usual
+ * shape, and every folder of new pages) costs no git call and no read here; otherwise two git calls
+ * in all (`ls-files -s`, the settings), each bounded, and one read of each ` M` file.
+ *
+ * Anything this cannot prove unchanged is counted: git that could not answer, a file that cannot be
+ * read, and whatever is left when {@link STORED_FORM_BUDGET_MS} runs out.
+ */
+function withoutStoredAsIndexed(dir, changes) {
+  const edited = changes.filter((c) => c.xy === ' M').map((c) => c.path);
+  if (edited.length === 0) return changes;
+  const same = new Set();
+  try {
+    const index = new Map();
+    // The whole index, about a hundred bytes a file: room for a wiki of several hundred thousand.
+    for (const record of gitRead(dir, ['ls-files', '-s', '-z'], 1500, 64 * 1024 * 1024).split('\0')) {
+      // `<mode> <oid> <stage>\t<path>`, the path raw: split at the first tab, never on spaces.
+      const tab = record.indexOf('\t');
+      if (tab === -1) continue;
+      const [mode, oid, stage] = record.slice(0, tab).split(' ');
+      if (stage === '0' && mode && oid) index.set(record.slice(tab + 1), { mode, oid });
+    }
+    const rules = storeRules(dir);
+    const deadline = Date.now() + STORED_FORM_BUDGET_MS;
+    for (const p of edited) {
+      if (Date.now() > deadline) break;
+      const entry = index.get(p);
+      if (entry && storedAs(dir, p, entry, rules, deadline)) same.add(p);
+    }
+  } catch {
+    // Git could not say: whatever was not proven unchanged is counted.
+  }
+  return same.size === 0 ? changes : changes.filter((c) => !same.has(c.path));
+}
+
 /**
  * What is sitting in the clone that `commonground push` would publish, `{ files, pages, charter,
  * holds }` by {@link describeChanges}, or null when there is no clone to look at (SER-325).
@@ -1631,6 +1931,10 @@ function withoutFoldedPhantoms(dir, changes) {
  *
  * One `git status` per wiki per session start is the budget (SER-327): SessionStart reads this
  * through `folderReading`, which asks once and only when an emit needs the answer.
+ *
+ * A tracked file git reads ` M` is counted only when a publish would carry a change for it
+ * (SER-363, {@link withoutStoredAsIndexed}): a page merely re-saved with CRLF endings or with a
+ * byte-order mark is not work, here or in `commonground status`.
  */
 function cloneWorkingTreeWork(teamId) {
   try {
@@ -1652,7 +1956,9 @@ function cloneWorkingTreeWork(teamId) {
       if (/[RC]/.test(xy)) i += 1;
       changes.push({ path: field.slice(3), xy, tracked: xy !== '??', gone: xy.includes('D') });
     }
-    return describeChanges(withoutFoldedPhantoms(dir, changes));
+    // Neither a twin pair's phantom nor a file merely re-saved (CRLF endings, a page's byte-order
+    // mark) is work a publish would carry: the CLI's count leaves both out, and so does this one.
+    return describeChanges(withoutStoredAsIndexed(dir, withoutFoldedPhantoms(dir, changes)));
   } catch {
     return null;
   }
@@ -1778,6 +2084,7 @@ module.exports = {
   projectTeamId, // the wrong-wiki guard reads it directly (SER-234), not only via activeBinding
   projectTeamIds, // the whole set, primary first (SER-278)
   isInitialized,
+  isHomeFolder,
   routerMode,
   isCloneSession,
   CLONE_BLOCK_HEADING,

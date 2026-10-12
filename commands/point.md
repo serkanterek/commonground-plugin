@@ -65,6 +65,20 @@ and no sync fields; `mode` and `probe` are still there, so step 4 can read them 
   never reaches this branch: step 4's `probe.node` reports it, and the walk above is the fix, as an
   update.
 
+## 1a. The home folder is never pointed
+
+**The home folder is never pointed.** Read `probe.folder` in step 1's `--json` form before going
+any further. `project` is every ordinary folder, and nothing changes. `home` (this session's folder
+is the user's home folder), `above-home` (a folder that holds it) and `root` (the top of a drive)
+end this command here: a note there would connect every folder under it to the wiki, so the CLI
+refuses it (for the home folder: `this is your home folder, and connecting it would connect every
+folder on this computer`). Say that in one sentence, and say what works: a session opened on the
+project folder that should read the wiki, and `/commonground:point` run there. Don't run `init` to
+see what it says, don't retry, and don't write the note or the setting by hand. Filling a wiki
+needs no pointed folder, so `/commonground:seed` still works from here: say that too when they came
+to fill one. When they are not signed in yet, sign them in first (step 2): that holds for every
+folder on this computer, and this command then ends after it.
+
 ## 2. Sign in (device-code login)
 
 The user needs a CommonGround account **with at least one wiki** first — the authorize screen has
@@ -111,6 +125,18 @@ servers or tools that "need authorization":
   server's sign-in, and never bring up a connector list or connector suggestions, as a step of
   setting up CommonGround.
 
+**In a local project CommonGround's own connector is switched off by CommonGround, unless this
+session lists it as needing authorization.** So when a connector tool you need there is not in this
+session and the session does not list the connector, say that in one sentence and offer to switch
+it on (`commonground connector on`, then a new session), and relay what that command answers. When
+the session does list it, the tool waits on the connector's own sign-in (`/mcp`, the row named
+CommonGround). **Never work around a missing tool by any other route.** The point that MAKES a
+project local (a first point, or a switch from the hosted connector) records the switch in the
+project's `.claude/settings.local.json` (step 5), so from the next session CommonGround's own entry
+is gone from that list and nothing of CommonGround's needs authorizing there. A project that was
+local already keeps its switch as it stands, so a session there can still list the connector.
+`commonground connector` says what this project's own settings file holds.
+
 **Offer quiet checks to anyone who has not answered, at most once a session.** `commonground status
 --json` carries `prefs.quietChecks` (run it now if you have not; the mode question reads the same
 output): `null` means this person has not answered, `on` or `off` means they have. **Only when it
@@ -120,9 +146,9 @@ ask (with `AskUserQuestion` when it is available):
 
 > One optional thing. Claude Code asks you before every CommonGround command I run, and about half
 > of them only look at things: your status, your list of wikis, what is covered, the health check,
-> the preview before publishing, what changed in your wiki folder, and for a hosted wiki, searching
-> and reading it. I can let those run without asking. Publishing still asks you every time, and so
-> does saving pages. Want that?
+> the preview before publishing, what changed in your wiki folder, what is incoming and what your
+> saved drafts hold, and for a hosted wiki, searching and reading it. I can let those run without
+> asking. Publishing still asks you every time, and so does saving pages. Want that?
 
 - **Yes** → run `commonground prefs set quiet-checks on`. The dialog that command raises IS the
   confirmation, so do not ask a second question of your own. Then say they can undo it by asking
@@ -210,10 +236,14 @@ the note names, never a generic "try later":
 
 ## 4. The mode — one decision per project, and for local, where the folder goes
 
-**A project decides its mode ONCE. Whichever of `/commonground:point` and `/commonground:seed` runs
-first asks it; the other inherits it and only confirms.** The answer lives in this project's router
-block, and `commonground status` reports it (`Mode: local, wiki folder <path>` or `Mode: hosted
-connector (MCP)`; `--json` carries it as `mode`). So, in this order:
+**A project decides its mode ONCE, and it decides it here. `/commonground:seed` never decides it for
+a project: seeding fills the wiki's own folder and connects nothing.** The answer lives in this
+project's router block, and `commonground status` reports it (`Mode: local, wiki folder <path>` or
+`Mode: hosted connector (MCP)`; `--json` carries it as `mode`). When the wiki already has a folder
+on this computer (`commonground folder <wiki> --where` answers `your wiki folder is at <path>`,
+because it was seeded here or another project reads it that way), say so as part of the local
+option: choosing
+local connects that folder as it stands, and nothing in it moves. So, in this order:
 
 - **This project already has a mode** — adding (`--also`), dropping (`--drop`), repairing
   (`--refresh`), or a bare re-point of a project that is already pointed. Read it, confirm it in ONE
@@ -253,7 +283,10 @@ in the options themselves so the choice is informed:
   Faster and cheaper: Claude reads files on disk, with no connector call and no round trip to the
   server. Kept in step with `/commonground:pull` and `/commonground:push`, so every write is a file
   you review before it publishes. Works offline; opens in Obsidian or any editor. Needs no
-  connector, and no sign-in beyond the browser code.
+  connector, and no sign-in beyond the browser code. CommonGround switches its own connector off
+  for that project, so from the next session it does not show there as needing authorization;
+  sending a suggestion, the suggestions queue, an invite, and the overlap check between two wikis
+  need it switched back on, which takes one command and a new session.
 - **Hosted connector (MCP mode):** Claude queries the server live, so it always sees the latest
   published version with nothing to pull. Nothing on disk. Needs a session restart and the
   connector's own consent (`/mcp`): the row to approve there is the one named CommonGround, and
@@ -363,6 +396,27 @@ project's wiki** rather than for whichever one it was authorised for. If the CLI
 not write that file, say so: it means the file isn't valid JSON, it was left alone rather than
 overwritten, and until they fix it the connector will keep answering for the wrong wiki here.
 
+**After a local point, relay the receipt's line about the connector.** The `init` that makes a
+project local (a first point, or a switch from the hosted connector) switches
+CommonGround's own connector off for this project and says so: the project reads the wiki folder;
+the switch is one entry in `./.claude/settings.local.json`, a file for this computer only that
+should stay out of git (so it is not one of the committed files below); sending a suggestion, the
+suggestions queue, an invite, and the overlap check between two wikis still need the connector; and
+switching it on takes one command and a new session. Say it once, in plain words, and **never drop
+that line**: Claude Code shows nothing for a connector that is switched off, so the receipt is the
+only notice they get. If it says the file could not be read, or that the system refused the write,
+relay that as well: the file was left as it is, and the connector's row keeps showing. **A refresh
+will not switch it off afterwards, so offer what the receipt names: `commonground connector off`,
+once the file is mended.** A project that was local already keeps its switch as it stands: a
+refresh, an add, a drop or a re-point there prints no such line and changes nothing about the
+connector, so one the user switched on stays on. That also means a project made local before this
+existed still lists the connector: when a session there is told it needs authorization, offer
+`commonground connector off`. An MCP
+point of a project that was local says the entry is gone when there was one, and that the
+connector is back from the next session unless another settings file switches it off.
+**Never edit that file by hand to switch the connector:** `commonground connector on` and
+`commonground connector off` do it, and each says what it did.
+
 The second makes this wiki the one **unbound** folders resolve to — so the last place you pointed is
 also the sensible default everywhere you haven't pointed anything. It is a side effect, not a second
 decision: **mention it only when it's relevant** (they work in folders that aren't set up, or they
@@ -428,7 +482,9 @@ the next session.
 
 **Local mode: carry straight on** — there is no connector in the loop, so nothing is stale. If the
 session reports CommonGround's own connector as needing authorization, say a local folder does not
-need it for this and it can wait.
+need it for this and it can wait. When the receipt carried the connector line (step 5), that notice
+is gone from the next session. When it did not, the project was local already and keeps its switch:
+offer `commonground connector off`.
 
 **After an add, run the overlap check.** Two wikis read together is the moment SER-272's boundary
 question becomes real. The `crossWiki` block comes from the MCP `lint` tool (the session's own wiki;
@@ -438,6 +494,8 @@ one just added included. If `unsettled` is above zero, say so in a sentence and 
 zero, say the two don't overlap and move on. **If this session has no `lint` tool** — local mode, a
 `(Free plan)` wiki, or an MCP project that has not restarted yet — the check is not available here:
 say it is still owed and name `/commonground:lint` for the next session that has a connector.
+In local mode that session needs the connector switched on first: step 2's rule says how to offer
+it.
 `commonground lint` reads the working tree and answers a different question; it carries no
 `crossWiki`, so never report "no overlap" from it.
 Don't run `/commonground:lint` itself here uninvited — naming the check is the job.

@@ -21,9 +21,13 @@
  * defensible when it routes the call somewhere better; for a tool with no local equivalent it just
  * removes the only path to the thing. See OUTWARD_TOOLS.
  *
- * Read-only tools and the read-only CLI forms (`--dry-run`, `lint`, `status`, `diff`) pass untouched. A
- * guard that blocks the safe preview teaches people to click through every prompt, which destroys
- * the guard everywhere else — the same reason `save_seeding_progress` is deliberately not gated.
+ * Read-only tools and the read-only CLI forms (`--dry-run`, `lint`, `status`, `diff`, `diff
+ * --incoming`, `drafts`, `drafts show`) pass untouched. A guard that blocks the safe preview
+ * teaches people to click through every prompt, which destroys the guard everywhere else — the
+ * same reason `save_seeding_progress` is deliberately not gated. `drafts restore` gets no verdict
+ * either, for the other reason: it WRITES a file into the wiki folder and publishes nothing, so it
+ * is not this gate's to ask about — and it is never APPROVED (see QUIET CHECKS), which leaves it to
+ * Claude Code's own prompt.
  *
  * It guards COMMONGROUND publishes and nothing else. Not `git push`, not `gh pr create`, not `npm
  * publish`, not a deploy verb. A plugin hook is session-global rather than scoped to CommonGround
@@ -2755,9 +2759,15 @@ function unnamedConnectorVerdict(toolName) {
  *   - nothing else is in the string. No second command, no substitution, no variable, no redirect
  *     to a file, no newline. The gating code above has to READ arbitrary shell to find a publish;
  *     this code refuses to read any, which is why it has a fixed point and that code does not.
- *   - `diff` (SER-362) is on the list under one more condition, because it is the one check that
- *     prints what is INSIDE pages: only in a LOCAL-mode project, and with a wiki argument only when
- *     that argument is the id of a wiki this project declares. See {@link quietDiffInProject}.
+ *   - `diff` (SER-362), and with it `diff --incoming`, `drafts` and `drafts show <draft>` (SER-364),
+ *     are on the list under one more condition, because they are the checks that print what is
+ *     INSIDE the wiki folder — the text of pages, and for the list of drafts the names of pages
+ *     nobody published: only in a LOCAL-mode project, and with a wiki argument only when that
+ *     argument is the id of a wiki this project declares. See {@link quietPageTextInProject}.
+ *   - `drafts restore` WRITES a file into the wiki folder and is on no list, in any spelling. It
+ *     gets no verdict from this hook at all, so Claude Code asks, which is how `pull --take-remote`
+ *     and `resolve` are handled. In these forms a wiki is an id by its shape, so neither `restore`
+ *     nor a draft's name nor a path can be read as one, and no word of a restore fits a form.
  *
  * CONNECTOR: one of the tools the server itself declares read-only, on the PLUGIN'S OWN server, by
  * its whole name (never a prefix, never a connector named only by an id, which is how every
@@ -2768,9 +2778,10 @@ function unnamedConnectorVerdict(toolName) {
  * not hold, and the prompt it would lose is the one place a person sees that wiki's id. Never in a local folder (those reads describe the published copy, not the
  * folder being worked in) and never in the unrecorded state right after a first point.
  *
- * WHAT IT DOES NOT COVER, on purpose: `login`, `init`, `use <wiki>`, every publish verb, and the
- * page files Claude writes into the wiki folder (this hook is not registered on Write or Edit, and
- * registering it there would run it on every file operation in every session on the machine).
+ * WHAT IT DOES NOT COVER, on purpose: `login`, `init`, `use <wiki>`, every publish verb, `drafts
+ * restore`, and the page files Claude writes into the wiki folder (this hook is not registered on
+ * Write or Edit, and registering it there would run it on every file operation in every session on
+ * the machine).
  *
  * ACCEPTED RESIDUALS. The words of an approved command are the user's own shell's to interpret: a
  * zsh GLOBAL alias (`alias -g`) named like one of them, a wiki name included, would expand. That is
@@ -2802,7 +2813,49 @@ const QUIET_SHELL_TOOLS = new Set(['Bash', 'PowerShell']);
  */
 const QUIET_WIKI = String.raw`(?:[A-Za-z0-9_][A-Za-z0-9_.@:-]*|"[A-Za-z0-9_][A-Za-z0-9_ .@:-]*")`;
 
-/** Every argument list a check may have, anchored at both ends. Read-only, each of them. */
+/** A wiki id as the server mints one: the sync agent's own `FULL_WIKI_ID` (team-resolve.ts). */
+const FULL_WIKI_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * The wiki argument of a check that prints what is inside the folder: an ID, by its shape, and
+ * nothing else. Never a name, never a prefix, never quoted — {@link quietPageTextInProject} approves
+ * such a check only for an id the project declares, so a word that is no id could never be
+ * approved, and here it is not even read as a wiki. That is what makes a word after `drafts` or
+ * after `--incoming` (`restore`, `show`, `HEAD`) fail the grammar on its own.
+ *
+ * It is FULL_WIKI_ID itself, without its anchors and with both cases written out, because
+ * QUIET_ARGS is case-sensitive (its verbs are) and the rule compares ids in either case.
+ *
+ * CAPTURED, so that the rule reads the wiki from the form that matched and never by counting
+ * words: in `drafts show draft/x`, the second and third words are no wiki. These are the only
+ * capturing groups in QUIET_ARGS, and no form has two.
+ */
+const QUIET_WIKI_READ = `(${FULL_WIKI_ID.source.slice(1, -1).replace(/a-f/g, 'A-Fa-f')})`;
+
+/**
+ * One saved draft, by the name the receipt that made it printed (SER-364): `draft/` and one more
+ * segment, which the CLI mints as a timestamp (`draft/2026-10-08T12-00-00-000Z`). It starts with a
+ * letter or a digit, so it is no flag; it holds no second `/`, no quote and nothing either shell
+ * reads; and it holds no `..`, which is a range wherever git reads a revision. A draft named any
+ * other way can still be shown: that call is asked about.
+ */
+const QUIET_DRAFT = String.raw`draft/[A-Za-z0-9](?:\.?[A-Za-z0-9_-])*`;
+
+/**
+ * Every argument list a check may have, anchored at both ends. Read-only, each of them.
+ *
+ * TWO KINDS OF WIKI SLOT. The checks that never print what is inside the folder (`status`,
+ * `coverage`, `lint`, the publish preview) take QUIET_WIKI: an id, a prefix or a name, as the CLI
+ * resolves them. The ones that do (`diff` and `drafts`, in every form) take QUIET_WIKI_READ: an id
+ * by its shape.
+ *
+ * `drafts restore <draft> <path>` WRITES and is not here, and nothing that starts with those two
+ * words is: `restore` is no id, so it is never read as the wiki of `drafts <wiki>`, with or without
+ * anything after it. The same holds for `show` with no draft, and for any sub-verb the CLI grows
+ * later. That is the first layer, and it is this pattern's own. The second is
+ * {@link quietPageTextInProject}, which approves these forms only for an id the project DECLARES
+ * and asks for the shape again itself, so it would still refuse a word if this slot were widened.
+ */
 const QUIET_ARGS = new RegExp(
   `^(?:${[
     `status(?: --json)?(?: ${QUIET_WIKI})?`,
@@ -2815,8 +2868,17 @@ const QUIET_ARGS = new RegExp(
     'version',
     `push --dry-run(?: ${QUIET_WIKI})?`,
     `push ${QUIET_WIKI} --dry-run`,
-    `diff(?: --stat| --json)?(?: ${QUIET_WIKI})?`,
-    `diff ${QUIET_WIKI} (?:--stat|--json)`,
+    `diff(?: --stat| --json)?(?: ${QUIET_WIKI_READ})?`,
+    `diff ${QUIET_WIKI_READ} (?:--stat|--json)`,
+    // What the published side changed (SER-364). Claude writes the flags in both orders.
+    `diff --incoming(?: --stat| --json)?(?: ${QUIET_WIKI_READ})?`,
+    `diff --incoming ${QUIET_WIKI_READ} (?:--stat|--json)`,
+    `diff (?:--stat|--json) --incoming(?: ${QUIET_WIKI_READ})?`,
+    // The folder's saved drafts, and what one of them holds (SER-364).
+    `drafts(?: --json)?(?: ${QUIET_WIKI_READ})?`,
+    `drafts ${QUIET_WIKI_READ} --json`,
+    `drafts show ${QUIET_DRAFT}(?: --stat| --json)?(?: ${QUIET_WIKI_READ})?`,
+    `drafts show ${QUIET_DRAFT} ${QUIET_WIKI_READ} (?:--stat|--json)`,
   ].join('|')})$`,
 );
 
@@ -2829,7 +2891,10 @@ const QUIET_TAIL = {
   ps: /^(?: 2>&1)?$/,
 };
 
-/** Where the arguments end and a tail begins. Neither sequence can occur inside QUIET_WIKI. */
+/**
+ * Where the arguments end and a tail begins. Neither sequence can occur inside QUIET_WIKI or
+ * QUIET_DRAFT: a quoted wiki may hold a space, but no `>`, `&` or `|`, and a draft holds no space.
+ */
 const QUIET_TAIL_START = / (?:2>&1|\|)/;
 
 /**
@@ -2873,16 +2938,22 @@ function quietCheckArgs(command, dialect, cli) {
   return QUIET_ARGS.test(args) && QUIET_TAIL[dialect].test(tail) ? args : null;
 }
 
-/** A wiki id as the server mints one: the sync agent's own `FULL_WIKI_ID` (team-resolve.ts). */
-const FULL_WIKI_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/**
+ * The verbs whose checks print what is INSIDE the wiki folder: `diff` in every form (SER-362, and
+ * `--incoming`, SER-364) and `drafts` in every form (SER-364).
+ */
+const QUIET_PAGE_TEXT_VERBS = new Set(['diff', 'drafts']);
 
 /**
- * May a `diff` that passed the grammar run unasked in THIS project (SER-362)? True for every other
- * check.
+ * May a check that passed the grammar run unasked in THIS project (SER-362, widened by SER-364)?
+ * True for every check but the ones that print what is inside the wiki folder.
  *
  * `diff` prints page text, up to a couple of hundred lines of it, where the other checks print
- * counts, names and findings. So it gets the boundary the connector's reads already have
- * ({@link quietReadVerdict}): a session reads, unasked, only the wikis its project declares.
+ * counts, names and findings. `diff --incoming` prints the text the published side changed, and
+ * `drafts show` the text a saved draft holds. The list, `drafts`, prints no text, but it names the
+ * pages of work nobody published, so it stands with them. All of them get the boundary the
+ * connector's reads already have ({@link quietReadVerdict}): a session reads, unasked, only the
+ * wikis its project declares.
  *
  *   - Only in a project whose router block says LOCAL mode and names its wiki. There the CLI
  *     resolves a bare `diff` to that wiki, by the block. In a hosted project, or a folder that names
@@ -2896,26 +2967,56 @@ const FULL_WIKI_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{
  *     marker's clothes: the CLI would resolve it among all the person's wikis. Such a marker
  *     declares nothing here.
  *
+ * WHICH word is the wiki is read from the form that matched (QUIET_WIKI_READ), never from where a
+ * word stands: in `drafts show draft/x` the words after the verb are a sub-verb and a draft.
+ *
+ * TWO LAYERS. The grammar reads a wiki in these forms only where an id stands, so `drafts restore`,
+ * `drafts show` with no draft and `diff --incoming HEAD` are no check at all and get no further
+ * than the first line here. This function still asks for the shape of an id itself: of the block's
+ * markers, which no grammar sees, and of the argument, which the grammar has already held to it.
+ * That second test decides nothing today. It is there for the day the grammar's slot is widened,
+ * when it alone would stand between a word and an approval. No list of sub-verbs is kept in either
+ * place: a sub-verb the CLI grows later is a word, and a word is no id.
+ *
  * The CLI holds the other half: a block whose wiki this machine cannot read as this person makes
- * `diff` refuse, where every other verb falls through to the active wiki (`case 'diff'` in the
+ * these verbs refuse, where every other verb falls through to the active wiki (`wikiToRead` in the
  * sync agent's cli.ts). Without that, a well-formed id nobody on this machine belongs to would be
  * approved here and answered from another wiki there.
  *
  * Everything else falls back to Claude Code's own prompt, which is the ordinary one for a command.
- * Accepted residual: the project is read from the hook's `cwd`, and the CLI resolves from the
- * shell's. Claude Code reports the shell's, and no approved command can change directory, but a
+ * Accepted residuals. The project is read from the hook's `cwd`, and the CLI resolves from the
+ * shell's: Claude Code reports the shell's, and no approved command can change directory, but a
  * session whose shell stands elsewhere reads the wiki THAT folder resolves to, which is the wiki
- * `status` and the publish preview already name there.
+ * `status` and the publish preview already name there. And the block is TRUSTED as the project's
+ * own statement of what it reads, as the connector's quiet reads trust it: a folder whose
+ * `CLAUDE.md` names a real wiki of this person's in local mode gets these reads of it unasked
+ * (SER-365, part 1: accepted as it stands, with no record of folders kept on the machine's side).
+ *
+ * Asked only about arguments the grammar passed. Anything else is no check, and the answer is no.
  */
-function quietDiffInProject(args, cwd) {
-  const words = args.split(' ');
-  if (words[0] !== 'diff') return true;
+function quietPageTextInProject(args, cwd) {
+  const form = typeof args === 'string' ? QUIET_ARGS.exec(args) : null;
+  if (!form) return false;
+  // The verb is the first word of every form, so this one IS read by position.
+  if (!QUIET_PAGE_TEXT_VERBS.has(args.split(' ', 1)[0])) return true;
   if (routerMode(cwd) !== 'local') return false;
   const [primary, ...also] = projectTeamIds(cwd).map((id) => id.toLowerCase());
   // The primary decides the bare form, so a block whose own wiki is no id approves nothing.
   if (!primary || !FULL_WIKI_ID.test(primary)) return false;
-  const wiki = words.slice(1).filter((w) => !w.startsWith('--')).join(' ').toLowerCase();
-  return wiki === '' || (FULL_WIKI_ID.test(wiki) && [primary, ...also].includes(wiki));
+  const wiki = form.slice(1).find((slot) => slot !== undefined);
+  if (wiki === undefined) return true;
+  const named = wiki.toLowerCase();
+  return FULL_WIKI_ID.test(named) && [primary, ...also].includes(named);
+}
+
+/**
+ * The whole of what the shell path approves, but for the preference: a check by the grammar, and
+ * one this project lets run unasked. The CLI path is an argument so that every row of the tests
+ * runs whether or not a bundle is on the disk.
+ */
+function quietCheckInProject(command, dialect, cli, cwd) {
+  const args = quietCheckArgs(command, dialect, cli);
+  return args !== null && quietPageTextInProject(args, cwd);
 }
 
 /**
@@ -2959,7 +3060,8 @@ function quietSwitchVerdict(command) {
     reason:
       "This lets CommonGround's own read-only checks run without asking you each time: its " +
       'status, your list of wikis, coverage, the health check and the publish preview; in a ' +
-      'project with a local wiki folder, the text of what changed in that folder; and, in a ' +
+      'project with a local wiki folder, the text of what changed in that folder, of what is ' +
+      'incoming from the published wiki, and of the drafts saved in that folder; and, in a ' +
       'project that uses the hosted connector, searching and reading that wiki. Publishing still ' +
       'asks you every time, and so does anything that changes a file. To undo it, ask Claude to ' +
       'turn quiet checks off.',
@@ -2985,8 +3087,7 @@ function quietShellVerdict(input, toolName, toolInput, dialect) {
   // Before anything touches the disk: every approvable command starts with this word, and almost
   // no other command does, so an ordinary `ls` costs one test here and nothing more.
   if (!/^\s*node /.test(toolInput.command)) return null;
-  const args = quietCheckArgs(toolInput.command, dialect, cliPath());
-  if (args === null || !quietDiffInProject(args, projectCwd(input))) return null;
+  if (!quietCheckInProject(toolInput.command, dialect, cliPath(), projectCwd(input))) return null;
   return quietChecksEnabled() ? QUIET_ALLOW : null;
 }
 
@@ -3199,7 +3300,8 @@ module.exports = {
   PREVIEW_FLAGS,
   UNKNOWN_SHELL_NOTE,
   quietCheckCommand,
-  quietDiffInProject,
+  quietPageTextInProject,
+  quietCheckInProject,
   quietSwitchVerdict,
   QUIET_CHECK_TOOLS,
   QUIET_ALLOW,

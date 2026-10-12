@@ -43,6 +43,10 @@ On a personal wiki the roles question never arises — don't raise it.
 
 > **Local-clone mode only.** In MCP mode there is no separate publish step — `save_page` already
 > wrote straight to the hosted wiki, which is why that mode asks before each write instead.
+> **The mode is the project's, and a wiki's own folder is not bound by it:** a wiki named in
+> `$ARGUMENTS` that has a folder of its own on this computer (one `/commonground:seed` filled) is
+> published from that folder whatever this project's mode, and from a folder that reads no wiki.
+> Run every command in this file with that wiki named.
 
 You never need to commit anything by hand — `push` commits the user's changes for them. Lead with
 pages and publishing rather than git. The CLI does print `commit(s)` and `N ahead, N behind` in a few
@@ -80,7 +84,8 @@ pages that *would* be published (including brand-new pages that were never stage
   elsewhere). Relay both halves verbatim and confirm which wiki they mean before anything else; the
   line names the command that addresses the one they are standing in. Never pick for them.
 - **A `Heads up: <wiki> moved` line** — the published wiki changed since this clone last pulled,
-  so this publish would stop (§4). Offer `/commonground:pull` first, then preview again: a pull
+  so this publish would stop (§4). Offer `/commonground:pull` first, then preview again
+  (`commonground diff --incoming`, below, shows what the published wiki changed): a pull
   brings the change in around their work and stops only over what is in the change's way, while a
   publish made now commits their work and then stops, and the pull after it can no longer bring the
   change in on its own. **Unless a pull has just stopped and its receipt offered publishing
@@ -104,6 +109,16 @@ nothing in the folder changes, and nothing is downloaded from the wiki. **Never 
 wiki folder yourself to read it** (not `git status`, not `git diff`): that command shows the
 change, and raw git aimed at that folder (`cd … && git …`) raises a Claude Code security dialog
 every time, with no way for the user to allow it for good.
+
+**The other side and the saved drafts have reads of their own, under that same rule.**
+`commonground diff --incoming` prints what the published wiki changed since the folder last matched
+it, the pages they also changed first and marked (`--stat` as above). It only reads and nothing is
+downloaded: it shows what the folder last saw, which after a `Heads up: … moved` line or a blocked
+publish is the change in the way. `commonground drafts` lists the drafts saved in the folder, and
+`commonground drafts show <name>` prints what one holds (§4). For another wiki each takes that
+wiki's id after it, never its name: for the incoming side `commonground diff --incoming <its id>`,
+the id after `--incoming` (before it, the command works and prompts). So nothing here is a reason for `git show` or a checkout of a
+draft in the wiki folder.
 
 ## 2. Confirm — ONE prompt, and it is the guard's
 
@@ -166,11 +181,20 @@ offer to file them with it — one per page, carrying what they wrote and why it
 curator can fold it in. That is a member's real publish path, and it is the difference between their
 knowledge reaching the team and sitting on their disk.
 
-The suggestions queue lives on the server, so **a local-mode project with no connector in this
-session cannot file one at all.** Don't offer a tool that isn't here: say the work is safe in the
-clone, and name the two real routes — `/commonground:point` in MCP mode, or sending a curator the
-pages directly. Either way, don't offer to make them a curator; that's the admin's call, not a step
-in this flow.
+The suggestions queue lives on the server, behind CommonGround's connector. **In a local project
+CommonGround's own connector is switched off by CommonGround, unless this session lists it as
+needing authorization.** So when a connector tool you need there is not in this session and the
+session does not list the connector, say that in one sentence and offer to switch it on
+(`commonground connector on`, then a new session), and relay what that command answers. When the
+session does list it, the tool waits on the connector's own sign-in (`/mcp`, the row named
+CommonGround). **Never work around a missing tool by any other route.** So when `suggest_change` is not here, there are two routes and
+you name both: the work is safe in the clone, and it reaches a curator either as a suggestion, once
+the connector is switched on and a new session has the tool, or by the user sending a curator the
+pages themselves. Either way, don't offer to make them a curator; that's the admin's call, not a
+step in this flow.
+
+The same rule covers the other connector tool this command names, `resolve_suggestion` in §2: when
+it is not in this session, the request stays open, so say that and make the same offer.
 
 ## 2b′. If the publish fails before anything is sent
 
@@ -288,8 +312,10 @@ after the first before you answer:
   sign-in failure (§2b′), so never retry it unchanged, and don't say nothing was changed: the work is
   committed in the folder.
 - **`Publishing is paused on the server right now, so nothing was published. Try again shortly.`**
-  means the server could not run that check, so nothing was sent and no name is wrong (`The server
-  could not check the names of the files in it …` is the same answer, given after the upload). It is
+  means the server is not taking publishes right now: it could not run that check, or it is out of
+  room for a write. Nothing was sent and no name is wrong (`The server could not check the names of
+  the files in it …` is the check failing after the upload, and is answered the same way). The two
+  causes read the same from here, so don't name one. It is
   not a rename and not a sign-in problem. Relay it, say the work is committed in the folder, and
   offer to publish again in a little while; don't rename anything and don't offer to sign in again.
 
@@ -310,7 +336,8 @@ after it. If that pull comes back **Blocked** because a page edited here is one 
 also changes, or says it cannot bring the change in as an update or would write over a file here,
 publishing first is not the way through while this clone still holds the pair: offer taking the
 published version (`pull --take-remote`, which saves their work to a `draft/…` branch first), then
-bringing their edits back from that draft and publishing. When it names a file this machine's git
+bringing their edits back from that draft, a page at a time (`commonground drafts restore`, §4),
+and publishing. When it names a file this machine's git
 ignores in the way instead, offer what `/commonground:pull` offers there: moving that file and
 pulling again, or taking the published version.
 
@@ -323,7 +350,9 @@ merely impersonal — on a personal wiki "someone else edited this" is alarming 
 - **Shared** — a teammate published something since this clone last pulled.
 - **Personal** — *they* changed it somewhere else: another machine, or Chat.
 
-Show both sides using the CLI's own labels, then offer the choice (`AskUserQuestion` when available):
+Show both sides using the CLI's own labels (for the text, `commonground diff --incoming` is the
+published side and `commonground diff` theirs, §1), then offer the choice (`AskUserQuestion` when
+available):
 
 1. **Keep my version of the pages both sides changed** — run `commonground push --mine`. This replays
    only the pages the user actually changed on top of the published tip: their version wins where
@@ -335,4 +364,20 @@ Show both sides using the CLI's own labels, then offer the choice (`AskUserQuest
 3. **Decide later** — do nothing; both sides stay as they are.
 
 Never pick one of these for the user. When the choice runs, report what landed and — for options 1
-and 2 — the draft branch holding the previous state.
+and 2 — the draft branch holding the previous state, by its whole `draft/…` name (option 1 names
+it even when it ends with nothing left to publish).
+
+**A draft is read, and brought back, with the helper.** `commonground drafts` lists the drafts
+saved in the folder, newest first, and `commonground drafts show <name>` prints what one holds,
+each page marked with how the folder stands on it now. `<name>` is the whole `draft/…` name as
+listed. Both only read. **`commonground drafts restore <name> <page>`** brings ONE file back from a
+draft, and it is the one of these that writes. **Run it only on the user's explicit yes, one file
+at a time, never on your own initiative and never to tidy up.** Say first what it does: it puts
+that file's saved text into the folder in place of the folder's copy, it refuses when that copy has
+changes saved nowhere else, and nothing is published; `commonground diff` then shows what it
+changed. **When it refuses, relay its sentence and stop: never work around a refusal.** The ways
+through are the ones it names: publishing that work, or `commonground resolve save-as-draft` (it
+saves the folder's work as a new draft and changes nothing in the folder), each only on their yes.
+A file the folder's ignore rules hide is one that restore refuses under its own name: it comes back
+under another name, on the same yes, with `commonground drafts restore <name> <path> --as <new
+name>` (`/commonground:pull` carries that form and its rule).

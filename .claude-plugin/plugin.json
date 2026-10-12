@@ -1,7 +1,7 @@
 {
   "name": "commonground",
   "displayName": "CommonGround",
-  "version": "0.21.0",
+  "version": "0.23.0",
   "description": "A markdown wiki that Claude reads first and keeps current, curated by you. Ask a question and Claude answers from your pages and cites the ones it used. Tell it what to keep and it writes it into the right pages. One wiki for yourself, or one shared with your team.",
   "author": {
     "name": "Serkan Terek",

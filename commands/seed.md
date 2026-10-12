@@ -16,9 +16,14 @@ continues filling gaps.
 options per question (an "Other" is built in). Fall back to a plain conversational question when
 the tool isn't available or the answer is open-ended. Either way, ask one thing at a time.
 
-**The mode — where pages land — is settled in step 0.3, and NEVER by detection alone.** A project
-decides it once: when `/commonground:point` has already set one, seeding inherits it and confirms it
-in a line; when nothing has, seeding is the one that asks (SER-256).
+**The mode — where pages land — is settled in step 0.3, and NEVER by detection alone.** It is
+somebody's earlier decision or it is a question: a project that already reads this wiki carries the
+mode `/commonground:point` set there, a wiki that already has a folder on this computer was given
+one on purpose, and when neither holds, seeding is the one that asks (SER-256).
+
+**Seeding never connects the folder this session is in to a wiki.** It fills the wiki's own folder
+(or the hosted wiki), and connecting a project is `/commonground:point`, run on purpose from that
+project (step 0.3 has the rule).
 **Local-clone mode:** every page below is a FILE in the clone, and the charter too — do not use
 `save_page` / `save_charter`; nothing is published until `/commonground:push`. **MCP mode:** the
 write tools go straight to the hosted wiki, live the moment they land — for the whole team on a
@@ -28,8 +33,8 @@ writing and write it — never tell them this project shouldn't write to the wik
 
 **Roles.** In **local-clone mode** seeding needs no particular role — it builds the user's own
 working copy — but a member can't publish it, so say that when the arc completes; offer
-`suggest_change` only when this session actually has that tool (it is a connector tool, and a local
-project without one cannot file a suggestion). In **MCP mode** seeding writes the hosted wiki directly, so it is **admin/curator
+`suggest_change` only when this session actually has that tool (it is a connector tool: when it is
+missing, the rule under **Setup has two sign-ins** below says what to do). In **MCP mode** seeding writes the hosted wiki directly, so it is **admin/curator
 only**: for a member, don't attempt writes — explain the limit and offer to answer questions from
 whatever wiki exists (`search` / `get_page`) instead.
 
@@ -61,8 +66,9 @@ going wrong. Say this in your own voice, keeping every fact:
 >    is missing I say what and why, and we sort that out first.
 > 2. If you are not signed in yet, I sign you in: I give you a link and a short code, and on most
 >    computers the page opens by itself. You approve it there and come back.
-> 3. I settle where your wiki lives: usually a folder on this computer, sometimes kept online
->    instead. I say where the folder goes before I create it.
+> 3. I settle where your wiki lives: usually a folder of its own on this computer, sometimes kept
+>    online instead. I say where that folder goes before I create it, and I connect nothing to the
+>    folder this chat is open in.
 > 4. I ask about your work, suggest sections from your answers, and draft pages for you to check.
 > 5. Nothing is published until you say so.
 >
@@ -89,6 +95,15 @@ servers or tools that "need authorization":
   server's sign-in, and never bring up a connector list or connector suggestions, as a step of
   setting up CommonGround.
 
+**In a local project CommonGround's own connector is switched off by CommonGround, unless this
+session lists it as needing authorization.** So when a connector tool you need there is not in this
+session and the session does not list the connector, say that in one sentence and offer to switch
+it on (`commonground connector on`, then a new session), and relay what that command answers. When
+the session does list it, the tool waits on the connector's own sign-in (`/mcp`, the row named
+CommonGround). **Never work around a missing tool by any other route.** A seeding session can run
+in a folder that is connected to no wiki. Nothing was switched off there, so skip that command: a
+missing connector tool there means the connector's own sign-in.
+
 **If this computer cannot run CommonGround yet** (step 0's first command comes back with `node` not
 found): nothing in CommonGround runs without Node.js, not this command, not its hooks, not the
 connector. Stop there: no sign-in attempt, no retry, no other route. Say so plainly (nothing is
@@ -113,8 +128,8 @@ session runs on:
 ## 0. Which wiki, and is this session signed in?
 
 Seeding is the FIRST thing a new user does, so this command cannot assume a signed-in machine or a
-project that has already been pointed anywhere. It settles both itself and never bounces the user to
-another command to come back afterwards.
+project that reads any wiki. It settles the sign-in itself, needs no pointed project, and never
+bounces the user to another command to come back afterwards.
 
 **Parse `$ARGUMENTS`.** A token that names a wiki (a name, an id, or a unique prefix of either —
 check it against the `commonground use` listing) is the **target**. A token that is an existing path
@@ -127,7 +142,10 @@ reinstalling the plugin, have them quit Claude Code completely and open it again
 else runs. That branch's walk
 is spelled out above ("If this computer cannot run CommonGround yet"), because the file it lives in
 is not open while this one runs. If it reports a team, you're signed
-in: make the quiet-checks offer below, then go to 2. If it reports "not logged in" / "no team logged in", sign in **here**, inline:
+in: make the quiet-checks offer below, then go to 2. In a folder that reads no wiki that answer
+ends with an offer to point the folder (`this project is not pointed at a wiki yet`), and the
+several-wikis answer says to bind this project to one. Neither is a step of seeding: **do not relay
+an offer to point this folder.** If it reports "not logged in" / "no team logged in", sign in **here**, inline:
 
 - The user needs a CommonGround account **with at least one wiki** first — the authorize screen has
   nothing to approve without one, and its button is hidden rather than left dead. No account yet →
@@ -156,9 +174,9 @@ ask (with `AskUserQuestion` when it is available):
 
 > One optional thing. Claude Code asks you before every CommonGround command I run, and about half
 > of them only look at things: your status, your list of wikis, what is covered, the health check,
-> the preview before publishing, what changed in your wiki folder, and for a hosted wiki, searching
-> and reading it. I can let those run without asking. Publishing still asks you every time, and so
-> does saving pages. Want that?
+> the preview before publishing, what changed in your wiki folder, what is incoming and what your
+> saved drafts hold, and for a hosted wiki, searching and reading it. I can let those run without
+> asking. Publishing still asks you every time, and so does saving pages. Want that?
 
 - **Yes** → run `commonground prefs set quiet-checks on`. The dialog that command raises IS the
   confirmation, so do not ask a second question of your own. Then say they can undo it by asking
@@ -204,14 +222,32 @@ the mode is a question at all. The target decides WHICH wiki, never whether the 
 
 Then, in this order:
 
-- **This project already has a mode** — `commonground status` reports it (`Mode: local, wiki folder
-  <path>` or `Mode: hosted connector (MCP)`; `--json` carries it as `mode`). That is the mode.
+- **This project already reads the wiki you are seeding** — `commonground status` reports its mode
+  (`Mode: local, wiki folder <path>` or `Mode: hosted connector (MCP)`; `--json` carries it as
+  `mode`). That is the mode.
   **Confirm it in ONE line and carry on**, never as a question: *"Pages land as files in your wiki
   folder, and nothing reaches the team until `/commonground:push`. Carrying on."* A project decides
-  this once, and `/commonground:point` already decided it here.
+  this once, and `/commonground:point` already decided it here. When they ask for the OTHER mode
+  for a wiki this project reads, that is a re-point, and it is `/commonground:point`'s to make: put
+  it to the user and let them decide before you seed a line. Seeding never makes it a side effect,
+  and until they decide, seed the wiki where it already lives. A project that reads only OTHER
+  wikis does not set this wiki's mode, with the one exception on the next line.
+- **This project is local for another wiki** (`commonground status` reports `Mode: local`, and the
+  wiki you are seeding is not one this project reads): **this wiki is seeded into its own folder,
+  never through the connector.** The write guard in a local project refuses every hosted save
+  whatever `wiki:` it carries, and the folder its redirect names is this project's, which holds
+  another wiki. Say in one sentence that the pages land in the wiki's own folder, and carry on.
+  When they asked for hosted, say that hosted seeding of this wiki runs from a session opened on a
+  folder that is not a local project, and let them pick between that and the folder.
 - **`local` or `mcp` said outright** — in `$ARGUMENTS`, or in plain words ("keep it local", "switch
-  to mcp"). That is the answer, including as a switch on a project that already has a mode. Those
-  two words are modes, never wiki names.
+  to mcp"). For a wiki this project does not read, that is the answer. Those two words are modes,
+  never wiki names. **When the word is `mcp`, run `commonground folder <wiki> --where` all the
+  same:** if the wiki has a folder on this computer, say in one sentence that hosted saves leave
+  that folder behind until `/commonground:pull <wiki>`, and that pages in it which were never
+  published stay unpublished.
+- **The wiki already has a folder on this computer**: `commonground folder <wiki> --where` answers
+  `your wiki folder is at <path>`. That folder is the mode, because someone put this wiki there on
+  purpose. Confirm it in one line, with the path, and carry on.
 - **Nothing has set one yet** — seeding is the first asker here, so seeding asks, with the same
   question, the same machine probe and the same defaults as **`/commonground:point` step 4**: read
   `probe.git` from `commonground status --json`, lead with **Local folder (Recommended)** when git
@@ -237,36 +273,51 @@ answer.
 choice: say plainly that pages go live on the hosted wiki as they are saved, and that running
 `/commonground:seed` in Claude Code instead is the way to stage and review first.
 
-Then wire the answer up. One fact the branches below all lean on: **mode belongs to the project,
-not to one wiki in it.** `commonground init --also` adds a wiki in the mode this
-project's block already records, and `--path` is refused outright in an MCP project because there is
-no folder to place one in. So an answer that SWITCHES this project's mode is a re-point
-(`commonground init --mode local <wiki>`, which replaces the set this project reads, so the others
-go back with `--also`), and a re-point changes where every wiki in this project lands. Put that to
-the user and let them decide before you seed a line. Seeding never makes it a side effect, and
-while the project still has its old mode, seed the wiki where it already lives.
+Then wire the answer up. One rule the branches below all lean on: **seeding never points a folder
+at a wiki, and never runs `init` to get one.** Filling a wiki needs the wiki's own folder, or the
+hosted wiki, and nothing else. A first seed used to point whatever folder the session was in, which
+wrote a note into that folder's `CLAUDE.md` and a setting into its `.claude/settings.json`: two
+files in a folder nobody had mentioned, and in the home folder a connection that reached every
+folder on the computer. Connecting a project to a wiki is `/commonground:point`, run on purpose
+from that project. (The one `init` in this file is the `--refresh` after chartering, in a project
+that already reads the wiki.)
 
-- **Local, target is this project's wiki** → the local-clone rules above, unchanged. If the block
-  says MCP and the user asked for local anyway, there is no clone yet: that is the re-point above,
-  not something to improvise around.
-- **Local, target not pointed or not cloned here** → point it now, but **never with a bare `init`**.
-  A bare `init <wiki>` replaces whatever set this project reads, and seeding is not the place to
-  take a project's wikis away from it. Two cases:
-  - **This project is not pointed at anything** → ask first, in one question: *"Point this folder at
-    **Acme Handbook** so I can seed into it?"* (`AskUserQuestion` when it's available). **Say what
-    that writes in the same breath:** a short note in this folder's `CLAUDE.md` and one setting in
-    its `.claude/settings.json`, so Claude reads the wiki from here; nothing else in the folder
-    changes. Two files appearing in a folder nobody mentioned is a surprise, and the web told them
-    the folder does not matter. On yes, run
-    `commonground init --mode local <wiki>` with point.md's confirm-or-override on the folder.
-  - **This project already reads a wiki, or several** → add beside them:
-    `commonground init --also <wiki> [--path "<folder>"]`. Nothing it already reads changes, and the
-    added wiki lands as a folder because this project is already local. In an MCP project that same
-    command adds the wiki in MCP mode with no folder at all, which is the re-point above, not a
-    thing to route around: seed it through the connector with the `wiki:` argument below until the
-    user decides.
-  Either way, **relay what the project now reads** — the wikis by name and which is the primary —
-  before seeding a line. Then seed into the files.
+- **Local, and the wiki is this project's PRIMARY** (the wiki `commonground status` reports for
+  this project) → the local-clone rules above, unchanged: a command that names no wiki means it,
+  and its folder is on the `Mode:` line.
+- **Local, in every other case** (this folder reads no wiki, reads other wikis, or reads this one
+  beside its primary) → seed into **the wiki's own folder**, in this order:
+  1. Run `commonground folder <wiki> --where`. It answers `your wiki folder is at <path>` when the
+     wiki is on this computer, and `It would be created at <path>` when it is not, and it makes
+     nothing. Ask this, not `commonground status <wiki>`: in a project that reads another wiki,
+     that readout carries the project's own mode and may name no folder at all.
+  2. **Say where the wiki lives before any folder appears.** Not on this computer yet → ask it as a
+     confirm-or-override, never as an open "where?": *"I'll keep your wiki in its own folder at
+     `<path>`. Good, or would you rather it lived somewhere else (say, in your notes folder)?"*
+     Already here → say the path in one sentence and carry on.
+  3. Run `commonground folder <wiki>`, adding `--path "<folder>"` when they named one. It fetches
+     the wiki into that folder when there is none yet, leaves an existing one exactly as it is,
+     and writes no note and no setting into the folder this session is in. A folder they name must
+     be empty or new: the CLI refuses one with files in it, and notes that already exist come in
+     through step 5's import, **never by putting the wiki on top of them**. When it says the folder
+     is behind the published wiki, **relay that and offer `/commonground:pull <wiki>`** before you
+     write a page.
+  4. **Only when this folder reads no wiki at all**, run `commonground use <wiki>`, so that a
+     command which names none means this one. In a project that reads another wiki it changes
+     nothing for this folder, and its receipt offers a re-point that is not yours to take: skip it.
+  5. **Name the wiki on every command that takes one, for the whole arc**: `commonground coverage
+     <wiki>`, `commonground lint <wiki>`, `commonground import "<staged folder>" <wiki>`, the
+     publish at the end. A command that names no wiki answers for this project's primary, or for
+     the computer's active wiki, and either can be another wiki than the one you are seeding.
+     An import or a publish that lands there is a wrong-wiki write.
+  6. Write the pages as files in that folder.
+
+  Two things a project that reads this wiki as its primary would do for you are yours to hold in
+  this arc. The hook that guards a local project's writes knows only this project's own wiki. It
+  does not protect this one, and where it says "the clone" it means the project's. So never save
+  a page of this wiki through `save_page`, and write its files only in the folder step 3 named.
+  And nothing in the folder this session is in records the choice: the wiki's own folder does,
+  which is why a later seeding finds it in the list above.
 - **MCP, target is the session's wiki** → the write tools as-is.
 - **MCP, target is a DIFFERENT wiki** → pass **`wiki: <teamId>`** on every seed-path tool call:
   `get_coverage`, `get_awareness`, `get_index`, `get_page`, `stage_sources`, `save_page`,
@@ -335,8 +386,12 @@ Acme pages — want me to draw on them here?"* No consent, no read; and never qu
 content into this one without it.
 
 `get_coverage` is **charter-aware**: once a charter exists it reports `chartered: true` plus the
-charter's `audience`, and its rows ARE the charter's Structure list — the wiki's own definition
-of complete. With no charter, the rows are the org-shape template (the pre-charter fallback).
+charter's `audience`, and when that charter lists sections its rows ARE the charter's Structure
+list, the wiki's own definition of complete. With no charter, the rows are the org-shape template
+(the pre-charter fallback). A charter saved from a blank start lists no sections: it still reports
+`chartered: true`, and its rows are a template's, none of them carrying a `category`.
+`commonground coverage` reports the same, so `chartered` means one thing in both modes: a charter
+is in effect.
 The charter page itself is meta: the server excludes it from section counts and `pageCount`.
 
 - If `callerDiscipline` is present, use it — **don't re-ask** their discipline.
@@ -449,7 +504,7 @@ describing your own work and hearing it named back. The order below is the point
    one you are seeding, skip the show-and-tell and just capture the brief below — a trigger sentence
    from another wiki's router block is not this wiki's to approve.
 
-   **Say whose words they are.** That sentence was written by `init` moments ago in the DEFAULT
+   **Say whose words they are.** That sentence was written by `init`, when the project was pointed, in the DEFAULT
    voice — it is not theirs, and presenting it for approval as though it were invites a shrug and a
    "sure, fine". Name it: *"That's the generic version `init` wrote. Once you've chartered the wiki
    I'll rewrite it in your words."* Then explain that this text (plus a keyword nudge derived from
@@ -498,8 +553,9 @@ describing your own work and hearing it named back. The order below is the point
    - **It says what the wiki IS, not what stays out** ("professional profile only"): it removes
      nothing from Structure. Offer it back as what stays out ("so nothing about your private life
      goes in here. Is that the line?") and write Excludes from the wording they confirm. The
-     connector quotes that section to every session as what does NOT belong, so an "X only"
-     sentence there reads as the opposite of what they meant.
+     connector quotes that section to every session as where the wiki's scope ends, and tells it
+     not to file what the section rules out, so an "X only" sentence there names nothing to keep
+     out.
 
 Draft the charter page, show it, and on confirm **persist it right away** (don't defer to
 step 7 — it's the contract everything below reads). It goes at the reserved pageId `wiki-charter`
@@ -549,8 +605,8 @@ this project reads): if the wiki is one of them, run **`commonground init --refr
 re-renders the fenced block in the wiki's own voice — its kind (personal for a just-me wiki), its
 name and Structure sections, the brief's first sentence as its trigger line — and absorbs any
 leftover `retrieval-brief` marker block from earlier plugin versions. Never hand-edit inside the
-fence. If this project reads some OTHER wiki, `--refresh` has nothing to do with the one you just
-chartered: say so in a sentence (*"the charter is saved; run `/commonground:point <wiki>` in the
+fence. If this folder reads no wiki, or reads some OTHER wiki, `--refresh` has nothing to do with
+the one you just chartered: say so in a sentence (*"the charter is saved; run `/commonground:point <wiki>` in the
 projects that should read it"*) and move on. The MCP connector's instructions pick the charter up
 automatically (per session/request) — no extra step there.
 
@@ -655,7 +711,9 @@ a root `index.md`, because the wiki regenerates its own catalog there. Same for 
   the Bash tool on Windows maps to a different folder than the one the file tools write. For
   clusters marked **Normalize**, do the
   restructuring/merging yourself in-session first, editing the staged files; then run
-  `commonground import "<staged folder>"`, quoted. It overlays the folder onto the clone, **backfills
+  `commonground import "<staged folder>"`, quoted (and with the wiki named after it, `commonground
+  import "<staged folder>" <wiki>`, whenever the wiki you are seeding is not this project's
+  primary: step 0.3). It overlays the folder onto the clone, **backfills
   missing/invalid frontmatter** (carrying `tags`/`aliases`/`created` onto the schema and preserving
   any other frontmatter key verbatim — an imported `tags:` is the source folder's own **legacy label**, not
   a category, so assign the charter category the cluster belongs to as well), **regenerates
@@ -669,7 +727,7 @@ a root `index.md`, because the wiki regenerates its own catalog there. Same for 
   staged folder and import again. If `import` refuses instead over a file ALREADY in the wiki folder
   with such a name, nothing was committed or published: handle it as `/commonground:push` §3c says
   (rename it in the wiki folder, then publish with `/commonground:push`; the imported files are
-  already there). A refusal saying two names `differ only in letter case, and this machine can hold
+  already there), naming the wiki in that publish when it is not this project's primary. A refusal saying two names `differ only in letter case, and this machine can hold
   only one of them` means what it means there: nothing can be published from this machine, and no
   rename here fixes it. One thing to say out loud: each page keeps its **real** date (its own
   frontmatter date, else the file's modification time), so genuinely old notes will read as old and
@@ -696,7 +754,8 @@ a root `index.md`, because the wiki regenerates its own catalog there. Same for 
 
 **Post-import — say where the wiki lives now (there are two copies, and only one is the wiki).**
 Import **copies**; it never adopts the folder. So, in this order:
-1. Re-read coverage — `commonground coverage` in local-clone mode, `get_coverage` in MCP mode —
+1. Re-read coverage — `commonground coverage` in local-clone mode (the wiki named, when it is not
+   this project's primary), `get_coverage` in MCP mode —
    and the index, and report how the import mapped onto the **charter's structure** — which sections it filled, which are still thin.
 2. Name the canonical copy: **the wiki folder is the wiki** — the copy CommonGround syncs,
    publishes and serves. The folder you imported was left untouched and is now a separate copy that
@@ -704,8 +763,8 @@ Import **copies**; it never adopts the folder. So, in this order:
 3. **Delete the scratch staging folder** if this flow created one (it's a scratch copy, not the wiki —
    the CLI receipt names it as the source). Never delete the user's own source folder.
 4. Offer the convergence choice when they imported a folder they actually work in: **repoint their
-   editor** at the wiki folder (plain markdown — it opens in Obsidian or any editor; the path is on
-   the `Mode:` line of `commonground status`) so there is one copy again, or **keep working in the
+   editor** at the wiki folder (plain markdown — it opens in Obsidian or any editor; the path is
+   the one `commonground folder <wiki> --where` gives) so there is one copy again, or **keep working in the
    original** and accept that every change needs another import run — which you do for them, on
    request — to reach the wiki. Their call; just don't leave it unsaid.
 
@@ -739,7 +798,10 @@ get written, and a title that swallows the summary is written once and read fore
 
 **When a gap isn't theirs to fill, offer to hand it over** (shared-audience wikis only — never for
 `just-me`). A section carries a `discipline`, and "I don't really know this one" is the most common
-way seeding stalls. If the user is an **admin** (`invite_teammate` is in your tool list), name the
+way seeding stalls. If the user is an **admin** (their role in this wiki is on `commonground status <wiki>`; having
+`invite_teammate` in your tool list is not the test, since a session can be without the connector's
+tools for a reason that has nothing to do with the role, and for an admin without the tool the rule
+under **Setup has two sign-ins** applies), name the
 person who would know and offer a *delegated* invite:
 
 > "Design decisions is design-owned and you've said it's not your area — I can invite your design
@@ -751,13 +813,25 @@ is emailed for them or only comes back as a link to pass on depends on the deplo
 `delivery` in the result and say which happened**, never promise either. The accept link always
 comes back. Then move to the next gap rather than waiting. If the user isn't an admin, say who to ask instead of offering something you cannot do.
 
+**`invite_teammate` takes no `wiki:` argument: it invites into the wiki this session's connector
+answers for.** Every tool response ends with `[commonground] answered from wiki <id>`, so read
+that off one before you offer, and offer the invite only when that wiki is the one you are
+seeding. In every other case say the invitation goes out from the Team page of the CommonGround web
+app, or from a session in a project pointed at this wiki: an invite sent from here would add the
+person to another wiki.
+
 ## 7. Persist + close
 
 Persist every confirmed page:
 - **Local-clone mode:** write the files (each with its own `summary:`), then **offer**
   `/commonground:push --message "seeded the wiki from the <discipline> interview — N pages"` (or
   `"imported <folder>"`) — the wiki is seeded either way; publishing is a separate, asked-for step.
-  If the user is a member, say the work is saved in their copy and offer `suggest_change`.
+  When the wiki you seeded is not this project's primary, name the wiki in that offer and in the
+  publish, so it cannot land in the wiki this folder reads.
+  If the user is a member, say the work is saved in their copy and offer `suggest_change`,
+  **passing `wiki: <teamId>` whenever the wiki you seeded is not this project's primary** (in a
+  folder that reads no wiki, always): without it the suggestion is filed in the wiki this session's
+  connector answers for.
 - **MCP mode:** `save_page` per page (CAS-guarded; re-read + retry on conflict) — each one is
   immediately live for the team.
 
@@ -798,9 +872,15 @@ it is only useful where the user actually works, so close by offering
 when THIS project is already pointed at the wiki — one project is rarely all of them. In MCP mode,
 a project pointed during a live session needs a restart before its connector follows.
 
+**In local mode, say where the wiki is, once more, as the last thing about it.** Seeding connected
+no project, so the folder is the one place the wiki lives on this computer: name its path, say
+that a session opened on that folder works in the wiki directly, and that every other folder reads
+it only after `/commonground:point` is run there.
+
 Note it's resumable (`/commonground:seed` again) and point admins/curators at
 `/commonground:ingest` (capture anything new — notes, docs, decisions) and `/commonground:lint`
-(health + remaining gaps) to keep it growing.
+(health + remaining gaps) to keep it growing. Both act on the wiki a session's folder reads, so
+say where they work for this wiki: a session opened on the wiki folder, or a project pointed at it.
 
 **If they have more than one wiki, name the check.** *"You now have two wikis — run
 `/commonground:lint` and I'll show where they overlap and settle which answers for what."* That is

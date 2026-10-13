@@ -80,6 +80,28 @@ relay it as the second half of "which wiki": the wiki above is the **primary** â
 away; offer to check it rather than guessing. Adding or dropping one is `/commonground:point`
 (they just say add or drop).
 
+**A home folder an older version connected.** `commonground status --json` carries `probe.folder`,
+and when that is `home`, `above-home` or `root` (the home folder, a folder that holds it, the top
+of a drive), `probe.folderNote` beside it. `connected` there means a version before 0.23.0
+connected this folder, which connects every folder under it to the same wiki. **Read it with
+`commonground status --json` before you offer `/commonground:point` for a different wiki, an added
+wiki or local mode:** step 1's plain form does not carry it. From such a folder
+`/commonground:point` only repairs or shrinks the connection, in the CLI's words: `From this folder
+CommonGround only repairs or shrinks that connection: refreshing its note, dropping a wiki it reads
+beside the first, and reading the connector or switching it on work. Pointing it at another wiki,
+adding a wiki, and changing between a local folder and the hosted connector do not.` So wherever
+this file names `/commonground:point` for a different wiki, an added wiki or local mode, say in
+that folder that it does not work from there, with the way out: `To end the connection, remove
+CommonGround's whole block from this folder's CLAUDE.md, both marker lines included, and the
+COMMONGROUND_WIKI and COMMONGROUND_WIKIS keys from its .claude/settings.json, both together, then
+connect a project folder with /commonground:point.` **Before you say it, run `commonground
+connector`** (a read, it changes nothing): when it says this folder's own settings switch the
+connector off, the way out starts with `commonground connector on`, because once the block is gone
+that command is refused there. Dropping a wiki works there and cannot be taken
+back from that folder. Where this file names `/commonground:point` and a restart for a connector
+that disagrees with the project, that works there too, as a refresh. `/commonground:point` step 1a
+holds the rest.
+
 **Bound to a wiki this machine can't reach.** If the output says `This project is bound to <id>,
 which this machine has no sign-in for`, that outranks the line above it â€” lead with it. Say the two
 facts plainly and in this order: this project asks for `<id>`, and answers here are coming from a
@@ -227,7 +249,8 @@ server reports the block, the CommonGround notice at the top of this session nam
 outright; and the wiki listing that `/commonground:point` fetches (a bare `commonground use` prints
 the same list) marks the wiki `(Free plan)`. The fix is a mode, not a repair: run
 /commonground:point and choose local, which gives this project the wiki as files on this machine.
-Do not send this user around the /mcp loop, and do not call it an outage.
+(In a home folder an older version connected the mode cannot be changed: step 1 says what to say
+there.) Do not send this user around the /mcp loop, and do not call it an outage.
 
 **A refusal that names the subscription is billing, and it is the one case that says so itself.**
 When a WRITE comes back with a sentence about the wiki's **subscription**, or about **payments**

@@ -43,6 +43,8 @@
  * file will not parse — and it goes through the agent's own writer so those five properties have
  * exactly one implementation.
  */
+const path = require('node:path');
+
 const lib = require('./lib.cjs');
 
 /**
@@ -303,16 +305,29 @@ function connectorHealthClause(mode) {
  * live failure of this session's own tools, and a session that goes quiet about it leaves Claude
  * diagnosing an outage that is not one. It is also self-limiting in a way a nudge is not — the field
  * exists only for gated users in MCP mode, and re-pointing to local removes it at the source.
+ *
+ * `homeWayOut` is set for a home folder an older release connected (SER-372). The fix above is a
+ * change of mode, which the CLI refuses in that folder, so the notice says that and the way out
+ * by hand instead: local mode is chosen in the project folders connected after it.
  */
-function planGateNotice(state, mode) {
+function planGateNotice(state, mode, homeWayOut = '') {
   if (mode !== 'mcp') return '';
   const block = state && state.active && state.active.hostedMcpBlock;
   if (!block || block.reason !== 'plan') return '';
-  return (
+  const gate =
     "This wiki's plan does not include the hosted MCP connector, so the CommonGround tools " +
-    'will be refused in this session; that is the plan, not a connection failure. The fix is ' +
-    'local mode: suggest /commonground:point and choose local, which gives this project the ' +
-    'wiki as files on this machine.'
+    'will be refused in this session; that is the plan, not a connection failure. ';
+  if (homeWayOut) {
+    return (
+      gate +
+      'This folder is the home folder, and its connection cannot be changed to local mode. ' +
+      `${homeWayOut} Choose local there.`
+    );
+  }
+  return (
+    gate +
+    'The fix is local mode: suggest /commonground:point and choose local, which gives this ' +
+    'project the wiki as files on this machine.'
   );
 }
 
@@ -590,21 +605,71 @@ function bindingRepairClause(cwd, mode) {
   // The session's own folder is the home folder, one above it, or the top of a drive, and carries a
   // note from a release that still allowed that (SER-343). In the home folder its
   // `.claude/settings.json` is the user's own Claude Code settings, so the CLI names the case and
-  // writes nothing. The record does not say which of the three it is, so the sentence is true of
-  // all three. No offer to re-point: `/commonground:point` is refused here for the same reason.
+  // writes nothing from a session start. The record does not say which of the three it is, so the
+  // sentences are true of all three.
+  //
+  // A refresh the user asks for does write that file (SER-372), so it is offered, and only where
+  // it would change something: the CLI says whether the file already agrees with the note
+  // (`recorded`). For "yes" and "unreadable" a refresh changes nothing, and an offer made again at
+  // every session start is one nobody can take up. Every arm carries the way out by hand, and none
+  // offers to point the folder at another wiki, add one or change its mode: all three are refused
+  // there.
+  //
+  // `cost` is what the mismatch costs, as those arms and the last one below say it: no "until
+  // then", since none of them promises that a restart alone ends it.
+  const cost =
+    mode === 'local'
+      ? `${consequence}.`
+      : 'Wiki answers in this session may come from another wiki entirely, and such an answer is ' +
+        'fluent, sourced and indistinguishable from a right one.';
+  const refresh = "refresh this folder's connection for them (/commonground:point, as a repair)";
   if (done && done.outcome === 'every-folder') {
+    const reach =
+      'this folder is the home folder, a folder above it, or the top of a drive, so its CLAUDE.md ' +
+      'connects every folder under it to that wiki, and in the home folder its ' +
+      ".claude/settings.json is the user's own Claude Code settings";
+    const wayOut = lib.everyFolderWayOut(cwd);
+    if (done.recorded === 'yes') {
+      return (
+        head +
+        'Its .claude/settings.json already records it, so nothing needs writing: this session ' +
+        'started before that file said so, and a new session applies it. TELL THE USER to start ' +
+        `a new session when convenient. Know that ${reach}. ${wayOut} ${cost}`
+      );
+    }
+    const notRecorded = `It was NOT recorded at this session start, on purpose: ${reach}. `;
+    if (done.recorded === 'no') {
+      // The offer comes back at every session start for as long as the note and the file
+      // disagree, so the sentence says what ends it: someone who declines the refresh has the
+      // other exit in the next sentence.
+      return (
+        head +
+        notRecorded +
+        `TELL THE USER, and OFFER to ${refresh}: the refresh writes COMMONGROUND_WIKI, and ` +
+        'COMMONGROUND_WIKIS for a folder that reads several wikis, into that file, and a new ' +
+        'session then applies it. This message stops once the refresh is run or the connection ' +
+        `is ended. ${wayOut} ${cost}`
+      );
+    }
+    if (done.recorded === 'unreadable') {
+      // Nothing here says Claude mends the file: in the home folder it is the person's own Claude
+      // Code settings, and the owner has decided only that a refresh they ask for writes two keys
+      // into it. "Could not be read as settings" covers both answers of the CLI: a file that will
+      // not open, and one that is not valid JSON.
+      return (
+        head +
+        notRecorded +
+        `And ${path.join(cwd, '.claude', 'settings.json')} could not be read as settings (it ` +
+        "could not be opened, or it isn't valid JSON), so a refresh would leave it untouched " +
+        `too. TELL THE USER: fix that file first, then OFFER to ${refresh}, which records it, ` +
+        `and a new session then applies it. ${wayOut} ${cost}`
+      );
+    }
+    // A CLI that does not say whether the file agrees: claim nothing about a refresh.
     return (
       head +
-      'It was NOT recorded, on purpose: this folder is the home folder, a folder above it, or the ' +
-      'top of a drive, so its CLAUDE.md connects every folder under it to that wiki, and in the ' +
-      "home folder its .claude/settings.json is the user's own Claude Code settings. CommonGround " +
-      'no longer writes there. TELL THE USER in a sentence that this folder is connected to a wiki, ' +
-      'and that a wiki is connected from a project folder instead; do not offer to re-point this ' +
-      'folder, and a restart will not change it. ' +
-      (mode === 'local'
-        ? `${consequence}.`
-        : 'Wiki answers in this session may come from another wiki entirely, and such an answer is ' +
-          'fluent, sourced and indistinguishable from a right one.')
+      notRecorded +
+      `TELL THE USER in a sentence that this folder is connected to a wiki. ${wayOut} ${cost}`
     );
   }
   if (done && done.outcome === 'unreadable') {
@@ -628,6 +693,20 @@ function bindingRepairClause(cwd, mode) {
     );
   }
   // No CLI, a crash, a timeout, an outcome we do not recognise. Say the state; claim no repair.
+  //
+  // In a home folder an older release connected (SER-372) the offer is the refresh: a re-point is
+  // one of the things the CLI refuses there, and the refresh re-records the same wikis. It
+  // carries the way out, as the arms above do for such a folder. The home folder alone
+  // (`isConnectedHomeFolder`): with no CLI answer the hook cannot tell a folder above it or the
+  // top of a drive, which keep the ordinary sentence and get the CLI's answer one step later.
+  if (lib.isConnectedHomeFolder(cwd)) {
+    return (
+      head +
+      'It could not be recorded automatically this session, so nothing has changed yet. TELL THE ' +
+      `USER, and OFFER to ${refresh}, which re-records every wiki this folder names. A new ` +
+      `session then applies it. ${lib.everyFolderWayOut(cwd)} ${cost}`
+    );
+  }
   return (
     head +
     'It could not be recorded automatically this session, so nothing has changed yet. TELL THE ' +
@@ -653,19 +732,34 @@ function bindingRepairClause(cwd, mode) {
  * machine's own folder (fine, nothing to say) or a coincidence so unlikely it does not merit
  * complexity; a path that is absent cannot be read no matter who wrote it, so the advice is the same
  * either way. Fail-open like everything here: an unreadable CLAUDE.md says nothing.
+ *
+ * In a home folder an older release connected (SER-372) the repair is a REFRESH, never a point in
+ * local mode, which the CLI refuses there: a refresh fetches the wiki into its own folder when
+ * this machine has none and rewrites the block all the same.
  */
 function foreignClonePathClause(cwd, mode) {
   if (mode !== 'local') return '';
   const stated = lib.legacyClonePath(cwd);
   if (!stated || lib.pathExists(stated)) return '';
-  return (
+  const lead =
     `This project's CLAUDE.md names a wiki folder at ${stated}, and there is nothing there on this ` +
     'machine — that block was written on someone else\'s, and committed with their path in it. Do ' +
     'NOT try to read or create that folder: it is not this machine\'s wiki, and creating it would ' +
-    'make an empty directory look like a wiki. TELL THE USER, and OFFER to point the project ' +
+    'make an empty directory look like a wiki. ';
+  const until = 'Until then, answer from what you have and say the wiki was not consulted.';
+  if (lib.isConnectedHomeFolder(cwd)) {
+    return (
+      lead +
+      "TELL THE USER, and OFFER to refresh this folder's connection for them (/commonground:point, " +
+      'as a repair): that fetches the wiki into a folder of its own on this machine when it has ' +
+      `none, and rewrites the block to stop naming a path at all. ${until}`
+    );
+  }
+  return (
+    lead +
+    'TELL THE USER, and OFFER to point the project ' +
     'again in local mode for them (/commonground:point) — that gives this machine its own clone ' +
-    'and rewrites the block to stop naming a path at all. Until then, answer from what you have ' +
-    'and say the wiki was not consulted.'
+    `and rewrites the block to stop naming a path at all. ${until}`
   );
 }
 
@@ -1076,14 +1170,25 @@ function unpublishedReadPointer() {
  * retrying, so a session told to wait sits on a broken state for as long as it lasts.
  *
  * Only a request that got no answer at all (status 0) is honestly a reachability problem.
+ *
+ * `homeWayOut` is set for a home folder an older release connected (SER-372). Aiming that folder
+ * at another wiki is refused by the CLI, so the 403 sentence there offers what is left: access to
+ * this wiki, or the way out by hand. The 401 sentence stays: signing in again works from there.
  */
-function degradedReason(read) {
+function degradedReason(read, homeWayOut = '') {
   const status = (read && read.status) || 0;
   if (status === 401) {
     return (
       'Your CommonGround sign-in was not accepted this session, so the figures above are ' +
       'unavailable. This is not an outage and waiting will not fix it: suggest ' +
       '/commonground:point, which signs in again.'
+    );
+  }
+  if (status === 403 && homeWayOut) {
+    return (
+      'You are no longer a member of this wiki, so the figures above are unavailable. This is not ' +
+      'an outage. This folder is the home folder, and its connection cannot be pointed at another ' +
+      `wiki: ask an admin of this one for access, or end the connection. ${homeWayOut}`
     );
   }
   if (status === 403) {
@@ -1228,6 +1333,10 @@ async function main() {
   const binding = lib.activeBinding(cwd);
   const bindingRepair = bindingRepairClause(cwd, projectMode);
   const foreignClone = foreignClonePathClause(cwd, projectMode);
+  // A home folder an older release connected (SER-372): the CLI refuses to point it at another
+  // wiki or change its mode, so the sentences below that would offer either say the way out by
+  // hand instead. '' everywhere else, which leaves every one of them as it was.
+  const homeWayOut = lib.isConnectedHomeFolder(cwd) ? lib.everyFolderWayOut(cwd) : '';
   // The OTHER wikis this project reads (SER-278) — every initialized path names them in the mode
   // rule, and the live path below refreshes each one's keyword cache and sync standing.
   const alsoIds = lib.projectTeamIds(cwd).slice(1);
@@ -1244,13 +1353,24 @@ async function main() {
       .bindings()
       .map((b) => b && b.teamId)
       .filter(Boolean);
+    const named = lib.projectTeamId(cwd);
     const hint =
-      teams.length > 1
-        ? ` You have more than one CommonGround wiki (${teams.join(', ')}) and none is active, so ` +
-          "this session can't auto-select one for live status — run /commonground:point to aim " +
-          'THIS project at the one it should read.'
-        : " This machine isn't signed in to CommonGround, so live status and sync aren't available " +
-          'in this session — run /commonground:status, or /commonground:point to sign in.';
+      teams.length > 1 && homeWayOut
+        ? // Aiming this folder at one of them is refused there (SER-372), so the hint says which
+          // wiki the folder names, that no sign-in here is for it, and the way out by hand.
+          (named
+            ? ` This folder's note names CommonGround wiki ${named}, and this machine holds no ` +
+              `sign-in for it (it holds ${teams.join(', ')}), so this session has no live status. `
+            : ` You have more than one CommonGround wiki (${teams.join(', ')}) and none is active, ` +
+              "so this session can't auto-select one for live status. ") +
+          'This folder is the home folder, and its connection cannot be pointed at another wiki. ' +
+          homeWayOut
+        : teams.length > 1
+          ? ` You have more than one CommonGround wiki (${teams.join(', ')}) and none is active, so ` +
+            "this session can't auto-select one for live status — run /commonground:point to aim " +
+            'THIS project at the one it should read.'
+          : " This machine isn't signed in to CommonGround, so live status and sync aren't available " +
+            'in this session — run /commonground:status, or /commonground:point to sign in.';
     // The caveat matters MOST here (SER-182). This branch has just told Claude to consult a wiki
     // using tools it cannot verify are present — and with no device binding, a live connector is
     // precisely the thing that might still be serving content. Without it, "consult it and cite
@@ -1336,7 +1456,7 @@ async function main() {
       cloneMissingNotice(projectMode, [binding.teamId, ...alsoIds]),
       bindingRepair,
       foreignClone,
-      planGateNotice(state, projectMode),
+      planGateNotice(state, projectMode, homeWayOut),
       billingNotice(state, projectMode),
       nudge,
       also.text,
@@ -1362,7 +1482,7 @@ async function main() {
   emit(
     // Offline is the case local mode was built for: the folder is right there and readable, so
     // this emit names it rather than the connector's tools (SER-325).
-    `${awarenessContext(null, null, localCloneDir(projectMode, binding.teamId))} ${degradedReason(read)}`,
+    `${awarenessContext(null, null, localCloneDir(projectMode, binding.teamId))} ${degradedReason(read, homeWayOut)}`,
     modeRule(projectMode, binding.teamId, null, alsoIds),
     cloneMissingNotice(projectMode, [binding.teamId, ...alsoIds]),
     bindingRepair,

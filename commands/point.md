@@ -70,7 +70,8 @@ and no sync fields; `mode` and `probe` are still there, so step 4 can read them 
 **The home folder is never pointed.** Read `probe.folder` in step 1's `--json` form before going
 any further. `project` is every ordinary folder, and nothing changes. `home` (this session's folder
 is the user's home folder), `above-home` (a folder that holds it) and `root` (the top of a drive)
-end this command here: a note there would connect every folder under it to the wiki, so the CLI
+end this command here, unless the same read carries `probe.folderNote` as `connected` (the
+paragraphs below this one): a note there would connect every folder under it to the wiki, so the CLI
 refuses it (for the home folder: `this is your home folder, and connecting it would connect every
 folder on this computer`). Say that in one sentence, and say what works: a session opened on the
 project folder that should read the wiki, and `/commonground:point` run there. Don't run `init` to
@@ -78,6 +79,76 @@ see what it says, don't retry, and don't write the note or the setting by hand. 
 needs no pointed folder, so `/commonground:seed` still works from here: say that too when they came
 to fill one. When they are not signed in yet, sign them in first (step 2): that holds for every
 folder on this computer, and this command then ends after it.
+
+**A folder like that which an older version already connected is repaired or shrunk, and never
+widened.** `probe.folderNote` rides beside `probe.folder` whenever that is not `project`, and says
+what this folder's OWN `CLAUDE.md` holds: `none` (no CommonGround block: the paragraph above),
+`partial` (a block that is not a whole connection) or `connected` (a whole connection, which a
+version before 0.23.0 made). Read this field for it and never `mode`, which a block in a folder
+above sets as well. When they are not signed in yet, sign them in first (step 2), then come back
+to this branch.
+
+For `connected`, say in one sentence where they stand (this folder is connected to a wiki, and that
+connects every folder under it to the same wiki), then act on what they asked. What works there and
+what does not are the CLI's own words, which its refusals in such a folder carry: `From this
+folder CommonGround only repairs or shrinks that connection: refreshing its note, dropping a wiki it
+reads beside the first, and reading the connector or switching it on work. Pointing it at another
+wiki, adding a wiki, and changing between a local folder and the hosted connector do not.`
+
+- **A refresh** (they asked for a repair, or a notice at the start of the session offered one):
+  step 5's repair, `commonground init --refresh`, with its `--reclone` form for a block that names
+  another computer's wiki folder. When the CLI refuses the place the wiki folder would go and
+  offers to put it somewhere else, the form that works here is `commonground init --refresh --path
+  "<folder>"`: step 4's `--mode local --path` form is refused in this folder.
+- **A drop:** **say before you run it that it cannot be taken back: a wiki dropped here cannot be
+  added back from this folder.** On their yes, step 5's drop, `commonground init --drop <wiki>`.
+  The wikis this folder reads beside its first are on the `This project also reads:` line of a
+  plain `commonground status`. The first wiki cannot be dropped or changed from this folder.
+- **The connector:** `commonground connector` reads the switch and `commonground connector on`
+  switches it on (step 2's rule). `commonground connector off` works in one case only: this
+  computer's own home folder, when it reads a local wiki folder (the CLI's sentence then says
+  `reading or switching the connector`). Anywhere else in this branch the CLI refuses it and says
+  why, so relay that.
+- **Another wiki, a wiki added beside the first, or the other mode:** none of these is run from
+  this folder, whether they ask in words, with `--also`, or with `local` or `mcp` in `$ARGUMENTS`.
+  Don't run `init` to see what it says. Say in one sentence that it does not work from this folder,
+  and say the way out.
+- **Nothing in particular:** say what works and the way out, and ask which they want.
+
+**The way out is said, in the CLI's words, with every one of those refusals:** `To end the
+connection, remove CommonGround's whole block from this folder's CLAUDE.md, both marker lines
+included, and the COMMONGROUND_WIKI and COMMONGROUND_WIKIS keys from its .claude/settings.json,
+both together, then connect a project folder with /commonground:point.` No command disconnects a
+folder. Both removals belong together: while the block is there, a refresh writes the keys back.
+**Before you say the way out in a `connected` folder, run `commonground connector`** (a read, it
+changes nothing), and never in a `partial` one, where the CLI refuses that read too.
+**When `commonground connector` says this folder's own settings switch the connector off, the way
+out starts with switching it on** (`commonground connector on`): once the block is gone that
+command is refused here, and no command is left to remove the switch. The CLI's sentence carries
+that step itself when it applies (`first switch the connector on from this folder`), and a way out
+you say yourself carries it only through that read. The rules in
+this file against writing a note or a setting by hand are about making a connection. This sentence
+is about ending one.
+
+**In the home folder, `./.claude/settings.json` is the user's own Claude Code settings.** A refresh
+or a drop there writes CommonGround's own keys into that file when they are missing or differ, and
+keeps every other setting. Say whose file it is before you run either. When the receipt carries a
+line that names the file and the keys, relay it, and leave out step 5's line about what gets
+committed: the CLI does not print it in the home folder.
+
+**In this branch nothing is asked that cannot be done.** Step 3's add-or-switch question and its
+offer of the other kind are not made, and step 4 asks no mode question: the mode is the block's,
+confirmed in one line. Wherever a later step of this file names another wiki, an added wiki or
+local mode as the fix (step 4's Free plan line, step 5's way round a refused drop, step 6's
+exceptions), the answer in this folder is the way out. **Wherever a later step offers `commonground
+connector off`** (step 5 and step 6 both do, for a project that was local already), **offer it in
+this branch only in the one case the connector bullet above names**: this computer's own home
+folder, when it reads a local wiki folder.
+
+For `partial`, nothing works from this folder, the connector included: the CLI refuses every form
+(`its CLAUDE.md holds a CommonGround block that is not a whole connection`). Say so in one
+sentence, with the way out, and end the command there. That sentence takes the place of the one
+the first paragraph gives for a folder nobody connected.
 
 ## 2. Sign in (device-code login)
 
@@ -364,7 +435,9 @@ settled — don't pass `--mode` or a bare wiki name beside the flag:
 - drop: `commonground init --drop <wiki>`. Its folder, if any, is untouched; the project simply
   stops reading it. The CLI refuses to drop the primary while other wikis remain — point the project
   at another wiki first (`commonground init <wiki>`, which replaces the set), then `--also` the rest
-  back — and refuses to drop the last wiki: a project reads at least one.
+  back — and refuses to drop the last wiki: a project reads at least one. In a folder from step
+  1a's connected branch a drop cannot be taken back, since `--also` is refused there: say so before
+  you run it. The receipt says it as well (`It cannot be added back from this folder.`).
 - a project reads at most five wikis; the CLI says so at the sixth.
 Skip `commonground use` on an add or a drop: the machine-wide default is about the primary, and the
 primary did not move.
@@ -429,7 +502,9 @@ usually fine and occasionally not: a charter's first sentence and its categories
 what the team keeps, and in a public repo they are on GitHub. (The block no longer quotes the brief
 at length or the anti-scope at all: both are read from the charter page on demand.) Say it once,
 plainly, and move on — this is a heads-up, not a confirmation to collect. Neither file gets a
-filesystem path and neither holds a secret; the sign-in lives elsewhere.
+filesystem path and neither holds a secret; the sign-in lives elsewhere. In the home folder the
+CLI prints no such line, because nobody clones that folder and its settings file is the user's own
+Claude Code settings (step 1a).
 
 **If the fetch fails, relay what the CLI said and STOP — never work around it.** A failed `init`
 in local mode says why in a sentence: the sign-in is no longer accepted (sign them in again, then

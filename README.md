@@ -173,7 +173,9 @@ have turned on quiet checks, described below.
   the `CLAUDE.md` block says into those keys and keeps every other key in the file. A file that is
   not valid JSON is left alone. Claude tells you when this happened, because that file is often
   tracked by git, and the change applies from the next session. It is the only thing a hook writes
-  outside the credential home.
+  outside the credential home. In your home folder, a folder above it or the top of a drive the
+  hook writes nothing: when that file does not record the wiki, Claude says so and offers to
+  refresh the connection, which writes the keys once you say yes.
 - **SessionStart makes its network calls to CommonGround and nowhere else.** Normally that is one
   read of your wiki's state for each wiki the project reads (five at most). In a project you have
   not pointed at a wiki, or on a machine that is signed out, there is no wiki to read, so instead it
@@ -269,7 +271,8 @@ have turned on quiet checks, described below.
       folder, for any wiki you belong to.
     - **SessionStart records the wiki from that block by itself**, as described above: it writes
       `COMMONGROUND_WIKI` into that folder's `.claude/settings.json` whether quiet checks are on or
-      off.
+      off. Your home folder, a folder above it and the top of a drive are the exception, as the
+      paragraph on SessionStart above says: there the hook writes nothing.
 
     None of this publishes anything or writes a page. These reads ask CommonGround's server for
     nothing from a wiki you are not a member of. A wiki folder that is already on this machine
@@ -317,7 +320,10 @@ other key and entry in the file kept. It switches CommonGround's own connector o
 project, which reads the wiki folder and would otherwise show the connector as needing
 authorization in every session. The switch applies to sessions opened on the connected folder, and,
 when that folder is the root of a git repository, to sessions opened anywhere under it; a session
-opened on a subfolder outside git still lists the connector. To switch it back on, for sending a
+opened on a subfolder outside git still lists the connector. Your home folder is the exception: an
+entry there counts for sessions opened on the home folder itself and for no folder under it,
+whether or not the home folder is a git repository (read with `claude mcp list` on Claude Code
+2.1.251 and 2.1.295). To switch it back on, for sending a
 suggestion, the suggestions queue, an invite, and the overlap check between two wikis, ask Claude
 or run `commonground connector on`, then start a new session.
 The entry is written once, when the project is first connected that way or switched to it from the
@@ -417,8 +423,10 @@ off, and `commonground connector on` or `off` switches it.** It reads and writes
 described above, in the `.claude/settings.local.json` of the folder it runs in. So what it reports
 is what that one file holds: an entry in another settings file switches the connector off as well,
 and after `on` the connector is back from the next session unless another settings file switches it
-off. It works only in a folder whose own `CLAUDE.md` carries CommonGround's block, and never in
-your home folder; in a folder under a connected one it says so and names the connected folder. It
+off. It works only in a folder whose own `CLAUDE.md` carries CommonGround's block. In your home
+folder, a folder above it or the top of a drive it works only where an older version already
+connected the folder, and `off` there works in your own home folder alone;
+in a folder under a connected one it says so and names the connected folder. It
 refuses to switch the connector off in a project that reads its wiki through the connector, and a
 file it cannot read as settings is left exactly as it is, as is one it cannot open or write. It
 needs no sign-in and makes no network call, and a change starts with the next session. Connecting a
@@ -527,6 +535,25 @@ seeing the latest published version, with nothing to pull, matters more. A proje
 once, in `/commonground:point`. `/commonground:seed` connects no project: it asks where the wiki it
 is filling should live, keeps it in a folder of its own, and connects nothing to the folder you run
 it from.
+
+**Your home folder is never connected to a wiki, and neither is a folder above it or the top of a
+drive.** A connection there would reach every folder under it, so `/commonground:point` connects
+the project folders you work in. A folder like that which a version before 0.23.0 connected keeps
+its connection, and from that folder CommonGround only repairs or shrinks it. Refreshing its note,
+dropping a wiki it reads beside the first, and reading the connector's switch or switching it on
+work there. Pointing it at another wiki, adding a wiki, and changing between a local folder and the
+hosted connector do not, and a wiki dropped there cannot be added back from that folder. No command
+ends such a connection. To end it by hand, remove CommonGround's whole block from that folder's
+`CLAUDE.md`, both marker lines included, and the `COMMONGROUND_WIKI` and `COMMONGROUND_WIKIS` keys
+from its `.claude/settings.json`, both together (while the block is there, a refresh writes the
+keys back), then connect a project folder with `/commonground:point`. In your home folder that
+settings file is your own Claude Code settings: a refresh or a drop you ask for there writes those
+keys when they are missing or differ, and keeps every other setting. Switching the connector off
+works in one such folder only, your own home folder when it reads a local wiki folder. The entry
+there counts for sessions opened on the home folder itself and for no folder under it (read with
+`claude mcp list` on Claude Code 2.1.251 and 2.1.295). If the connector is switched off there, switch it on
+(`commonground connector on`) before you remove the block: once the block is gone that command is
+refused in the folder, and no command is left to remove the entry.
 
 During the beta the hosted connector is on for every plan.
 

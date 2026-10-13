@@ -146,7 +146,9 @@ help them read, answer, and file `suggest_change`.
   is not a member of, every call fails the same way, and `/mcp` cannot grant membership: an admin of
   that wiki has to invite them. If the wiki's plan does not include the hosted connector, every call
   is refused by design, and the fix is local mode (`/commonground:point`, choose local), not an
-  invite. `/commonground:status` separates all three. Don't tell the user they lack permissions on a
+  invite. (In a home folder an older version connected the mode cannot be changed from that
+  folder: `/commonground:point` says what works there and the way out.) `/commonground:status`
+  separates all three. Don't tell the user they lack permissions on a
   guess, and don't rule it out on one either.
 
 - **If a WRITE comes back refused over the wiki's subscription** (either mode): a sentence about

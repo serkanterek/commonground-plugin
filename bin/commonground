@@ -16133,6 +16133,7 @@ function parseRouterBlock(claudeMd) {
   if (!block)
     return null;
   const marked2 = MODE_MARKER_RE.exec(block)?.[1];
+  const modeMarked = marked2 === "local" || marked2 === "mcp";
   const teamId = TEAM_MARKER_RE.exec(block)?.[1] ?? null;
   const alsoTeamIds = [];
   for (const m of block.matchAll(ALSO_MARKER_RE)) {
@@ -16141,7 +16142,8 @@ function parseRouterBlock(claudeMd) {
       alsoTeamIds.push(id);
   }
   return {
-    mode: marked2 === "local" || marked2 === "mcp" ? marked2 : block.includes("(local clone)") ? "local" : "mcp",
+    mode: modeMarked ? marked2 : block.includes("(local clone)") ? "local" : "mcp",
+    modeMarked,
     teamId,
     alsoTeamIds
   };
@@ -16204,29 +16206,11 @@ var PROJECT_SETTINGS = [".claude", "settings.json"];
 var WIKI_ENV_KEY = "COMMONGROUND_WIKI";
 var WIKI_SET_ENV_KEY = "COMMONGROUND_WIKIS";
 async function writeProjectWikiEnv(dir, teamId, alsoTeamIds = []) {
-  const path2 = (0, import_node_path7.join)(dir, ...PROJECT_SETTINGS);
-  const existing = await readFileOr(path2, "");
-  const bom = existing.startsWith(BOM) ? BOM : "";
-  const text = existing.slice(bom.length);
-  let settings = {};
-  if (text.trim()) {
-    try {
-      const parsed = JSON.parse(text);
-      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed))
-        return "unreadable";
-      settings = parsed;
-    } catch {
-      return "unreadable";
-    }
-  }
-  const current = settings.env;
-  if (current !== void 0 && (typeof current !== "object" || current === null || Array.isArray(current))) {
+  const read = await readProjectWikiEnv(dir, teamId, alsoTeamIds);
+  if (!read)
     return "unreadable";
-  }
-  const env = { ...current ?? {} };
-  const set2 = [teamId, ...alsoTeamIds.filter((id, i, all) => id !== teamId && all.indexOf(id) === i)];
-  const wanted = set2.length > 1 ? set2.join(",") : void 0;
-  if (env[WIKI_ENV_KEY] === teamId && env[WIKI_SET_ENV_KEY] === wanted)
+  const { path: path2, existing, bom, settings, env, wanted } = read;
+  if (read.agrees)
     return "unchanged";
   env[WIKI_ENV_KEY] = teamId;
   if (wanted === void 0)
@@ -16238,6 +16222,45 @@ async function writeProjectWikiEnv(dir, teamId, alsoTeamIds = []) {
 `.replace(/\n/g, eolOf(existing));
   await (0, import_promises5.writeFile)(path2, `${bom}${json}`, "utf8");
   return "written";
+}
+async function readProjectWikiEnv(dir, teamId, alsoTeamIds) {
+  const path2 = (0, import_node_path7.join)(dir, ...PROJECT_SETTINGS);
+  let existing;
+  try {
+    existing = await (0, import_promises5.readFile)(path2, "utf8");
+  } catch (e) {
+    if (e.code !== "ENOENT")
+      return null;
+    existing = "";
+  }
+  const bom = existing.startsWith(BOM) ? BOM : "";
+  const text = existing.slice(bom.length);
+  let settings = {};
+  if (text.trim()) {
+    try {
+      const parsed = JSON.parse(text);
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed))
+        return null;
+      settings = parsed;
+    } catch {
+      return null;
+    }
+  }
+  const current = settings.env;
+  if (current !== void 0 && (typeof current !== "object" || current === null || Array.isArray(current))) {
+    return null;
+  }
+  const env = { ...current ?? {} };
+  const set2 = [teamId, ...alsoTeamIds.filter((id, i, all) => id !== teamId && all.indexOf(id) === i)];
+  const wanted = set2.length > 1 ? set2.join(",") : void 0;
+  const agrees = env[WIKI_ENV_KEY] === teamId && env[WIKI_SET_ENV_KEY] === wanted;
+  return { path: path2, existing, bom, settings, env, wanted, agrees };
+}
+async function projectWikiEnvRecorded(dir, teamId, alsoTeamIds = []) {
+  const read = await readProjectWikiEnv(dir, teamId, alsoTeamIds);
+  if (!read)
+    return "unreadable";
+  return read.agrees ? "yes" : "no";
 }
 var COMMONGROUND_MCP_SERVER = "plugin:commonground:commonground";
 var PROJECT_LOCAL_SETTINGS = [".claude", "settings.local.json"];
@@ -17486,12 +17509,12 @@ async function wikiNamesFor(deps, teamIds) {
 }
 async function initProject(deps, opts) {
   const { mode, teamId, projectDir } = opts;
-  await refuseEveryFolderProject(projectDir);
+  const alsoIds = (opts.also ?? []).filter((id, i, all) => id !== teamId && all.indexOf(id) === i);
+  const everyFolder = await refuseWiderEveryFolder(projectDir, { mode, teamId, also: alsoIds });
   const clonePaths = {
     ...opts.clonePaths ?? {},
     ...opts.path === void 0 ? {} : { [teamId]: opts.path }
   };
-  const alsoIds = (opts.also ?? []).filter((id, i, all) => id !== teamId && all.indexOf(id) === i);
   if (1 + alsoIds.length > MAX_WIKIS_PER_PROJECT) {
     throw new AgentError(`a project reads at most ${MAX_WIKIS_PER_PROJECT} wikis \u2014 this would make ${1 + alsoIds.length}. Drop one first ${byAudience('("commonground init --drop <wiki>")', "(offer /commonground:point, dropping a wiki)")}.`);
   }
@@ -17518,7 +17541,7 @@ async function initProject(deps, opts) {
       sections2.push({ teamId: id, voice: w.voice, name: w.name });
     }
     await injectRouterRule(projectDir, routerRuleForMode("local", { voice: primary2.voice, teamId, name: primary2.name, also: sections2 }));
-    const connector = before?.mode === "local" ? "unchanged" : await setProjectConnector(projectDir, "off");
+    const connector = everyFolder || before?.mode === "local" ? "unchanged" : await setProjectConnector(projectDir, "off");
     return {
       mode,
       teamId,
@@ -17529,6 +17552,7 @@ async function initProject(deps, opts) {
       // project chose, so the only question is whether it agrees with the clone (SER-237).
       wikiEnv: await writeProjectWikiEnv(projectDir, teamId, alsoIds),
       connector,
+      ...everyFolder ? { everyFolder: everyFolder.reach } : {},
       ...primary2.cloned ? {} : { standing: primary2.standing },
       ...primary2.earlierAttempt ? { earlierAttempt: primary2.earlierAttempt } : {},
       also: also2,
@@ -17551,7 +17575,10 @@ async function initProject(deps, opts) {
     wikiEnv: await writeProjectWikiEnv(projectDir, teamId, alsoIds),
     // This project reads through the connector, so an entry a local point left here comes out
     // (SER-342). Nothing is written, and no file is made, for a project that never had one.
-    connector: await setProjectConnector(projectDir, "on"),
+    // Not in a folder that reaches every folder (SER-372): a refresh or a drop there re-serialised
+    // a third file of the user's, and only the `connector` verb touches that one there.
+    connector: everyFolder ? "unchanged" : await setProjectConnector(projectDir, "on"),
+    ...everyFolder ? { everyFolder: everyFolder.reach } : {},
     ...primary.voiceFail ? { voiceFail: primary.voiceFail } : {},
     also,
     dropped
@@ -17636,15 +17663,22 @@ async function samePlace(a, b) {
 }
 function reachesEveryFolder(projectDir, home = homeFolder(), host = hostOs()) {
   const dir = (0, import_node_path9.resolve)(projectDir);
-  if (home) {
-    const atOrAbove = isInsidePath(dir, home) || insideByIdentity([dir])(home);
-    if (atOrAbove) {
-      return isInsidePath(home, dir) || insideByIdentity([home])(dir) ? "home" : "above-home";
-    }
-  }
+  const own = ownHomeReach(dir, home);
+  if (own)
+    return own;
   if ((0, import_node_path9.dirname)(dir) === dir)
     return "root";
   return host === "wsl" ? windowsSideReach(dir) : null;
+}
+function ownHomeReach(dir, home) {
+  if (!home)
+    return null;
+  if (!(isInsidePath(dir, home) || insideByIdentity([dir])(home)))
+    return null;
+  return isInsidePath(home, dir) || insideByIdentity([home])(dir) ? "home" : "above-home";
+}
+function isOwnHomeFolder(projectDir, home = homeFolder()) {
+  return ownHomeReach((0, import_node_path9.resolve)(projectDir), home) === "home";
 }
 function windowsSideReach(dir) {
   if (/^\/mnt\/[a-z]$/i.test(dir))
@@ -17660,17 +17694,77 @@ function homeFolder() {
     return null;
   }
 }
-async function refuseEveryFolderProject(projectDir) {
-  const reach = reachesEveryFolder(projectDir);
+async function everyFolderNote(projectDir, home = homeFolder(), host = hostOs()) {
+  const reach = reachesEveryFolder(projectDir, home, host);
   if (!reach)
-    return;
-  throw new AgentError(everyFolderRefusal(reach, await detectRouterBlock(projectDir) !== null));
+    return null;
+  const text = await (0, import_promises8.readFile)((0, import_node_path9.join)(projectDir, "CLAUDE.md"), "utf8").catch(() => "");
+  const block = parseRouterBlock(text);
+  if (block?.teamId && block.modeMarked) {
+    return { reach, note: "connected", block: { ...block, teamId: block.teamId } };
+  }
+  return { reach, note: text.includes(ROUTER_START) || text.includes(ROUTER_END) ? "partial" : "none" };
 }
-function everyFolderRefusal(reach, connected) {
-  const where = reach === "home" ? "this is your home folder" : reach === "above-home" ? "this folder holds your home folder" : "this is the top of a drive";
+function everyFolderWhatWorks(offWorks) {
+  return "From this folder CommonGround only repairs or shrinks that connection: refreshing its note, dropping a wiki it reads beside the first, and " + (offWorks ? "reading or switching the connector" : "reading the connector or switching it on") + " work. Pointing it at another wiki, adding a wiki, and changing between a local folder and the hosted connector do not.";
+}
+function everyFolderWayOut(connectorOff, env) {
+  const first = connectorOff ? byAudience('first run "commonground connector on" here (no command switches it on once the block is gone), then ', "first switch the connector on from this folder (no command switches it on once the block is gone), then ", env) : "";
+  return `To end the connection, ${first}remove CommonGround's whole block from this folder's CLAUDE.md, both marker lines included, and the COMMONGROUND_WIKI and COMMONGROUND_WIKIS keys from its .claude/settings.json, both together, then connect a project folder` + byAudience(': run "commonground init --mode mcp|local <wiki>" in that folder.', " with /commonground:point.", env);
+}
+function connectorOffWorks(projectDir, block) {
+  return isOwnHomeFolder(projectDir) && block.mode === "local";
+}
+async function everyFolderGuidance(projectDir, found, home = homeFolder(), host = hostOs()) {
+  const here = found === void 0 ? await everyFolderNote(projectDir, home, host) : found;
+  if (!here || here.note === "none")
+    return "";
+  if (here.note !== "connected")
+    return everyFolderWayOut(false);
+  const connectorOff = await projectConnector(projectDir) === "off";
+  return `${everyFolderWhatWorks(connectorOffWorks(projectDir, here.block))} ${everyFolderWayOut(connectorOff)}`;
+}
+async function refuseEveryFolderInit(projectDir, form, home = homeFolder(), host = hostOs()) {
+  const here = await everyFolderNote(projectDir, home, host);
+  if (!here)
+    return null;
+  if (here.note !== "connected" || form === "other") {
+    throw new AgentError(await everyFolderRefusal(projectDir, here));
+  }
+  return here;
+}
+async function refuseWiderEveryFolder(projectDir, plan, home = homeFolder(), host = hostOs()) {
+  const here = await everyFolderNote(projectDir, home, host);
+  if (!here)
+    return null;
+  const narrower = here.note === "connected" && plan.teamId === here.block.teamId && plan.mode === here.block.mode && plan.also.every((id) => here.block.alsoTeamIds.includes(id));
+  if (!narrower)
+    throw new AgentError(await everyFolderRefusal(projectDir, here));
+  return here;
+}
+async function refuseEveryFolderConnector(projectDir, word, home = homeFolder(), host = hostOs()) {
+  const here = await everyFolderNote(projectDir, home, host);
+  if (!here)
+    return null;
+  if (here.note !== "connected")
+    throw new AgentError(await everyFolderRefusal(projectDir, here));
+  if (word === "off" && !isOwnHomeFolder(projectDir)) {
+    throw new AgentError(`${whereOf(here.reach)}, and it is already connected to a wiki. CommonGround does not switch its connector off from here: where a folder like this one is the root of a git repository, the entry that switches it off hides the connector in every folder under it. Nothing was changed. ${await everyFolderGuidance(projectDir, here)}`);
+  }
+  return here;
+}
+function whereOf(reach) {
+  return reach === "home" ? "this is your home folder" : reach === "above-home" ? "this folder holds your home folder" : "this is the top of a drive";
+}
+async function everyFolderRefusal(projectDir, here) {
+  const { reach } = here;
+  const where = whereOf(reach);
   const span = reach === "home" ? "every folder on this computer" : reach === "above-home" ? "every folder under it, your whole home folder included" : "every folder on it";
-  if (connected) {
-    return `${where}, and it is already connected to a wiki, which connects ${span} to that wiki. CommonGround no longer changes that connection from here. Nothing was written.` + byAudience("", " Say so in a sentence, and do not retry.");
+  if (here.note === "connected") {
+    return `${where}, and it is already connected to a wiki, which connects ${span}${reach === "above-home" ? "," : ""} to that wiki. Nothing was written.` + byAudience("", " Do not retry: say so, with what works from here and the way out.") + ` ${await everyFolderGuidance(projectDir, here)}`;
+  }
+  if (here.note === "partial") {
+    return `${where}, and its CLAUDE.md holds a CommonGround block that is not a whole connection (a marker line is missing, or it names no wiki or no mode), so CommonGround changes nothing here. Nothing was written.` + byAudience("", " Do not retry: say so, with the way out.") + ` ${await everyFolderGuidance(projectDir, here)}`;
   }
   const how = reach === "home" ? ": the note would go into the CLAUDE.md that Claude reads from every folder under it, and the setting into your own Claude Code settings, which every project uses" : "";
   return `${where}, and connecting it would connect ${span}${how}. Nothing was written. ` + byAudience("Run this from a project folder under it.", "Say so in a sentence. A wiki is connected from a session opened on a project folder, and filling a wiki needs no connected folder at all.");
@@ -17713,8 +17807,14 @@ async function recordProjectWiki(projectDir) {
   if (!wiki)
     return { outcome: "no-marker", wiki: null };
   const also = block?.alsoTeamIds ?? [];
-  if (reachesEveryFolder(projectDir)) {
-    return { outcome: "every-folder", wiki, ...also.length ? { wikis: [wiki, ...also] } : {} };
+  const everyFolder = await everyFolderNote(projectDir);
+  if (everyFolder) {
+    return {
+      outcome: "every-folder",
+      wiki,
+      ...also.length ? { wikis: [wiki, ...also] } : {},
+      ...everyFolder.note === "connected" ? { recorded: await projectWikiEnvRecorded(projectDir, wiki, also) } : {}
+    };
   }
   return {
     outcome: await writeProjectWikiEnv(projectDir, wiki, also),
@@ -20481,7 +20581,7 @@ function packageVersion() {
   }
 }
 function cliVersion() {
-  const embedded = true ? "0.23.0".trim() : "";
+  const embedded = true ? "0.23.1".trim() : "";
   if (embedded)
     return embedded;
   const dev = packageVersion();
@@ -20597,7 +20697,9 @@ Usage:
                                --also and --drop. A project can read SEVERAL wikis: --also <wiki>
                                adds one beside the ones it already reads (same mode; local mode
                                clones it), --drop <wiki> stops reading one; a bare "init <wiki>"
-                               replaces the whole set with that wiki
+                               replaces the whole set with that wiki. Your home folder, a folder
+                               above it and the top of a drive are never connected; one an older
+                               version connected takes --refresh and --drop and nothing else
   commonground connector [on|off]
                                say whether THIS project's own settings switch CommonGround's
                                connector off, or switch it. "init" switches it off when it makes
@@ -20610,7 +20712,9 @@ Usage:
                                another settings file switches it off. "off" adds the entry, and
                                is refused in a project that reads its wiki through the
                                connector. Works only in the folder "init" connected, not in a
-                               folder under it. --json for the machine-readable form
+                               folder under it. In a folder above your home folder or at the top
+                               of a drive that an older version connected, "off" is refused.
+                               --json for the machine-readable form
   commonground folder [wiki]   put your wiki's folder on this machine without connecting any
                                project to it: fetches the wiki into its own folder when there is
                                none yet, and leaves an existing one exactly as it is. --path
@@ -20847,6 +20951,14 @@ function formatWikiEnv(r) {
   const local = r.mode === "local";
   switch (r.wikiEnv) {
     case "written":
+      if (r.everyFolder === "home")
+        return `Recorded this folder's ${several ? "wikis" : "wiki"} in ${r.projectDir}/.claude/settings.json, which in your home
+folder is your own Claude Code settings. CommonGround's own keys there (COMMONGROUND_WIKI, and
+COMMONGROUND_WIKIS for a folder that reads several wikis) now match the note in CLAUDE.md, and
+every other setting was kept. ` + (local ? `Nothing here waits on it: this folder reads your wiki folder.
+` : `Claude Code reads that file at startup, so start a new
+session for the connector to answer for ${several ? "them" : "it"}.
+`);
       return local ? `Recorded this project's ${several ? "wikis" : "wiki"} in ${r.projectDir}/.claude/settings.json. Nothing here
 waits on it: in local mode this project reads your wiki folder, so there is nothing to
 restart. The file is what a teammate on the hosted connector would read.
@@ -20934,7 +21046,8 @@ function formatConnectorState(a) {
 ` : `CommonGround's connector is switched off in this project (one entry in ${a.file}), and this project reads its wiki through it, so nothing can be read here until it is on: ${byAudience('run "commonground connector on", then start a new session', "offer to switch it on, which takes one command and a new session")}.
 `;
 }
-function formatConnectorSwitch(to, a) {
+var HOME_SWITCH_REACH = "This is your home folder, so the entry counts only for sessions opened on the home folder itself. It switches the connector off in no folder under it.";
+function formatConnectorSwitch(to, a, ownHome = false) {
   if (a.outcome === "unreadable")
     return to === "on" ? `Could NOT switch CommonGround's connector on: ${a.file} ${NOT_SETTINGS}, so it was left untouched. Fix that file, then switch it on again.
 ` : `Could NOT switch CommonGround's connector off: ${a.file} ${NOT_SETTINGS}, so it was left untouched and its row keeps showing in this project. ${switchOffAfter("Fix that file", " again.")}
@@ -20947,19 +21060,20 @@ function formatConnectorSwitch(to, a) {
     return a.outcome === "written" ? `Removed the entry that switched CommonGround's connector off from ${a.file}. If the next session lists the connector as needing authorization, ${CONNECTOR_SIGN_IN}. It is back from the next session unless another settings file switches it off.
 ` : `Nothing to switch on: ${a.file} holds no entry that switches CommonGround's connector off, so nothing was changed. If a new session lists the connector as needing authorization, ${CONNECTOR_SIGN_IN}; if a new session does not have it at all, another settings file switches it off.
 `;
-  return a.outcome === "written" ? `Switched CommonGround's connector off for this project, from the next session: one entry in ${a.file}, ${THIS_COMPUTER_ONLY}. ${connectorWayBack()}
-` : `CommonGround's connector was already switched off for this project (one entry in ${a.file}), so nothing was changed.
+  return a.outcome === "written" ? `Switched CommonGround's connector off for this project, from the next session: one entry in ${a.file}, ${THIS_COMPUTER_ONLY}. ${ownHome ? `${HOME_SWITCH_REACH} ` : ""}${connectorWayBack()}
+` : `CommonGround's connector was already switched off for this project (one entry in ${a.file}), so nothing was changed.${ownHome ? ` ${HOME_SWITCH_REACH}` : ""}
 `;
 }
 function formatInit(r, labels = /* @__PURE__ */ new Map()) {
   const wrote = `Wrote the CommonGround router block into ${r.projectDir}/CLAUDE.md.`;
   const set2 = r.also.length ? ` \u2014 this project now reads ${1 + r.also.length} wikis` : "";
+  const disclosure = r.everyFolder === "home" ? "" : COMMITTED_DISCLOSURE;
   if (r.mode !== "local")
     return `Initialized ${r.teamId} (MCP mode)${set2}. ${wrote}
-` + formatAlso(r) + formatDropped(r, labels) + formatWikiEnv(r) + formatVoiceFail(r) + COMMITTED_DISCLOSURE + formatInitConnector(r) + `The ${r.also.length ? "wikis are" : "wiki is"} reached via the CommonGround MCP connector \u2014 if it needs auth, run /mcp.
+` + formatAlso(r) + formatDropped(r, labels) + formatWikiEnv(r) + formatVoiceFail(r) + disclosure + formatInitConnector(r) + `The ${r.also.length ? "wikis are" : "wiki is"} reached via the CommonGround MCP connector \u2014 if it needs auth, run /mcp.
 `;
   const head = `Initialized ${r.teamId} (local-clone mode)${set2}. ${wrote}
-` + formatAlso(r) + formatDropped(r, labels) + formatWikiEnv(r) + COMMITTED_DISCLOSURE + formatInitConnector(r);
+` + formatAlso(r) + formatDropped(r, labels) + formatWikiEnv(r) + disclosure + formatInitConnector(r);
   if (r.cloned)
     return head + `Cloned your wiki to ${r.clonePath}.
 ` + formatEarlierAttempt(r.earlierAttempt);
@@ -21008,7 +21122,11 @@ function formatEarlierAttempt(e, indent = "") {
 function formatDropped(r, labels = /* @__PURE__ */ new Map()) {
   if (r.dropped.length === 0)
     return "";
-  return `This project no longer reads ${r.dropped.map((id) => labels.get(id) ?? id).join(", ")}` + (r.mode === "local" ? " (the folder is untouched)" : "") + ` \u2014 ${byAudience('"commonground init --also <wiki>"', "/commonground:point (adding it)")} adds one back.
+  const names = r.dropped.map((id) => labels.get(id) ?? id).join(", ");
+  if (r.everyFolder)
+    return `This folder no longer reads ${names}` + (r.mode === "local" ? " (the wiki folder is untouched)" : "") + `. It cannot be added back from this folder.
+`;
+  return `This project no longer reads ${names}` + (r.mode === "local" ? " (the folder is untouched)" : "") + ` \u2014 ${byAudience('"commonground init --also <wiki>"', "/commonground:point (adding it)")} adds one back.
 `;
 }
 function formatInitStanding(s, what = "this init") {
@@ -21310,11 +21428,13 @@ async function clearStaleCredential() {
 `));
 }
 async function machineProbe() {
+  const here = await everyFolderNote(process.cwd());
   return {
     git: await gitProbe(),
     host: hostProbe(),
     node: nodeProbe(),
-    folder: reachesEveryFolder(process.cwd()) ?? "project"
+    folder: here?.reach ?? "project",
+    ...here ? { folderNote: here.note } : {}
   };
 }
 async function machinePrefs() {
@@ -21435,7 +21555,7 @@ ${formatWikiList(hits, active, boundId, alsoIds)}Say which one \u2014 the full n
       const { mode, modeGiven, team, refresh, reclone, path: path2, also, drop } = parseInitArgs(rest);
       const deps = await buildDeps();
       const projectDir = process.cwd();
-      await refuseEveryFolderProject(projectDir);
+      const everyFolder = await refuseEveryFolderInit(projectDir, refresh ? "refresh" : drop ? "drop" : "other");
       if (also || drop) {
         const detected = await detectRouterBlock(projectDir);
         if (!detected?.teamId) {
@@ -21464,6 +21584,9 @@ ${formatWikiList(hits, active, boundId, alsoIds)}Say which one \u2014 the full n
         }
         const id = await resolveTeamId(deps, drop, projectDir);
         if (id === primary) {
+          if (everyFolder) {
+            throw new AgentError(`${id} is the FIRST wiki this folder reads, the one bare commands and bare connector calls address, and it cannot be dropped or changed from this folder. Nothing was written.`);
+          }
           throw new AgentError(current.length ? `${id} is this project's PRIMARY wiki \u2014 the one bare commands and bare connector calls address. Point the project at another wiki first ${byAudience('("commonground init <wiki>", which replaces the set)', "(/commonground:point <wiki>, which replaces the set)")}, then add the others back${byAudience(" with --also", "")}.` : `${id} is the only wiki this project reads; a project reads at least one. To read a different wiki instead${byAudience(": commonground init <wiki>", ", offer /commonground:point <wiki>")}.`);
         }
         if (!current.includes(id))
@@ -21481,6 +21604,7 @@ ${formatWikiList(hits, active, boundId, alsoIds)}Say which one \u2014 the full n
       let effectiveMode = mode;
       let effectiveTeam = team;
       let alsoIds = [];
+      let settledTeam;
       if (refresh) {
         const detected = await detectRouterBlock(projectDir);
         if (!detected) {
@@ -21490,14 +21614,25 @@ ${formatWikiList(hits, active, boundId, alsoIds)}Say which one \u2014 the full n
         alsoIds = detected.alsoTeamIds;
         if (detected.teamId) {
           if (team && team !== detected.teamId) {
-            throw new AgentError(`this project's block is bound to team ${detected.teamId} \u2014 refresh without a team argument, or point it again at ${team} to rebind`);
+            throw new AgentError(
+              // No "point it again" in a folder that reaches every folder: that is refused there.
+              everyFolder ? `this folder's block is bound to team ${detected.teamId}: refresh it without a team argument. Nothing was written.` : `this project's block is bound to team ${detected.teamId} \u2014 refresh without a team argument, or point it again at ${team} to rebind`
+            );
           }
           effectiveTeam = detected.teamId;
         }
-        if (reclone) {
-          if (effectiveMode !== "local") {
-            throw new AgentError("this project reads its wikis through the hosted connector, so there is no wiki folder to re-clone. --reclone is for local-clone mode.");
+        if (reclone && effectiveMode !== "local") {
+          throw new AgentError("this project reads its wikis through the hosted connector, so there is no wiki folder to re-clone. --reclone is for local-clone mode.");
+        }
+        if (everyFolder?.note === "connected") {
+          const named = everyFolder.block.teamId;
+          settledTeam = await resolveTeamId(deps, named);
+          if (settledTeam !== named) {
+            const connectorOff = await projectConnector(projectDir) === "off";
+            throw new AgentError(`this folder's note names the wiki ${named}, and this machine holds no wiki under that id as written (the wiki list answers ${settledTeam} for it). A refresh keeps the id the note names, letter for letter, so this one cannot go on. Nothing was forgotten or written.` + byAudience("", " Do not retry: say so, with the way out.") + ` ${everyFolderWayOut(connectorOff)}`);
           }
+        }
+        if (reclone) {
           for (const id of [effectiveTeam, ...alsoIds].filter((x) => !!x)) {
             await forgetCloneLocation(id, deps.configHome);
           }
@@ -21517,7 +21652,7 @@ ${formatWikiList(hits, active, boundId, alsoIds)}Say which one \u2014 the full n
       const result = await initProject(deps, {
         // Settled above: `--refresh` takes the block's, a re-point inherits it, a first point named it.
         mode: effectiveMode ?? "mcp",
-        teamId: await resolveTeamId(deps, effectiveTeam),
+        teamId: settledTeam ?? await resolveTeamId(deps, effectiveTeam),
         also: alsoIds,
         projectDir,
         ...path2 === void 0 ? {} : { path: path2 },
@@ -21540,6 +21675,10 @@ ${formatWikiList(hits, active, boundId, alsoIds)}Say which one \u2014 the full n
      * not the project's. A folder UNDER a connected one is told so, and where: `status` there
      * answers for the project above, so "not connected" contradicted it. The climb is read for
      * that sentence only. `off` is refused where the project reads its wiki through the connector.
+     *
+     * In the home folder, a folder above it or the top of a drive it works only where an older
+     * release connected the folder (SER-372): the read and `on` in all three, `off` in the
+     * machine's own home folder alone (`refuseEveryFolderConnector`).
      */
     case "connector": {
       const words = rest.filter((a) => !a.startsWith("-"));
@@ -21549,12 +21688,19 @@ ${formatWikiList(hits, active, boundId, alsoIds)}Say which one \u2014 the full n
         throw new AgentError("usage: commonground connector [on|off] [--json]");
       }
       const projectDir = process.cwd();
-      await refuseEveryFolderProject(projectDir);
+      await refuseEveryFolderConnector(projectDir, word);
       const block = await detectRouterBlock(projectDir);
       if (!block) {
         const above = await findRouterBlock(projectDir);
-        if (above && reachesEveryFolder(above.dir)) {
-          throw new AgentError(`this folder is not connected to a wiki itself. It sits under ${above.dir}, which is connected and reaches every folder below it, and CommonGround no longer changes that connection. The connector is switched for a connected project folder, so this folder has to be connected itself first; nothing was changed here.`);
+        const aboveNote = above ? await everyFolderNote(above.dir) : null;
+        if (above && aboveNote?.note === "connected") {
+          if (isOwnHomeFolder(above.dir)) {
+            throw new AgentError(`this folder is not connected to a wiki itself. It sits under ${above.dir}, your home folder, which is connected and reaches every folder below it. A connector switch made in the home folder counts only for sessions opened on the home folder, so it changes nothing for this folder. To switch the connector for this folder, connect this folder itself first; nothing was changed here.`);
+          }
+          throw new AgentError(`this folder is not connected to a wiki itself. It sits under ${above.dir}, which is connected and reaches every folder below it. The connector is read or switched on in that folder, or connect this folder itself first; nothing was changed here.`);
+        }
+        if (above && aboveNote) {
+          throw new AgentError(`this folder is not connected to a wiki itself. It sits under ${above.dir}, whose own CLAUDE.md holds a CommonGround block that is not a whole connection, so the connector is not switched there either. Connect this folder itself first; nothing was changed here.`);
         }
         if (above) {
           throw new AgentError(`this folder is inside a project connected at ${above.dir}, and the connector is switched for the connected folder, so run this from that folder; nothing was changed here.`);
@@ -21581,7 +21727,7 @@ ${formatWikiList(hits, active, boundId, alsoIds)}Say which one \u2014 the full n
         outcome,
         file
       };
-      emit(json, answer, () => formatConnectorSwitch(word, answer));
+      emit(json, answer, () => formatConnectorSwitch(word, answer, isOwnHomeFolder(projectDir)));
       return;
     }
     /*
@@ -21829,9 +21975,18 @@ ${USAGE}`);
       process.exitCode = 1;
   }
 }
+async function withEveryFolderGuidance(said, cmd) {
+  if (cmd !== "init" && cmd !== "connector")
+    return said;
+  const guidance = await everyFolderGuidance(process.cwd()).catch(() => "");
+  if (!guidance)
+    return said;
+  const saysWayOut = [false, true].some((connectorOff) => said.includes(everyFolderWayOut(connectorOff)));
+  return saysWayOut ? said : `${said} ${guidance}`;
+}
 main(process.argv.slice(2)).catch(async (err) => {
   const said = err instanceof GitError ? await explainGitFailure(err) : err instanceof Error ? err.message : String(err);
-  process.stderr.write(`commonground: ${said}
+  process.stderr.write(`commonground: ${await withEveryFolderGuidance(said, process.argv[2])}
 `);
   process.exit(1);
 });

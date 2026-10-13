@@ -605,7 +605,14 @@ this project reads): if the wiki is one of them, run **`commonground init --refr
 re-renders the fenced block in the wiki's own voice — its kind (personal for a just-me wiki), its
 name and Structure sections, the brief's first sentence as its trigger line — and absorbs any
 leftover `retrieval-brief` marker block from earlier plugin versions. Never hand-edit inside the
-fence. If this folder reads no wiki, or reads some OTHER wiki, `--refresh` has nothing to do with
+fence. **In the home folder, a folder that holds it or the top of a drive, say what that refresh
+does before you run it, and run it on their yes.** That is every folder where `probe.folder` in
+`commonground status --json` is not `project`. Step 0 reads that output for the quiet-checks
+answer; run it now if this session has not. There the note it re-renders is the one every folder
+under this one reads, and it writes the wiki's keys (`COMMONGROUND_WIKI`, and `COMMONGROUND_WIKIS`
+for a folder that reads several wikis) into `./.claude/settings.json` when they are missing or
+differ, keeping every other setting. In the home folder that file is the user's own Claude Code
+settings: say so. If this folder reads no wiki, or reads some OTHER wiki, `--refresh` has nothing to do with
 the one you just chartered: say so in a sentence (*"the charter is saved; run `/commonground:point <wiki>` in the
 projects that should read it"*) and move on. The MCP connector's instructions pick the charter up
 automatically (per session/request) — no extra step there.

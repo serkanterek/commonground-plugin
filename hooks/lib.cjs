@@ -484,6 +484,91 @@ function isHomeFolder(cwd) {
   }
 }
 
+/** This folder's OWN `CLAUDE.md`, or '' when it has none. Never the climb. */
+function ownClaudeMd(cwd) {
+  try {
+    return fs.readFileSync(path.join(cwd, 'CLAUDE.md'), 'utf8');
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * Is this session's folder the user's HOME folder, with the router marker in its OWN `CLAUDE.md`
+ * (SER-372)? That is a home folder an older release connected. The CLI still refreshes such a
+ * connection and drops a wiki from it, and refuses to point it at another wiki, add one or change
+ * its mode (`refuseEveryFolderInit` in `apps/sync-agent/src/commands.ts`), so the sentences here
+ * that offer `/commonground:point` for one of those are reworded for this folder.
+ *
+ * The home folder only, like {@link isHomeFolder}: a session in a folder above it, at the top of a
+ * drive or on the Windows side of WSL gets the ordinary sentences and the CLI's answer one step
+ * later. And the marker only, as {@link isInitialized} reads it: a block that is not a whole
+ * connection (half a block, no team marker) counts too, since the way out is the same there.
+ */
+function isConnectedHomeFolder(cwd) {
+  return isHomeFolder(cwd) && ownClaudeMd(cwd).includes(ROUTER_MARKER);
+}
+
+/**
+ * CommonGround's own connector, by the name Claude Code gives the plugin's server. Hand-mirrored
+ * from the constant the agent's `injection.ts` switches it by; `record-wiki-contract.test.ts`
+ * holds the two together through the agent's own writer.
+ */
+const CONNECTOR_SERVER = 'plugin:commonground:commonground';
+
+/**
+ * Does this folder's own `.claude/settings.local.json` switch CommonGround's connector off? The
+ * same reading as the agent's `projectConnector`: an entry whose one key is `serverName`, holding
+ * the name above. Fail-open: no file, or one that cannot be read as settings, is "no".
+ */
+function connectorSwitchedOff(cwd) {
+  try {
+    const raw = fs.readFileSync(path.join(cwd, '.claude', 'settings.local.json'), 'utf8');
+    // A byte-order mark is kept by the writer and never parsed, as in the agent.
+    const denied = JSON.parse(raw.charCodeAt(0) === 0xfeff ? raw.slice(1) : raw).deniedMcpServers;
+    return (
+      Array.isArray(denied) &&
+      denied.some(
+        (entry) =>
+          entry &&
+          typeof entry === 'object' &&
+          !Array.isArray(entry) &&
+          Object.keys(entry).length === 1 &&
+          entry.serverName === CONNECTOR_SERVER,
+      )
+    );
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * THE WAY OUT of a connection in a folder that reaches every folder, by hand, since no command
+ * disconnects a folder (SER-372). The Claude-facing rendering of `everyFolderWayOut` in the
+ * agent's `commands.ts`, word for word; `record-wiki-contract.test.ts` compares the two.
+ *
+ * It gains "switch the connector on first" where the CLI's does: this folder's own block is a
+ * whole connection (a team marker and a mode marker, so the `connector` verb works here) and its
+ * local settings switch the connector off. Once the block is gone that verb is refused in this
+ * folder, and the entry would stay with no command left to remove it.
+ */
+function everyFolderWayOut(cwd) {
+  const block = /<!-- commonground:router-rule:start -->([\s\S]*?)<!-- commonground:router-rule:end -->/.exec(ownClaudeMd(cwd));
+  const whole =
+    block !== null &&
+    /<!-- commonground:team:[^\s>]+ -->/.test(block[1]) &&
+    /<!-- commonground:mode:(mcp|local) -->/.test(block[1]);
+  const first =
+    whole && connectorSwitchedOff(cwd)
+      ? 'first switch the connector on from this folder (no command switches it on once the block is gone), then '
+      : '';
+  return (
+    `To end the connection, ${first}remove CommonGround's whole block from this folder's CLAUDE.md, ` +
+    'both marker lines included, and the COMMONGROUND_WIKI and COMMONGROUND_WIKIS keys from its ' +
+    '.claude/settings.json, both together, then connect a project folder with /commonground:point.'
+  );
+}
+
 /**
  * `fsync` a DIRECTORY, so a freshly created dirent survives a power loss. Opening a directory for
  * reading is POSIX-only, so a failure means "no barrier available" — the worst case is the ordering
@@ -1021,6 +1106,12 @@ function legacyClonePath(cwd) {
  * happened", not to render a receipt for an outcome we cannot name.
  */
 const RECORD_OUTCOMES = ['written', 'unchanged', 'unreadable', 'no-marker', 'every-folder'];
+/**
+ * What an `every-folder` answer says about the settings file it left alone (SER-372): whether it
+ * already records what the note says. Optional on the wire, like `wikis`: a CLI that predates it
+ * never prints it, and any other value is dropped, never guessed at.
+ */
+const RECORDED_ANSWERS = ['yes', 'no', 'unreadable'];
 function parseRecordWiki(stdout) {
   try {
     const parsed = JSON.parse(String(stdout).trim());
@@ -1033,7 +1124,8 @@ function parseRecordWiki(stdout) {
       Array.isArray(parsed.wikis) && parsed.wikis.every((w) => typeof w === 'string' && w.trim())
         ? parsed.wikis.map((w) => w.trim())
         : null;
-    return { outcome: parsed.outcome, wiki, ...(wikis ? { wikis } : {}) };
+    const recorded = RECORDED_ANSWERS.includes(parsed.recorded) ? parsed.recorded : null;
+    return { outcome: parsed.outcome, wiki, ...(wikis ? { wikis } : {}), ...(recorded ? { recorded } : {}) };
   } catch {
     return null;
   }
@@ -2085,6 +2177,9 @@ module.exports = {
   projectTeamIds, // the whole set, primary first (SER-278)
   isInitialized,
   isHomeFolder,
+  isConnectedHomeFolder,
+  connectorSwitchedOff,
+  everyFolderWayOut,
   routerMode,
   isCloneSession,
   CLONE_BLOCK_HEADING,

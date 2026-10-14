@@ -53,6 +53,7 @@
 const {
   readStdinInput,
   projectCwd,
+  FULL_WIKI_ID,
   projectTeamId,
   projectTeamIds,
   routerMode,
@@ -227,10 +228,16 @@ function outwardVerdict(tool) {
   if (tool === 'invite_teammate') {
     return {
       decision: 'ask',
+      // What the server does, no more: the link is accepted once, within 7 days
+      // (`acceptInvitation` in the api's invitations.ts), by an account whose verified primary
+      // address is the invited one (the accept route takes the address from the sign-in provider,
+      // never from the caller). The sentence here used to say the link worked for anyone it was
+      // forwarded to, which the server refuses (`email_mismatch`).
       reason:
-        'This creates a real invitation to your CommonGround wiki. Whoever holds the resulting ' +
-        'link can join your team and read everything in it, at the role being granted here — and ' +
-        'the link works for anyone it is forwarded to, for the next 7 days.',
+        'This creates a real invitation to your CommonGround wiki. For the next 7 days the ' +
+        'resulting link lets the person at the invited email address join your team and read ' +
+        'everything in it, at the role being granted here. Only an account with that address can ' +
+        'accept it, and only once, so check the address before you approve.',
       instruction:
         'There is no local-clone equivalent of an invite and no CLI verb for it — this tool is the ' +
         'act itself, in every mode. Confirm the email address and the role with the user before ' +
@@ -2813,9 +2820,6 @@ const QUIET_SHELL_TOOLS = new Set(['Bash', 'PowerShell']);
  */
 const QUIET_WIKI = String.raw`(?:[A-Za-z0-9_][A-Za-z0-9_.@:-]*|"[A-Za-z0-9_][A-Za-z0-9_ .@:-]*")`;
 
-/** A wiki id as the server mints one: the sync agent's own `FULL_WIKI_ID` (team-resolve.ts). */
-const FULL_WIKI_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
 /**
  * The wiki argument of a check that prints what is inside the folder: an ID, by its shape, and
  * nothing else. Never a name, never a prefix, never quoted — {@link quietPageTextInProject} approves
@@ -2823,7 +2827,8 @@ const FULL_WIKI_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{
  * approved, and here it is not even read as a wiki. That is what makes a word after `drafts` or
  * after `--incoming` (`restore`, `show`, `HEAD`) fail the grammar on its own.
  *
- * It is FULL_WIKI_ID itself, without its anchors and with both cases written out, because
+ * It is FULL_WIKI_ID itself (`lib.cjs`: a wiki id as the server mints one, and the shape the
+ * block's own markers are read by), without its anchors and with both cases written out, because
  * QUIET_ARGS is case-sensitive (its verbs are) and the rule compares ids in either case.
  *
  * CAPTURED, so that the rule reads the wiki from the form that matched and never by counting
@@ -2965,7 +2970,8 @@ const QUIET_PAGE_TEXT_VERBS = new Set(['diff', 'drafts']);
  *   - An id means the SHAPE of one (FULL_WIKI_ID, the server's), on both sides. A block is a file
  *     in the folder, and a marker reading `1111` or `acme` is a prefix or a name wearing a
  *     marker's clothes: the CLI would resolve it among all the person's wikis. Such a marker
- *     declares nothing here.
+ *     declares nothing here. Since 0.23.3 it declares nothing to any hook: `projectTeamIds` drops
+ *     it where the block is read, and the test of the primary below is the second layer.
  *
  * WHICH word is the wiki is read from the form that matched (QUIET_WIKI_READ), never from where a
  * word stands: in `drafts show draft/x` the words after the verb are a sub-verb and a draft.

@@ -336,6 +336,11 @@ function isSignedIn() {
  * the narrower rule and returns null rather than guessing — which is what the whole resolution order
  * exists to avoid. Widening it would mean acting for a wiki nobody confirmed, on every prompt.
  *
+ * A SECOND ONE since 0.23.3, deliberate too: this side reads a marker only when it is shaped like a
+ * wiki id ({@link FULL_WIKI_ID}), and the CLI's `resolveWiki` reads any marker and honours one that
+ * names a sign-in it holds. The two differ only where a held sign-in's key is no UUID, which the
+ * hosted service never mints: the CLI's local backend, or a marker written by hand.
+ *
  * Order: this project's marker → the active wiki → the only wiki available → null.
  */
 function activeBinding(cwd) {
@@ -372,18 +377,68 @@ function activeBinding(cwd) {
 }
 
 /**
+ * A wiki id as the server mints one: the sync agent's own `FULL_WIKI_ID` (injection.ts), mirrored
+ * by hand because a hook cannot import it. `publish-guard.test.ts` holds the two to one shape.
+ *
+ * It is ALSO THE ONLY TEXT A MARKER MAY NAME A WIKI BY (SER-345 review, 0.23.3). A router block is
+ * a file in the session's folder or in one above it, and that folder can be a repository somebody
+ * else wrote. The id read from it goes on to name a file in the credential home
+ * ({@link keywordsCachePath}: read on every prompt, and WRITTEN at session start) and a folder in
+ * the wiki home ({@link clonePath}, where the hooks look for `.git` and run git), and the hooks say
+ * that folder to Claude as the wiki's working copy. Read as "any text without a space", a marker
+ * holding `/` and `..` named a `.json` file outside the credential home and a folder outside the
+ * wiki home. The write was real: the server leaves out an `X-CG-Wiki` that is no id and answers
+ * for the sign-in's own wiki, so session start wrote that wiki's keyword list to the file the
+ * marker named, creating folders on the way and replacing a file already there.
+ *
+ * So the shape is asked where the text enters, in the reader below and by no other reader of the
+ * block in this file. Every other id that reaches a path here comes from the sign-in store, in the
+ * credential home or, for a sign-in older than 0.4.1, in its old place inside the wiki home
+ * ({@link readStore}). `COMMONGROUND_WIKI` and `COMMONGROUND_WIKIS` come from the project's
+ * settings and are compared, said and sent to the connector, never joined onto a path. A marker
+ * that is not shaped like an id names no wiki, exactly as a block written before the marker existed
+ * names none. Behind the reader, the two places an id becomes a path keep it to one name inside
+ * its folder whatever its source ({@link oneSegment}).
+ *
+ * What this does not cover: the two homes are where the environment says they are
+ * (`COMMONGROUND_CONFIG_HOME`, `COMMONGROUND_HOME`), and a project's own `.claude/settings.json`
+ * can set its session's environment, as it can set hooks of its own.
+ *
+ * Not a looser "safe file name" rule for the marker, on purpose. Wiki folders are named after their
+ * wikis since SER-221, so a marker reading `acme` would resolve to `<wiki home>/acme`: another
+ * wiki's folder, reached by a name anyone can guess. An id is not a name anyone can guess.
+ */
+const FULL_WIKI_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * `id` as ONE name inside a folder, for the two places an id is joined onto a home
+ * ({@link keywordsCachePath}, {@link clonePath}). An id that holds a path separator, or is `.` or
+ * `..`, is replaced by a digest of itself (what {@link versionMarkerPath} does with every session
+ * id, for the same reason), so the path it yields stays inside the home.
+ *
+ * The second layer, behind {@link projectTeamIds}. A marker's id is a UUID by the time it gets
+ * here, so this decides nothing for one. It is for an id from any other source, today the sign-in
+ * store (which is also read from inside the wiki folder, a folder other people may be able to
+ * write), and for the day a caller is added that forgets the reader. Deliberately not the UUID
+ * rule: this side never asks the server what an id is, and a sign-in carries whatever id the
+ * store gives it. `\` is a separator on Windows only and is refused everywhere, so one machine's
+ * answer is every machine's. Anything that is not text counts as no id at all.
+ */
+function oneSegment(id) {
+  const text = typeof id === 'string' ? id : '';
+  if (text && text !== '.' && text !== '..' && !/[\\/\0]/.test(text)) return text;
+  return `no-id-${crypto.createHash('sha256').update(text).digest('hex').slice(0, 16)}`;
+}
+
+/**
  * The team THIS project is bound to, from the team marker inside its router block, or null.
  * Mirrors the sync agent's `parseRouterBlock` (injection.ts): the marker is written by `init` and
  * re-rendered by `init --refresh`, and it is scoped to the block so a stray comment elsewhere in a
- * user's CLAUDE.md cannot rebind the project.
+ * user's CLAUDE.md cannot rebind the project. Null too for a marker that is not shaped like a wiki
+ * id ({@link FULL_WIKI_ID}).
  */
 function projectTeamId(cwd) {
-  const md = governingClaudeMd(cwd);
-  if (md === null) return null;
-  const block = /<!-- commonground:router-rule:start -->([\s\S]*?)<!-- commonground:router-rule:end -->/.exec(md);
-  if (!block) return null;
-  const marker = /<!-- commonground:team:([^\s>]+) -->/.exec(block[1]);
-  return marker ? marker[1] : null;
+  return projectTeamIds(cwd)[0] || null;
 }
 
 /**
@@ -393,6 +448,12 @@ function projectTeamId(cwd) {
  * block like every reader here. {@link projectTeamId} stays the PRIMARY on purpose: every consumer
  * that asks "which wiki" still gets the one bare calls address, and only the consumers that want
  * the whole set ask this.
+ *
+ * THE ONE PLACE a marker's text becomes an id, and it must be shaped like one ({@link FULL_WIKI_ID}).
+ * The block's FIRST team marker decides the primary: when that one is no id the project names no
+ * wiki, whatever follows it. An also-marker that is no id is left out and the rest stand. The
+ * agent's `recordProjectWiki` reads a block the same way, so what this side compares the session's
+ * settings with is what that side writes (`record-wiki-contract.test.ts`).
  */
 function projectTeamIds(cwd) {
   const md = governingClaudeMd(cwd);
@@ -400,10 +461,10 @@ function projectTeamIds(cwd) {
   const block = /<!-- commonground:router-rule:start -->([\s\S]*?)<!-- commonground:router-rule:end -->/.exec(md);
   if (!block) return [];
   const primary = /<!-- commonground:team:([^\s>]+) -->/.exec(block[1]);
-  if (!primary) return [];
+  if (!primary || !FULL_WIKI_ID.test(primary[1])) return [];
   const ids = [primary[1]];
   for (const m of block[1].matchAll(/<!-- commonground:also:([^\s>]+) -->/g)) {
-    if (!ids.includes(m[1])) ids.push(m[1]);
+    if (FULL_WIKI_ID.test(m[1]) && !ids.includes(m[1])) ids.push(m[1]);
   }
   return ids;
 }
@@ -743,9 +804,14 @@ function legacyCredentialClause() {
   }
 }
 
-/** The cache sits beside the token (its 0600 comment must stay true), not in the wiki folder. */
+/**
+ * The cache sits beside the token (its 0600 comment must stay true), not in the wiki folder.
+ * `teamId` goes into the file's name, and this file is WRITTEN as well as read, so the name is
+ * held to the credential home twice: a marker's id reaches here only through
+ * {@link projectTeamIds}, and any id is one name in the folder ({@link oneSegment}).
+ */
 function keywordsCachePath(teamId) {
-  return path.join(configHome(), `keywords-${teamId}.json`);
+  return path.join(configHome(), `keywords-${oneSegment(teamId)}.json`);
 }
 
 /** The cached keyword payload `{ fetchedAt, keywords }` for a team, or null. */
@@ -1342,12 +1408,18 @@ function readTeamProfile(teamId) {
  *
  * Drift here is silent, not loud: resolve a different directory than the CLI and the SessionStart
  * sync nudge simply stops firing. `credential-drift.test.ts` is what stops that happening.
+ *
+ * Steps 3 and 4 join `teamId` onto the wiki home. The hooks stat that folder, run git in it and
+ * name it to Claude, so, as with {@link keywordsCachePath}, a marker's id reaches here only through
+ * {@link projectTeamIds}, and any id is one name in the wiki home ({@link oneSegment}). For an id
+ * that holds no separator of either platform, which every id the server mints is, the answer is
+ * the CLI's, as it was.
  */
 function clonePath(teamId) {
   const profile = readTeamProfile(teamId);
   if (profile.clonePath) return profile.clonePath;
   if (profile.cloneDir) return path.join(dataHome(), profile.cloneDir);
-  return path.join(dataHome(), teamId);
+  return path.join(dataHome(), oneSegment(teamId));
 }
 
 /**
@@ -2173,6 +2245,7 @@ module.exports = {
   apiBase,
   readStdinInput,
   projectCwd,
+  FULL_WIKI_ID,
   projectTeamId, // the wrong-wiki guard reads it directly (SER-234), not only via activeBinding
   projectTeamIds, // the whole set, primary first (SER-278)
   isInitialized,

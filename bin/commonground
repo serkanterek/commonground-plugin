@@ -7739,10 +7739,13 @@ function profilesPath(configHome = agentConfigHome()) {
 async function readTeamProfile(teamId, configHome = agentConfigHome()) {
   try {
     const raw = JSON.parse(await (0, import_promises.readFile)(profilesPath(configHome), "utf8"));
-    return raw?.teams?.[teamId] ?? {};
+    return ownEntry(raw?.teams, teamId) ?? {};
   } catch {
     return {};
   }
+}
+function ownEntry(map, key) {
+  return map && Object.prototype.hasOwnProperty.call(map, key) ? map[key] : void 0;
 }
 async function writeTeamProfile(teamId, profile, configHome = agentConfigHome()) {
   if (!profile.teamName && !profile.wikiName && !profile.scopeSlug && !profile.shape && !("audience" in profile)) {
@@ -7922,8 +7925,11 @@ async function writeCloneLocation(teamId, patch, configHome) {
     if (!isMissing(e))
       store = { teams: {} };
   }
+  const held = ownEntry(store.teams, teamId);
+  if (!held && patch.clonePath === void 0 && patch.cloneDir === void 0)
+    return;
   store.teams[teamId] = {
-    ...store.teams[teamId],
+    ...held,
     clonePath: patch.clonePath,
     cloneDir: patch.cloneDir
   };
@@ -8160,7 +8166,7 @@ async function readStore(configHome = agentConfigHome(), dataHome = agentDataHom
   return legacy.store;
 }
 async function readBinding(teamId, configHome = agentConfigHome(), dataHome = agentDataHome()) {
-  return (await readStore(configHome, dataHome)).teams[teamId] ?? null;
+  return ownEntry((await readStore(configHome, dataHome)).teams, teamId) ?? null;
 }
 async function writeBinding(binding, configHome = agentConfigHome(), dataHome = agentDataHome()) {
   const legacyPath = legacyStorePath(dataHome);
@@ -16028,6 +16034,12 @@ function alsoMarkers(ids) {
   return ids.map((id) => `
 <!-- commonground:also:${id} -->`).join("");
 }
+var FULL_WIKI_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+function markedWikiIds(block) {
+  if (!block.teamId || !FULL_WIKI_ID.test(block.teamId))
+    return [];
+  return [block.teamId, ...block.alsoTeamIds.filter((id) => FULL_WIKI_ID.test(id))];
+}
 function fenceSafe(s) {
   return (s ?? "").replace(/<!--|-->/g, " ");
 }
@@ -17803,17 +17815,17 @@ async function findRouterBlock(startDir) {
 }
 async function recordProjectWiki(projectDir) {
   const block = await detectRouterBlock(projectDir);
-  const wiki = block?.teamId ?? null;
+  const [wiki = null, ...also] = block ? markedWikiIds(block) : [];
   if (!wiki)
     return { outcome: "no-marker", wiki: null };
-  const also = block?.alsoTeamIds ?? [];
   const everyFolder = await everyFolderNote(projectDir);
   if (everyFolder) {
+    const refreshable = everyFolder.note === "connected" && block.alsoTeamIds.length === also.length;
     return {
       outcome: "every-folder",
       wiki,
       ...also.length ? { wikis: [wiki, ...also] } : {},
-      ...everyFolder.note === "connected" ? { recorded: await projectWikiEnvRecorded(projectDir, wiki, also) } : {}
+      ...refreshable ? { recorded: await projectWikiEnvRecorded(projectDir, wiki, also) } : {}
     };
   }
   return {
@@ -19100,7 +19112,6 @@ var import_node_path11 = require("node:path");
 // ../../apps/sync-agent/dist/team-resolve.js
 var import_node_fs4 = require("node:fs");
 var import_node_path10 = require("node:path");
-var FULL_WIKI_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 async function resolveWiki(deps, arg, projectDir = process.cwd()) {
   if (arg)
     return { teamId: await resolveWikiArg(deps, arg), via: "arg" };
@@ -20581,7 +20592,7 @@ function packageVersion() {
   }
 }
 function cliVersion() {
-  const embedded = true ? "0.23.1".trim() : "";
+  const embedded = true ? "0.23.3".trim() : "";
   if (embedded)
     return embedded;
   const dev = packageVersion();
